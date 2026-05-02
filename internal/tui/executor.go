@@ -1547,6 +1547,21 @@ func runDiffOneAgainstDist(name string, reg *registry.Registry, cfg *config.Conf
 	return out, hasChanges, nil
 }
 
+// hasRequiredUnfilledSlots returns true if the prompt node declares any slot
+// with Required=true and no default, meaning it cannot be woven without --set.
+func hasRequiredUnfilledSlots(reg *registry.Registry, name string) bool {
+	node, ok := reg.LookupPrompt(name)
+	if !ok {
+		return false
+	}
+	for _, v := range node.Vars {
+		if v.IsSlot && v.Required && v.Default == "" {
+			return true
+		}
+	}
+	return false
+}
+
 // runDiffAllAgainstDist diffs all prompts against their dist files.
 func runDiffAllAgainstDist(reg *registry.Registry, cfg *config.Config, opts DiffOptions, cwd string) (string, bool, error) {
 	prompts := reg.Prompts()
@@ -1556,6 +1571,19 @@ func runDiffAllAgainstDist(reg *registry.Registry, cfg *config.Config, opts Diff
 	anyChanges := false
 
 	for _, p := range prompts {
+		// Skip prompts that require interactive slot values — they can never have a
+		// dist file produced by loom weave --all, so a missing dist is expected.
+		distPath := filepath.Join(cwd, cfg.Paths.Out, p.Name+".md")
+		if _, statErr := os.Stat(distPath); os.IsNotExist(statErr) {
+			if hasRequiredUnfilledSlots(reg, p.Name) {
+				b.WriteString(fmt.Sprintf("  %s  %s  %s\n",
+					MutedStyle.Render("—"),
+					PromptNameStyle.Render(p.Name),
+					MutedStyle.Render("(skipped — requires slot values)")))
+				continue
+			}
+		}
+
 		out, changed, err := runDiffOneAgainstDist(p.Name, reg, cfg, opts, cwd)
 		if err != nil {
 			b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
