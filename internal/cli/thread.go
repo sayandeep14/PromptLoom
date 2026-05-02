@@ -1,0 +1,128 @@
+package cli
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/spf13/cobra"
+)
+
+var threadCmd = &cobra.Command{
+	Use:   "thread",
+	Short: "Scaffold a new prompt or block file",
+}
+
+var threadPromptInherits string
+
+var threadPromptCmd = &cobra.Command{
+	Use:   "prompt <Name>",
+	Short: "Create a new prompt file",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runThreadPrompt,
+}
+
+var threadBlockCmd = &cobra.Command{
+	Use:   "block <Name>",
+	Short: "Create a new block file",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runThreadBlock,
+}
+
+func init() {
+	threadPromptCmd.Flags().StringVar(&threadPromptInherits, "inherits", "", "parent prompt name")
+	threadCmd.AddCommand(threadPromptCmd)
+	threadCmd.AddCommand(threadBlockCmd)
+}
+
+func runThreadPrompt(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	cwd, err := resolveProjectDir()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(cwd)
+	if err != nil {
+		return err
+	}
+
+	filename := promptFilename(name)
+	dest := filepath.Join(cwd, cfg.Paths.Prompts, filename)
+
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf("file already exists: %s", dest)
+	}
+
+	var sb strings.Builder
+	if threadPromptInherits != "" {
+		fmt.Fprintf(&sb, "prompt %s inherits %s {\n", name, threadPromptInherits)
+	} else {
+		fmt.Fprintf(&sb, "prompt %s {\n", name)
+	}
+	sb.WriteString("  summary:\n    \n\n")
+	sb.WriteString("  persona:\n    \n\n")
+	sb.WriteString("  objective:\n    \n\n")
+	sb.WriteString("  constraints:\n    - \n\n")
+	sb.WriteString("  format:\n    - \n}\n")
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(dest, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("could not write %s: %w", dest, err)
+	}
+	fmt.Printf("  %s  created  %s\n", tui.SuccessStyle.Render("✓"), tui.PathStyle.Render(dest))
+	return nil
+}
+
+func runThreadBlock(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	cwd, err := resolveProjectDir()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(cwd)
+	if err != nil {
+		return err
+	}
+
+	filename := promptFilename(name)
+	dest := filepath.Join(cwd, cfg.Paths.Blocks, filename)
+
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf("file already exists: %s", dest)
+	}
+
+	content := fmt.Sprintf("block %s {\n  constraints:\n    - \n}\n", name)
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
+		return fmt.Errorf("could not write %s: %w", dest, err)
+	}
+	fmt.Printf("  %s  created  %s\n", tui.SuccessStyle.Render("✓"), tui.PathStyle.Render(dest))
+	return nil
+}
+
+// promptFilename converts a CamelCase name to a kebab-case filename.
+// "SpringBootReviewer" → "spring-boot-reviewer.prompt"
+func promptFilename(name string) string {
+	var sb strings.Builder
+	for i, r := range name {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				sb.WriteByte('-')
+			}
+			sb.WriteRune(r + 32) // to lower
+		} else {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String() + ".prompt"
+}
