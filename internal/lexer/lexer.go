@@ -1,4 +1,4 @@
-// Package lexer tokenizes .prompt DSL source files into a flat token stream.
+// Package lexer tokenizes .loom DSL source files into a flat token stream.
 // The scanner is line-aware and stateful: indented lines following a field
 // declaration are emitted as TokTextLine tokens rather than being broken into
 // structural tokens.
@@ -501,4 +501,58 @@ func (s *scanner) scanNestedBodyLine(indent int, trimmed string, lineNum int) er
 	}
 
 	return s.errorf(lineNum, "unexpected token in nested body: %q", trimmed)
+}
+
+// ScanVars parses a .vars.loom file, which contains only top-level var/slot
+// declarations (no wrapping prompt or block body).
+//
+// Format:
+//
+//	var  name = "default"
+//	slot name {}
+//	slot name { required: true }
+func ScanVars(filename, src string) ([]VarEntry, error) {
+	var out []VarEntry
+	for i, rawLine := range strings.Split(src, "\n") {
+		lineNum := i + 1
+		trimmed := strings.TrimSpace(rawLine)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "var ") {
+			name, def, ok, err := parseVarLine(trimmed)
+			if err != nil {
+				return nil, fmt.Errorf("%s:%d: %v", filename, lineNum, err)
+			}
+			if !ok {
+				return nil, fmt.Errorf("%s:%d: invalid var declaration: %q", filename, lineNum, trimmed)
+			}
+			out = append(out, VarEntry{Name: name, Default: def, IsSlot: false, Line: lineNum, File: filename})
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "slot ") {
+			name, metadata, ok := parseSlotLine(trimmed)
+			if !ok {
+				return nil, fmt.Errorf("%s:%d: invalid slot declaration: %q", filename, lineNum, trimmed)
+			}
+			required := strings.Contains(metadata, "required")
+			out = append(out, VarEntry{Name: name, IsSlot: true, Required: required, Line: lineNum, File: filename})
+			continue
+		}
+
+		return nil, fmt.Errorf("%s:%d: unexpected token in vars file: %q", filename, lineNum, trimmed)
+	}
+	return out, nil
+}
+
+// VarEntry is a single var or slot declaration parsed from a .vars.loom file.
+type VarEntry struct {
+	Name     string
+	Default  string
+	IsSlot   bool
+	Required bool
+	File     string
+	Line     int
 }

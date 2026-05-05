@@ -1206,7 +1206,7 @@ func RunFingerprint(name, cwd string) (string, error) {
 	return b.String(), nil
 }
 
-// RunFmt formats .prompt files in cwd.
+// RunFmt formats .loom source files in cwd.
 func RunFmt(checkOnly bool, cwd string) (string, error) {
 	cfg, err := config.Load(cwd)
 	if err != nil {
@@ -1218,18 +1218,18 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 	overlayDir := filepath.Join(cwd, cfg.Paths.Overlays)
 
 	type scanTarget struct {
-		dir string
-		ext string
+		dir  string
+		exts []string
 	}
 	var dirs []scanTarget
 	if fi, e := os.Stat(promptDir); e == nil && fi.IsDir() {
-		dirs = append(dirs, scanTarget{dir: promptDir, ext: ".prompt"})
+		dirs = append(dirs, scanTarget{dir: promptDir, exts: []string{".prompt.loom", ".loom"}})
 	}
 	if fi, e := os.Stat(blockDir); e == nil && fi.IsDir() {
-		dirs = append(dirs, scanTarget{dir: blockDir, ext: ".prompt"})
+		dirs = append(dirs, scanTarget{dir: blockDir, exts: []string{".block.loom", ".loom"}})
 	}
 	if fi, e := os.Stat(overlayDir); e == nil && fi.IsDir() {
-		dirs = append(dirs, scanTarget{dir: overlayDir, ext: ".overlay"})
+		dirs = append(dirs, scanTarget{dir: overlayDir, exts: []string{".overlay.loom", ".loom"}})
 	}
 
 	var b strings.Builder
@@ -1241,7 +1241,7 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 			continue
 		}
 		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), target.ext) {
+			if entry.IsDir() || !matchesLoomExts(entry.Name(), target.exts) {
 				continue
 			}
 			path := filepath.Join(target.dir, entry.Name())
@@ -1305,16 +1305,17 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 	return b.String(), nil
 }
 
-// promptNamesInFolder parses every .prompt file in dir and returns the names of
+// promptNamesInFolder parses every .loom source file in dir and returns the names of
 // all prompt nodes found (not blocks).
 func promptNamesInFolder(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", dir, err)
 	}
+	loomExts := []string{".prompt.loom", ".loom"}
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".prompt") {
+		if e.IsDir() || !matchesLoomExts(e.Name(), loomExts) {
 			continue
 		}
 		src, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -2309,9 +2310,21 @@ func WatchWeave(opts WeaveOptions, cwd string) error {
 	}
 }
 
+// matchesLoomExts reports whether filename ends with any of the given suffixes.
+func matchesLoomExts(name string, exts []string) bool {
+	for _, ext := range exts {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 func isPromptFile(path string) bool {
-	ext := filepath.Ext(path)
-	return ext == ".prompt" || ext == ".overlay" || ext == ".context"
+	base := filepath.Base(path)
+	return matchesLoomExts(base, []string{
+		".prompt.loom", ".block.loom", ".overlay.loom", ".vars.loom", ".loom", ".context",
+	})
 }
 
 // RunLock generates and writes loom.lock from the current registry state.

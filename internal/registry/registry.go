@@ -6,20 +6,22 @@ import (
 	"fmt"
 
 	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeepgiri/promptloom/internal/lexer"
 )
 
 // Registry holds all known prompts and blocks indexed by name.
 type Registry struct {
-	prompts map[string]*ast.Node
-	blocks  map[string]*ast.Node
-	overlays map[string]*ast.Node
+	prompts    map[string]*ast.Node
+	blocks     map[string]*ast.Node
+	overlays   map[string]*ast.Node
+	globalVars []lexer.VarEntry // from .vars.loom files
 }
 
 // New returns an empty Registry.
 func New() *Registry {
 	return &Registry{
-		prompts: make(map[string]*ast.Node),
-		blocks:  make(map[string]*ast.Node),
+		prompts:  make(map[string]*ast.Node),
+		blocks:   make(map[string]*ast.Node),
 		overlays: make(map[string]*ast.Node),
 	}
 }
@@ -105,3 +107,11 @@ func (r *Registry) BlockCount() int { return len(r.blocks) }
 
 // OverlayCount returns the number of registered overlays.
 func (r *Registry) OverlayCount() int { return len(r.overlays) }
+
+// RegisterGlobalVars appends var/slot entries loaded from .vars.loom files.
+func (r *Registry) RegisterGlobalVars(vars []lexer.VarEntry) {
+	r.globalVars = append(r.globalVars, vars...)
+}
+
+// GlobalVars returns all project-level variable declarations from .vars.loom files.
+func (r *Registry) GlobalVars() []lexer.VarEntry { return r.globalVars }

@@ -57,7 +57,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 func writeSampleFiles(root string) error {
 	samples := map[string]string{
-		"prompts/base.prompt": `prompt BaseEngineer {
+		"prompts/base.prompt.loom": `prompt BaseEngineer {
   summary:
     General-purpose engineering assistant prompt.
 
@@ -79,7 +79,7 @@ func writeSampleFiles(root string) error {
     - Recommendation
 }
 `,
-		"prompts/code-review.prompt": `prompt CodeReviewer inherits BaseEngineer {
+		"prompts/code-review.prompt.loom": `prompt CodeReviewer inherits BaseEngineer {
   objective :=
     Review the provided code for correctness, maintainability, readability, and production readiness.
 
@@ -96,7 +96,7 @@ func writeSampleFiles(root string) error {
     - Final Recommendation
 }
 `,
-		"blocks/spring-boot-rules.prompt": `block SpringBootRules {
+		"blocks/spring-boot-rules.block.loom": `block SpringBootRules {
   constraints:
     - Check controller, service, and repository separation.
     - Check transaction boundaries.
@@ -105,7 +105,7 @@ func writeSampleFiles(root string) error {
     - Check retry and timeout behavior for external calls.
 }
 `,
-		"prompts/spring-boot-review.prompt": `prompt SpringBootReviewer inherits CodeReviewer {
+		"prompts/spring-boot-review.prompt.loom": `prompt SpringBootReviewer inherits CodeReviewer {
   use SpringBootRules
 
   context:
@@ -115,7 +115,7 @@ func writeSampleFiles(root string) error {
     Review the Spring Boot implementation for correctness, maintainability, data consistency, and production readiness.
 }
 `,
-		"prompts/test-writer.prompt": `prompt TestWriter inherits BaseEngineer {
+		"prompts/test-writer.prompt.loom": `prompt TestWriter inherits BaseEngineer {
   objective :=
     Generate useful tests for the provided code.
 

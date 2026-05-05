@@ -18,6 +18,16 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/loader"
 )
 
+// isLoomPickerFile reports whether a filename belongs to a parseable loom source file.
+func isLoomPickerFile(name string) bool {
+	for _, ext := range []string{".prompt.loom", ".block.loom", ".overlay.loom", ".loom"} {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // PickerItem is one selectable entry in the # picker.
 type PickerItem struct {
 	Display  string // shown in the panel
@@ -40,7 +50,7 @@ func BuildPickerItems(cwd string) []PickerItem {
 	topLevelCount := 0
 
 	_ = filepath.WalkDir(promptDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".prompt") {
+		if err != nil || d.IsDir() || !isLoomPickerFile(d.Name()) {
 			return nil
 		}
 		rel, _ := filepath.Rel(promptDir, path)

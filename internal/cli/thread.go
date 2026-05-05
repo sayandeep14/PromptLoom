@@ -13,29 +13,45 @@ import (
 
 var threadCmd = &cobra.Command{
 	Use:   "thread",
-	Short: "Scaffold a new prompt or block file",
+	Short: "Scaffold a new .loom source file",
 }
 
 var threadPromptInherits string
 
 var threadPromptCmd = &cobra.Command{
 	Use:   "prompt <Name>",
-	Short: "Create a new prompt file",
+	Short: "Create a new .prompt.loom file",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runThreadPrompt,
 }
 
 var threadBlockCmd = &cobra.Command{
 	Use:   "block <Name>",
-	Short: "Create a new block file",
+	Short: "Create a new .block.loom file",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runThreadBlock,
+}
+
+var threadOverlayCmd = &cobra.Command{
+	Use:   "overlay <Name>",
+	Short: "Create a new .overlay.loom file",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runThreadOverlay,
+}
+
+var threadVarsCmd = &cobra.Command{
+	Use:   "vars <Name>",
+	Short: "Create a new .vars.loom file",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runThreadVars,
 }
 
 func init() {
 	threadPromptCmd.Flags().StringVar(&threadPromptInherits, "inherits", "", "parent prompt name")
 	threadCmd.AddCommand(threadPromptCmd)
 	threadCmd.AddCommand(threadBlockCmd)
+	threadCmd.AddCommand(threadOverlayCmd)
+	threadCmd.AddCommand(threadVarsCmd)
 }
 
 func runThreadPrompt(cmd *cobra.Command, args []string) error {
@@ -44,15 +60,13 @@ func runThreadPrompt(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	cfg, err := config.Load(cwd)
 	if err != nil {
 		return err
 	}
 
-	filename := promptFilename(name)
+	filename := toKebabCase(name) + ".prompt.loom"
 	dest := filepath.Join(cwd, cfg.Paths.Prompts, filename)
-
 	if _, err := os.Stat(dest); err == nil {
 		return fmt.Errorf("file already exists: %s", dest)
 	}
@@ -69,14 +83,7 @@ func runThreadPrompt(cmd *cobra.Command, args []string) error {
 	sb.WriteString("  constraints:\n    - \n\n")
 	sb.WriteString("  format:\n    - \n}\n")
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(dest, []byte(sb.String()), 0644); err != nil {
-		return fmt.Errorf("could not write %s: %w", dest, err)
-	}
-	fmt.Printf("  %s  created  %s\n", tui.SuccessStyle.Render("✓"), tui.PathStyle.Render(dest))
-	return nil
+	return writeScaffold(dest, sb.String())
 }
 
 func runThreadBlock(cmd *cobra.Command, args []string) error {
@@ -85,21 +92,68 @@ func runThreadBlock(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	cfg, err := config.Load(cwd)
 	if err != nil {
 		return err
 	}
 
-	filename := promptFilename(name)
+	filename := toKebabCase(name) + ".block.loom"
 	dest := filepath.Join(cwd, cfg.Paths.Blocks, filename)
-
 	if _, err := os.Stat(dest); err == nil {
 		return fmt.Errorf("file already exists: %s", dest)
 	}
 
 	content := fmt.Sprintf("block %s {\n  constraints:\n    - \n}\n", name)
+	return writeScaffold(dest, content)
+}
 
+func runThreadOverlay(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	cwd, err := resolveProjectDir()
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load(cwd)
+	if err != nil {
+		return err
+	}
+
+	filename := toKebabCase(name) + ".overlay.loom"
+	dest := filepath.Join(cwd, cfg.Paths.Overlays, filename)
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf("file already exists: %s", dest)
+	}
+
+	content := fmt.Sprintf("overlay %s {\n  // Add field overrides here.\n  // instructions +=\n  //   - Additional instruction\n}\n", name)
+	return writeScaffold(dest, content)
+}
+
+func runThreadVars(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	cwd, err := resolveProjectDir()
+	if err != nil {
+		return err
+	}
+
+	filename := toKebabCase(name) + ".vars.loom"
+	dest := filepath.Join(cwd, filename)
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf("file already exists: %s", dest)
+	}
+
+	content := `// Project-level variable defaults.
+// These values apply to all prompts unless overridden per-prompt or via --set.
+
+var model = "gpt-4"
+var temperature = "0.7"
+
+// slot example {}
+// slot task { required: true }
+`
+	return writeScaffold(dest, content)
+}
+
+func writeScaffold(dest, content string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return err
 	}
@@ -110,19 +164,19 @@ func runThreadBlock(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// promptFilename converts a CamelCase name to a kebab-case filename.
-// "SpringBootReviewer" → "spring-boot-reviewer.prompt"
-func promptFilename(name string) string {
+// toKebabCase converts CamelCase to kebab-case.
+// "SpringBootReviewer" → "spring-boot-reviewer"
+func toKebabCase(name string) string {
 	var sb strings.Builder
 	for i, r := range name {
 		if r >= 'A' && r <= 'Z' {
 			if i > 0 {
 				sb.WriteByte('-')
 			}
-			sb.WriteRune(r + 32) // to lower
+			sb.WriteRune(r + 32)
 		} else {
 			sb.WriteRune(r)
 		}
 	}
-	return sb.String() + ".prompt"
+	return sb.String()
 }

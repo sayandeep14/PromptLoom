@@ -864,20 +864,27 @@ func runThread(kind, name, cwd string) (string, error) {
 		return "", err
 	}
 	var dir, header string
+	var ext string
 	switch kind {
 	case "prompt":
 		dir = filepath.Join(cwd, cfg.Paths.Prompts)
 		header = "prompt"
+		ext = ".prompt.loom"
 	case "block":
 		dir = filepath.Join(cwd, cfg.Paths.Blocks)
 		header = "block"
+		ext = ".block.loom"
+	case "overlay":
+		dir = filepath.Join(cwd, cfg.Paths.Overlays)
+		header = "overlay"
+		ext = ".overlay.loom"
 	default:
-		return "", fmt.Errorf("unknown kind %q — use 'prompt' or 'block'", kind)
+		return "", fmt.Errorf("unknown kind %q — use 'prompt', 'block', or 'overlay'", kind)
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
-	filename := toKebab(name) + ".prompt"
+	filename := toKebab(name) + ext
 	path := filepath.Join(dir, filename)
 	if _, err := os.Stat(path); err == nil {
 		return WarningStyle.Render(fmt.Sprintf("  %s already exists — skipping.", filename)) + "\n", nil
@@ -930,9 +937,11 @@ func renderHelp() string {
 		{"lock                  ", "Generate / update loom.lock"},
 		{"check-lock            ", "Verify prompts match loom.lock"},
 		{"ci                    ", "Run all CI gates"},
-		{"thread prompt <Name>  ", "Scaffold a new prompt file"},
-		{"thread block <Name>   ", "Scaffold a new block file"},
-		{"fmt                   ", "Format .prompt files"},
+		{"thread prompt <Name>  ", "Scaffold a new .prompt.loom file"},
+		{"thread block <Name>   ", "Scaffold a new .block.loom file"},
+		{"thread overlay <Name> ", "Scaffold a new .overlay.loom file"},
+		{"thread vars <Name>    ", "Scaffold a new .vars.loom file"},
+		{"fmt                   ", "Format .loom source files"},
 		{"fmt --check           ", "Check formatting (no writes)"},
 		{"theme [dark|light]    ", "Switch color theme"},
 		{"clear                 ", "Clear output area"},

@@ -11,8 +11,8 @@ var fmtCheck bool
 
 var fmtCmd = &cobra.Command{
 	Use:   "fmt",
-	Short: "Format .prompt files canonically",
-	Long: `Rewrite every .prompt file in the project to canonical formatting.
+	Short: "Format .loom source files canonically",
+	Long: `Rewrite every .loom source file in the project to canonical formatting.
 
 Use --check to report unformatted files without modifying them (useful in CI).`,
 	RunE: runFmt,
