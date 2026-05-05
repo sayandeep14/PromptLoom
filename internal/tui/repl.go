@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -266,6 +267,29 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.bannerLines = m.bannerTotalLines // no re-animation, instant swap
 				m.bannerGlowTick = 0
 				return m, nil
+			}
+
+			// graph (ascii, no --unused) → suspend REPL and run the interactive TUI.
+			rawParts := strings.Fields(raw)
+			if len(rawParts) > 0 && rawParts[0] == "graph" {
+				gArgs := rawParts[1:]
+				format := flagValue(gArgs, "--format")
+				if (format == "" || format == "ascii") &&
+					!hasFlag(gArgs, "--unused") &&
+					!hasFlag(gArgs, "--no-interactive") {
+					loomBin, _ := os.Executable()
+					sub := exec.Command(loomBin, append([]string{"graph"}, gArgs...)...)
+					m.input.SetValue("")
+					return m, tea.ExecProcess(sub, func(err error) tea.Msg {
+						if err != nil {
+							return cmdResultMsg{
+								output: ErrorStyle.Render("graph: "+err.Error()) + "\n",
+								isErr:  true,
+							}
+						}
+						return cmdResultMsg{output: "", isErr: false}
+					})
+				}
 			}
 
 			m.running = true

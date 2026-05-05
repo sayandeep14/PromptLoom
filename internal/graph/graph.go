@@ -189,3 +189,12 @@ func mermaidID(name string) string {
 	r := strings.NewReplacer(" ", "_", "-", "_", "/", "_", ".", "_")
 	return r.Replace(name)
 }
+
+// Roots returns the root prompt names (those with no parent in the registry).
+func (g *Graph) Roots() []string { return g.roots }
+
+// Children returns the names of prompts that directly inherit from name.
+func (g *Graph) Children(name string) []string { return g.children[name] }
+
+// Prompt returns the AST node for the named prompt, or nil.
+func (g *Graph) Prompt(name string) *ast.Node { return g.prompts[name] }
