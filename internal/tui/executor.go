@@ -28,13 +28,16 @@ import (
 	idoctor "github.com/sayandeepgiri/promptloom/internal/doctor"
 	ilock "github.com/sayandeepgiri/promptloom/internal/lock"
 	iformat "github.com/sayandeepgiri/promptloom/internal/format"
+	igraph "github.com/sayandeepgiri/promptloom/internal/graph"
 	"github.com/sayandeepgiri/promptloom/internal/loader"
+	ipack "github.com/sayandeepgiri/promptloom/internal/pack"
 	iparser "github.com/sayandeepgiri/promptloom/internal/parser"
 	"github.com/sayandeepgiri/promptloom/internal/registry"
 	"github.com/sayandeepgiri/promptloom/internal/render"
 	"github.com/sayandeepgiri/promptloom/internal/resolve"
 	"github.com/sayandeepgiri/promptloom/internal/semantic"
 	"github.com/sayandeepgiri/promptloom/internal/sourcemap"
+	itokens "github.com/sayandeepgiri/promptloom/internal/tokens"
 	"github.com/sayandeepgiri/promptloom/internal/validate"
 )
 
@@ -2624,4 +2627,242 @@ func LibraryStats(cwd string) (prompts, blocks, errs int) {
 		}
 	}
 	return reg.PromptCount(), reg.BlockCount(), errs
+}
+
+// ── Graph ─────────────────────────────────────────────────────────────────
+
+// RunGraph renders the prompt dependency graph. format is "ascii", "mermaid",
+// or "dot". If name is non-empty, only the subgraph rooted at that prompt is
+// shown. If unused is true, blocks not referenced by any prompt are listed.
+func RunGraph(name, format string, unused bool, cwd string) (string, bool) {
+	reg, _, err := loader.Load(cwd)
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+
+	g := igraph.Build(reg)
+
+	if unused {
+		blocks := g.Unused()
+		var b strings.Builder
+		b.WriteString("  " + HeaderStyle.Render("Unused Blocks") + "\n")
+		b.WriteString("  " + Divider(40) + "\n")
+		if len(blocks) == 0 {
+			b.WriteString("  " + SuccessStyle.Render("✓ All blocks are in use") + "\n")
+		} else {
+			for _, bl := range blocks {
+				b.WriteString(fmt.Sprintf("  %s  %s\n",
+					WarningStyle.Render("⚠"),
+					BlockNameStyle.Render(bl)))
+			}
+		}
+		return b.String(), false
+	}
+
+	switch format {
+	case "mermaid":
+		return g.Mermaid(), false
+	case "dot":
+		return g.DOT(), false
+	default: // ascii
+		var b strings.Builder
+		b.WriteString("  " + HeaderStyle.Render("Dependency Graph") + "\n")
+		b.WriteString("  " + Divider(60) + "\n")
+		if name != "" {
+			b.WriteString(g.ASCIISubgraph(name))
+		} else {
+			b.WriteString(g.ASCII())
+		}
+		return b.String(), false
+	}
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────
+
+type fieldStat struct {
+	name   string
+	tokens int
+}
+
+// RunStats renders per-field token estimates for one or all prompts.
+func RunStats(name string, all bool, limit int, cwd string) (string, bool) {
+	reg, _, err := loader.Load(cwd)
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+
+	if all {
+		return runStatsAll(reg, limit), false
+	}
+
+	rp, err := resolve.Resolve(name, reg)
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+	return renderStats(rp, limit), false
+}
+
+func runStatsAll(reg *registry.Registry, limit int) string {
+	prompts := reg.Prompts()
+	sort.Slice(prompts, func(i, j int) bool { return prompts[i].Name < prompts[j].Name })
+
+	type row struct {
+		name   string
+		tokens int
+	}
+	var rows []row
+	for _, p := range prompts {
+		rp, err := resolve.Resolve(p.Name, reg)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, row{p.Name, totalTokens(rp)})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].tokens > rows[j].tokens })
+
+	var b strings.Builder
+	b.WriteString("  " + HeaderStyle.Render("Token Estimates") + "\n")
+	b.WriteString("  " + Divider(50) + "\n")
+	for _, r := range rows {
+		warn := ""
+		if limit > 0 && r.tokens > limit {
+			warn = "  " + WarningStyle.Render(fmt.Sprintf("⚠ exceeds %d", limit))
+		}
+		b.WriteString(fmt.Sprintf("  %-36s  %s%s\n",
+			PromptNameStyle.Render(r.name),
+			MutedStyle.Render(fmt.Sprintf("%d tokens", r.tokens)),
+			warn))
+	}
+	return b.String()
+}
+
+func renderStats(rp *ast.ResolvedPrompt, limit int) string {
+	fields := []fieldStat{
+		{"summary", itokens.Estimate(rp.Summary)},
+		{"persona", itokens.Estimate(rp.Persona)},
+		{"context", itokens.Estimate(rp.Context)},
+		{"objective", itokens.Estimate(rp.Objective)},
+		{"instructions", itokens.Estimate(strings.Join(rp.Instructions, "\n"))},
+		{"constraints", itokens.Estimate(strings.Join(rp.Constraints, "\n"))},
+		{"examples", itokens.Estimate(strings.Join(rp.Examples, "\n"))},
+		{"format", itokens.Estimate(strings.Join(rp.Format, "\n"))},
+		{"notes", itokens.Estimate(rp.Notes)},
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].tokens > fields[j].tokens })
+
+	total := 0
+	for _, f := range fields {
+		total += f.tokens
+	}
+
+	var b strings.Builder
+	b.WriteString("\n  " + PromptNameStyle.Render(rp.Name) + " — token estimate\n\n")
+	b.WriteString(fmt.Sprintf("  %-18s  %6s   %s\n",
+		SubHeaderStyle.Render("Field"),
+		SubHeaderStyle.Render("Tokens"),
+		SubHeaderStyle.Render("%")))
+	b.WriteString("  " + Divider(34) + "\n")
+	for _, f := range fields {
+		if f.tokens == 0 {
+			continue
+		}
+		pct := 0
+		if total > 0 {
+			pct = f.tokens * 100 / total
+		}
+		b.WriteString(fmt.Sprintf("  %-18s  %6d  %3d%%\n",
+			CommandStyle.Render(f.name),
+			f.tokens,
+			pct))
+	}
+	b.WriteString("  " + Divider(34) + "\n")
+	b.WriteString(fmt.Sprintf("  %-18s  %6d\n\n",
+		BrightStyle.Render("Total"),
+		total))
+
+	if limit > 0 {
+		pct := total * 100 / limit
+		msg := fmt.Sprintf("  %d tokens (~%d%% of a %d-token context window)\n", total, pct, limit)
+		if total > limit {
+			b.WriteString("  " + WarningStyle.Render("⚠") + " " + WarningStyle.Render(msg))
+		} else {
+			b.WriteString("  " + MutedStyle.Render(msg))
+		}
+	}
+	return b.String()
+}
+
+func totalTokens(rp *ast.ResolvedPrompt) int {
+	t := itokens.Estimate(rp.Summary) +
+		itokens.Estimate(rp.Persona) +
+		itokens.Estimate(rp.Context) +
+		itokens.Estimate(rp.Objective) +
+		itokens.Estimate(strings.Join(rp.Instructions, "\n")) +
+		itokens.Estimate(strings.Join(rp.Constraints, "\n")) +
+		itokens.Estimate(strings.Join(rp.Examples, "\n")) +
+		itokens.Estimate(strings.Join(rp.Format, "\n")) +
+		itokens.Estimate(rp.Notes)
+	return t
+}
+
+// ── Pack ──────────────────────────────────────────────────────────────────
+
+// RunPackInit creates a pack.toml scaffold in cwd.
+func RunPackInit(cwd string) (string, bool) {
+	if err := ipack.Init(cwd); err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+	return "  " + SuccessStyle.Render("✓") + "  " + PathStyle.Render("pack.toml") +
+		MutedStyle.Render(" created") + "\n", false
+}
+
+// RunPackBuild bundles the project into a .lpack archive.
+func RunPackBuild(cwd string) (string, bool) {
+	archivePath, err := ipack.Build(cwd)
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+	rel, _ := filepath.Rel(cwd, archivePath)
+	return "  " + SuccessStyle.Render("✓") + "  " + PathStyle.Render(rel) + "\n", false
+}
+
+// RunPackInstall unpacks an .lpack archive into the project.
+func RunPackInstall(archivePath, cwd string) (string, bool) {
+	if !filepath.IsAbs(archivePath) {
+		archivePath = filepath.Join(cwd, archivePath)
+	}
+	if err := ipack.Install(archivePath, cwd); err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+	return "  " + SuccessStyle.Render("✓") + "  pack installed" + "\n", false
+}
+
+// RunPackList lists installed packs.
+func RunPackList(cwd string) string {
+	packs, err := ipack.List(cwd)
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n"
+	}
+	var b strings.Builder
+	b.WriteString("  " + HeaderStyle.Render(fmt.Sprintf("Installed Packs (%d)", len(packs))) + "\n")
+	b.WriteString("  " + Divider(44) + "\n")
+	if len(packs) == 0 {
+		b.WriteString("  " + MutedStyle.Render("(none)") + "\n")
+		return b.String()
+	}
+	for _, p := range packs {
+		b.WriteString(fmt.Sprintf("  %s  %s\n",
+			PromptNameStyle.Render(fmt.Sprintf("%-28s", p.Name)),
+			MutedStyle.Render("v"+p.Version)))
+	}
+	return b.String()
+}
+
+// RunPackRemove removes an installed pack.
+func RunPackRemove(name, cwd string) (string, bool) {
+	if err := ipack.Remove(name, cwd); err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+	return "  " + SuccessStyle.Render("✓") + "  " + PromptNameStyle.Render(name) +
+		MutedStyle.Render(" removed") + "\n", false
 }

@@ -69,4 +69,7 @@ func init() {
 	rootCmd.AddCommand(lockCmd)
 	rootCmd.AddCommand(checkLockCmd)
 	rootCmd.AddCommand(ciCmd)
+	rootCmd.AddCommand(graphCmd)
+	rootCmd.AddCommand(statsCmd)
+	rootCmd.AddCommand(packCmd)
 }

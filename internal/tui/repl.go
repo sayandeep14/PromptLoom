@@ -78,6 +78,8 @@ type replModel struct {
 	// Store version for banner rebuilds after theme change.
 	bannerVersion string
 
+	commandsHidden bool
+
 	width  int
 	height int
 }
@@ -85,7 +87,7 @@ type replModel struct {
 // Run starts the interactive REPL.
 func Run(version, cwd string) error {
 	p, b, e := LibraryStats(cwd)
-	banner := Banner(version, cwd, p, b, e)
+	banner := Banner(version, cwd, p, b, e, true)
 	names := PromptNames(cwd)
 
 	ti := textinput.New()
@@ -242,7 +244,7 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.outputLines = append(m.outputLines, lines...)
 				if !isErr && len(parts) >= 2 {
 					p, b, e := LibraryStats(m.cwd)
-					m.bannerString = Banner(m.bannerVersion, m.cwd, p, b, e)
+					m.bannerString = Banner(m.bannerVersion, m.cwd, p, b, e, !m.commandsHidden)
 					m.bannerTotalLines = strings.Count(m.bannerString, "\n")
 					m.bannerLines = 0 // replay reveal with new colors
 					m.bannerGlowTick = 0
@@ -252,6 +254,17 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.spinner.Style = lipgloss.NewStyle().Foreground(clrPrimary)
 					return m, bannerRevealCmd()
 				}
+				return m, nil
+			}
+
+			// Handle hide/show inline — toggles the command table in the banner.
+			if raw == "hide" || raw == "show" {
+				m.commandsHidden = raw == "hide"
+				p, b, e := LibraryStats(m.cwd)
+				m.bannerString = Banner(m.bannerVersion, m.cwd, p, b, e, !m.commandsHidden)
+				m.bannerTotalLines = strings.Count(m.bannerString, "\n")
+				m.bannerLines = m.bannerTotalLines // no re-animation, instant swap
+				m.bannerGlowTick = 0
 				return m, nil
 			}
 
@@ -593,6 +606,12 @@ func dispatch(verb string, args []string, cwd string) (string, bool) {
 
 	case "weave":
 		all := hasFlag(args, "--all")
+		watch := hasFlag(args, "--watch")
+		incr := hasFlag(args, "--incr") || hasFlag(args, "--incremental")
+		if watch {
+			return WarningStyle.Render("Watch mode is not supported inside the REPL.") +
+				"\n  Exit with Ctrl+C and run: " + CommandStyle.Render("loom weave --all --watch") + "\n", true
+		}
 		stdout := hasFlag(args, "--stdout")
 		outPath := flagValue(args, "--out")
 		format := flagValue(args, "--format")
@@ -648,6 +667,7 @@ func dispatch(verb string, args []string, cwd string) (string, bool) {
 			Variant:          variant,
 			Overlays:         overlays,
 			SourceMap:        sourceMap,
+			Incremental:      incr,
 			InteractiveSlots: false,
 		}, cwd)
 		if err != nil {
@@ -757,6 +777,54 @@ func dispatch(verb string, args []string, cwd string) (string, bool) {
 			return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
 		}
 		return out, failed
+
+	case "graph":
+		name := firstNonFlagArg(args)
+		format := flagValue(args, "--format")
+		if format == "" {
+			format = "ascii"
+		}
+		unused := hasFlag(args, "--unused")
+		out, isErr := RunGraph(name, format, unused, cwd)
+		return out, isErr
+
+	case "stats":
+		all := hasFlag(args, "--all")
+		limit := 0
+		if lv := flagValue(args, "--limit"); lv != "" {
+			fmt.Sscanf(lv, "%d", &limit)
+		}
+		name := firstNonFlagArg(args)
+		if !all && name == "" {
+			return ErrorStyle.Render("Usage: stats <PromptName>  or  stats --all") + "\n", true
+		}
+		out, isErr := RunStats(name, all, limit, cwd)
+		return out, isErr
+
+	case "pack":
+		if len(args) == 0 {
+			return ErrorStyle.Render("Usage: pack <init|build|install|list|remove>") + "\n", true
+		}
+		switch args[0] {
+		case "init":
+			return RunPackInit(cwd)
+		case "build":
+			return RunPackBuild(cwd)
+		case "install":
+			if len(args) < 2 {
+				return ErrorStyle.Render("Usage: pack install <path>") + "\n", true
+			}
+			return RunPackInstall(args[1], cwd)
+		case "list":
+			return RunPackList(cwd), false
+		case "remove":
+			if len(args) < 2 {
+				return ErrorStyle.Render("Usage: pack remove <name>") + "\n", true
+			}
+			return RunPackRemove(args[1], cwd)
+		default:
+			return ErrorStyle.Render(fmt.Sprintf("Unknown pack subcommand %q", args[0])) + "\n", true
+		}
 
 	case "help":
 		return renderHelp(), false

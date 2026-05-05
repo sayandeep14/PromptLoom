@@ -53,23 +53,58 @@ func scanDir(dir, ext string, reg *registry.Registry) error {
 	}
 
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ext {
+		if e.IsDir() {
+			// Scan subdirectory as a pack namespace: prompts registered as "<subdir>/Name".
+			if err := scanDirNamespaced(filepath.Join(dir, e.Name()), ext, e.Name(), reg); err != nil {
+				return err
+			}
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
-		src, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("could not read %s: %w", path, err)
+		if filepath.Ext(e.Name()) != ext {
+			continue
 		}
-		nodes, err := parser.Parse(path, string(src))
-		if err != nil {
-			return err // parse error already contains file:line
-		}
-		if err := reg.Register(nodes); err != nil {
+		if err := parseAndRegister(filepath.Join(dir, e.Name()), "", reg); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// scanDirNamespaced scans a directory and registers each node with name "<namespace>/OriginalName".
+func scanDirNamespaced(dir, ext, namespace string, reg *registry.Registry) error {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("could not read directory %s: %w", dir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ext {
+			continue
+		}
+		if err := parseAndRegister(filepath.Join(dir, e.Name()), namespace, reg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseAndRegister(path, namespace string, reg *registry.Registry) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("could not read %s: %w", path, err)
+	}
+	nodes, err := parser.Parse(path, string(src))
+	if err != nil {
+		return err
+	}
+	if namespace != "" {
+		for _, n := range nodes {
+			n.Name = namespace + "/" + n.Name
+		}
+	}
+	return reg.Register(nodes)
 }
 
 // NodesByKind filters nodes from a slice by kind.

@@ -150,6 +150,17 @@ func isIdent(s string) bool {
 	return true
 }
 
+// isNamespacedIdent returns true for plain identifiers and for namespaced
+// identifiers of the form "pack-name/PromptName" used in inherits declarations.
+func isNamespacedIdent(s string) bool {
+	if idx := len(s) - len("/") - 1; idx > 0 {
+		if slash := strings.Index(s, "/"); slash > 0 {
+			return isIdent(s[:slash]) && isIdent(s[slash+1:])
+		}
+	}
+	return isIdent(s)
+}
+
 // parseFieldDecl tries to recognise a field declaration in trimmed.
 func parseFieldDecl(trimmed string) (name, op string, ok bool) {
 	for _, candidate := range []string{":=", "+=", "-="} {
@@ -336,7 +347,7 @@ func (s *scanner) scanTopLine(trimmed string, lineNum int) error {
 			}
 			s.emit(Token{Type: TokIdent, Text: parts[1], Line: lineNum})
 			s.emit(Token{Type: TokKwInherits, Text: "inherits", Line: lineNum})
-			if !isIdent(parts[3]) {
+			if !isNamespacedIdent(parts[3]) {
 				return s.errorf(lineNum, "expected parent prompt name, got %q", parts[3])
 			}
 			s.emit(Token{Type: TokIdent, Text: parts[3], Line: lineNum})

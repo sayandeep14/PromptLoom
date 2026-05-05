@@ -34,27 +34,30 @@ var commandHelp = []struct{ cmd, desc string }{
 	{"list                 ", "List prompts, blocks, overlays"},
 	{"trace <Name>         ", "Show inheritance chain"},
 	{"unravel <Name>       ", "Show fully resolved fields"},
-	// --- column 2: quality & CI ---
+	// --- column 2: quality, CI & packs ---
 	{"inspect              ", "Validate your prompt library"},
 	{"doctor               ", "Health checks + smell detection"},
-	{"doctor <Name>        ", "Check one prompt's health"},
 	{"smells               ", "Standalone smell report"},
 	{"contract <Name>      ", "Print output contract"},
 	{"check-output <N> <f> ", "Validate output file vs contract"},
+	{"diff <A> <B>         ", "Field-aware diff between two prompts"},
+	{"review               ", "PR-friendly summary of changes"},
 	{"lock                 ", "Generate / update loom.lock"},
 	{"check-lock           ", "Verify prompts match loom.lock"},
 	{"ci                   ", "Run all CI gates"},
-	{"fingerprint <Name>   ", "Print the prompt fingerprint"},
-	{"diff <A> <B>         ", "Field-aware diff between two prompts"},
-	{"diff <Name> --dist   ", "Diff prompt vs its dist file"},
-	{"review               ", "PR-friendly summary of changes"},
-	{"trace --field x      ", "Trace one resolved field"},
-	{"trace --tree         ", "Show the full project tree"},
-	{"deploy --diff        ", "Show content diffs before writing"},
+	{"graph                ", "ASCII dependency graph"},
+	{"graph --format x     ", "Graph as mermaid or dot"},
+	{"graph --unused       ", "Show unused blocks"},
+	{"stats <Name>         ", "Per-field token estimates"},
+	{"stats --all          ", "Token counts for all prompts"},
+	{"pack build           ", "Bundle project into .lpack"},
+	{"pack install <path>  ", "Install a .lpack archive"},
+	{"pack list            ", "List installed packs"},
 }
 
-// Banner builds the full welcome screen string.
-func Banner(version, cwd string, promptCount, blockCount, errCount int) string {
+// Banner builds the welcome screen string. When showCmds is false the command
+// table is omitted, leaving only the logo, tagline, and library stats.
+func Banner(version, cwd string, promptCount, blockCount, errCount int, showCmds bool) string {
 	var b strings.Builder
 
 	// Logo in primary purple.
@@ -78,21 +81,42 @@ func Banner(version, cwd string, promptCount, blockCount, errCount int) string {
 		b.WriteByte('\n')
 	}
 
+	if !showCmds {
+		hint := MutedStyle.Render("Commands hidden — type 'show' to reveal.")
+		b.WriteString("  " + hint + "\n")
+		return b.String()
+	}
+
 	// Two-column command table — keeps banner height ~17 rows instead of ~33.
 	b.WriteString("  " + SubHeaderStyle.Render("Commands") + "\n")
 	b.WriteString("  " + Divider(92) + "\n")
 	half := (len(commandHelp) + 1) / 2
+
+	// Compute the maximum visual width of the left cell so the │ divider
+	// lands in the same column on every row.
+	leftColWidth := 0
+	for i := 0; i < half; i++ {
+		w := len(commandHelp[i].cmd) + 2 + len(commandHelp[i].desc)
+		if w > leftColWidth {
+			leftColWidth = w
+		}
+	}
+
+	colDiv := MutedStyle.Render("│")
 	for i := 0; i < half; i++ {
 		left := commandHelp[i]
 		lCmd := CommandStyle.Render(left.cmd)
 		lDesc := ArgDescStyle.Render(left.desc)
-		leftCell := fmt.Sprintf("%s  %s", lCmd, lDesc)
+		// Pad to leftColWidth using the unstyled length so the divider aligns.
+		visualWidth := len(left.cmd) + 2 + len(left.desc)
+		pad := strings.Repeat(" ", leftColWidth-visualWidth)
+		leftCell := fmt.Sprintf("%s  %s%s", lCmd, lDesc, pad)
 
 		if i+half < len(commandHelp) {
 			right := commandHelp[i+half]
 			rCmd := CommandStyle.Render(right.cmd)
 			rDesc := ArgDescStyle.Render(right.desc)
-			b.WriteString(fmt.Sprintf("  %s    %s  %s\n", leftCell, rCmd, rDesc))
+			b.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n", leftCell, colDiv, rCmd, rDesc))
 		} else {
 			b.WriteString(fmt.Sprintf("  %s\n", leftCell))
 		}
