@@ -45,11 +45,19 @@ type Validation struct {
 	TokenLimitWarn        int  `toml:"token_limit_warn"`
 }
 
+type Testing struct {
+	Provider    string `toml:"provider"`     // "gemini" or "anthropic"
+	APIKeyEnv   string `toml:"api_key_env"`
+	DefaultModel string `toml:"default_model"`
+	TimeoutSec  int    `toml:"timeout_sec"`
+}
+
 type Config struct {
 	Project    Project                      `toml:"project"`
 	Paths      Paths                        `toml:"paths"`
 	Render     Render                       `toml:"render"`
 	Validation Validation                   `toml:"validation"`
+	Testing    Testing                      `toml:"testing"`
 	Profiles   map[string]map[string]string `toml:"profile"`
 	Targets    []Target                     `toml:"targets"`
 }
@@ -71,6 +79,12 @@ func Defaults() *Config {
 			IncludeMetadata:    false,
 			IncludeSourceMap:   false,
 			IncludeFingerprint: false,
+		},
+		Testing: Testing{
+			Provider:     "gemini",
+			APIKeyEnv:    "GEMINI_API_KEY",
+			DefaultModel: "gemini-2.5-flash",
+			TimeoutSec:   30,
 		},
 		Validation: Validation{
 			RequireObjective:      true,
@@ -165,4 +179,10 @@ warn_on_deep_inheritance = true
 max_inheritance_depth    = 3
 smell_constraint_limit   = 25
 token_limit_warn         = 0
+
+[testing]
+provider      = "gemini"
+api_key_env   = "GEMINI_API_KEY"
+default_model = "gemini-2.5-flash"
+timeout_sec   = 30
 `

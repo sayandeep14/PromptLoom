@@ -38,6 +38,7 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/semantic"
 	"github.com/sayandeepgiri/promptloom/internal/sourcemap"
 	itokens "github.com/sayandeepgiri/promptloom/internal/tokens"
+	itestrunner "github.com/sayandeepgiri/promptloom/internal/testrunner"
 	"github.com/sayandeepgiri/promptloom/internal/validate"
 )
 
@@ -2486,6 +2487,46 @@ func RunCI(cwd string) (string, bool, error) {
 			diffDetail = diffErr.Error()
 		}
 		results = append(results, CIResult{Name: "diff", Passed: diffPassed, Detail: diffDetail})
+	}
+
+	// Gate 5: test — only run if API key is available; skip gracefully otherwise.
+	if reg != nil {
+		apiKeyEnv := cfg.Testing.APIKeyEnv
+		if apiKeyEnv == "" {
+			switch cfg.Testing.Provider {
+			case "anthropic":
+				apiKeyEnv = "ANTHROPIC_API_KEY"
+			default:
+				apiKeyEnv = "GEMINI_API_KEY"
+			}
+		}
+		if os.Getenv(apiKeyEnv) == "" {
+			results = append(results, CIResult{Name: "test", Skip: true, Detail: fmt.Sprintf("(skipped — $%s not set)", apiKeyEnv)})
+		} else {
+			testResults := itestrunner.RunAll(reg, cfg, cwd, itestrunner.Options{})
+			testPassed := true
+			testTotal, testPass, testFail := 0, 0, 0
+			for _, tr := range testResults {
+				if tr.Skipped {
+					continue
+				}
+				testTotal++
+				if tr.Err != nil || !tr.Passed {
+					testPassed = false
+					testFail++
+				} else {
+					testPass++
+				}
+			}
+			if !testPassed {
+				failed = true
+			}
+			testDetail := fmt.Sprintf("%d/%d passed", testPass, testTotal)
+			if testTotal == 0 {
+				testDetail = "no contracts declared"
+			}
+			results = append(results, CIResult{Name: "test", Passed: testPassed || testTotal == 0, Detail: testDetail})
+		}
 	}
 
 	var b strings.Builder

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeepgiri/promptloom/internal/secret"
 	"github.com/spf13/cobra"
 )
 
@@ -37,6 +39,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("  created  loom.toml")
 
+	secretPath := filepath.Join(cwd, secret.Filename)
+	if _, err := os.Stat(secretPath); os.IsNotExist(err) {
+		if err := os.WriteFile(secretPath, []byte(secret.TemplateContent), 0600); err != nil {
+			return fmt.Errorf("could not write .loom.secret: %w", err)
+		}
+		fmt.Println("  created  .loom.secret  (add your API keys here — never commit)")
+	}
+
+	// Ensure .loom.secret is gitignored.
+	gitignorePath := filepath.Join(cwd, ".gitignore")
+	appendGitignoreEntry(gitignorePath, ".loom.secret")
+
 	for _, dir := range []string{"prompts", "blocks", "overlays", "contexts", "dist/prompts"} {
 		full := filepath.Join(cwd, dir)
 		if err := os.MkdirAll(full, 0755); err != nil {
@@ -53,6 +67,26 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("\nProject initialized. Run `loom inspect` to validate your prompts.")
 	return nil
+}
+
+// appendGitignoreEntry adds entry to .gitignore if it is not already present.
+func appendGitignoreEntry(path, entry string) {
+	data, _ := os.ReadFile(path)
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == entry {
+			return
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	prefix := ""
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		prefix = "\n"
+	}
+	f.WriteString(prefix + entry + "\n")
 }
 
 func writeSampleFiles(root string) error {

@@ -1,6 +1,6 @@
 # PromptLoom Tool Reference
 
-> Last updated after: **Milestone 15** — dependency graph, token stats, and local pack system (V2 complete)
+> Last updated after: **Milestone 17** — `loom blame` and `loom changelog` git-integrated field attribution
 
 PromptLoom (`loom`) is a developer-first CLI that treats prompts like source code — with inheritance, block composition, validation, and Markdown rendering.
 
@@ -1161,4 +1161,180 @@ Resolver (internal/resolve)   — walks chain, applies blocks + ops → Resolved
     │
     ▼
 Renderer (internal/render)    — [Milestone 5] ResolvedPrompt → Markdown
+    │
+    ▼
+TestRunner (internal/testrunner) — [Milestone 16] renders prompt → sends to AI model → checks contract
 ```
+
+---
+
+## Milestone 16 — Smoke Testing Against Real AI Models
+
+`loom test` sends a rendered prompt to a configured AI model with a test fixture (or built-in stub) and checks the response against the prompt's declared `contract {}` block.
+
+**Supported providers:**
+- **Gemini** (default) — set `$GEMINI_API_KEY`
+- **Anthropic** — set `provider = "anthropic"` and `$ANTHROPIC_API_KEY`
+
+**Configuration in `loom.toml`:**
+
+```toml
+[testing]
+provider      = "gemini"          # "gemini" or "anthropic"
+api_key_env   = "GEMINI_API_KEY"  # env var holding the API key
+default_model = "gemini-2.0-flash"
+timeout_sec   = 30
+```
+
+---
+
+### `loom test [Name]`
+
+Run a single prompt's contract assertions against a real model.
+
+```
+loom test SecurityReviewer
+loom test SecurityReviewer --model gemini-1.5-flash
+```
+
+**Output:**
+
+```
+  loom test
+
+  ──────────────────────────────────────────────────
+
+  ✓  SecurityReviewer      contract passed  (2.1s)
+  ✗  BugFixer              missing section "Root Cause"  (1.4s)
+  —  CodeReviewer          (no contract declared)
+
+  ──────────────────────────────────────────────────
+  Passed: 1 / 2  (skipped: 1)
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--all` | Run tests for all prompts in the library |
+| `--model <id>` | Override the model (e.g. `gemini-1.5-flash`) |
+| `--record` | Record the response as a baseline for future `--compare` runs |
+| `--compare` | Diff the current response against the recorded baseline |
+
+**Test fixtures:**
+
+Place input files at `tests/<PromptName>.input.md`. If no fixture exists, a built-in generic code review stub is used.
+
+**Baselines:**
+
+```bash
+loom test SecurityReviewer --record    # writes tests/SecurityReviewer.baseline.md
+loom test SecurityReviewer --compare   # asserts current response matches baseline contract
+```
+
+**CI integration:**
+
+`loom ci` runs `loom test --all` as Gate 5. It skips gracefully when the API key env var is not set — CI always passes without a key.
+
+**Exit codes:** `0` = all tested prompts passed, `1` = any failure or error.
+
+---
+
+## `.loomsecret` — Project API Key File
+
+Every loom project can have a `.loomsecret` file in its root directory. It is loaded automatically by every `loom` command — no need to export env vars manually.
+
+**Format:**
+
+```
+# .loomsecret — never commit this file
+GEMINI_API_KEY=your-key-here
+# ANTHROPIC_API_KEY=your-key-here
+```
+
+**Rules:**
+- `KEY=VALUE` format, one per line; `#` lines are comments
+- Shell-exported env vars always win over `.loomsecret` values
+- `loom init` creates an empty `.loomsecret` template and adds it to `.gitignore` automatically
+- File permissions are set to `0600` (owner-read-only) on creation
+
+---
+
+## Milestone 17 — Git Blame and Changelog
+
+### `loom blame <Name>`
+
+Shows git commit attribution for every resolved field item in a prompt. Traces each value back to the exact file, line, and git commit that last touched it.
+
+```
+loom blame SecurityReviewer
+loom blame SecurityReviewer --field constraints
+loom blame SecurityReviewer --instruction "Check for hardcoded secrets"
+loom blame SecurityReviewer --since 2026-01-01
+loom blame SecurityReviewer --since HEAD~10
+```
+
+**Example output:**
+
+```
+  SecurityReviewer — constraints
+
+  ●  "Check for injection vulnerabilities (SQL, command, LDAP)."
+       from:   blocks/security-checklist.block.loom  line 3
+       origin: block composition
+       commit: abc1234  by alice  2026-03-14
+       msg:    "add injection checks to shared checklist"
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--field <name>` | Limit to one field (e.g. `constraints`, `persona`) |
+| `--instruction <text>` | Filter to items containing this text |
+| `--since <date\|ref>` | Only show items changed after this date (`2026-01-01`) or ref (`HEAD~10`) |
+
+**Notes:**
+- Requires a git repository. Errors clearly if not in one.
+- Files not tracked by git show `(untracked)` instead of commit info.
+- Origin labels: `direct` (set in this prompt), `inherited` (from parent), `block composition` (from a `use` block).
+
+---
+
+### `loom changelog [Name]`
+
+Scans git history for changes to `.loom` source files and presents a prompt-centric view of what changed, when, and by whom.
+
+```
+loom changelog
+loom changelog SecurityReviewer
+loom changelog --since HEAD~5
+loom changelog --since 2026-04-01
+loom changelog --format markdown
+```
+
+**Example output:**
+
+```
+  Prompt Changelog
+
+  SecurityReviewer
+  ──────────────────
+  2026-04-15  Added block SpringBootRules  (alice)
+  2026-04-02  Constraints += "Verify authentication on every endpoint."  (bob)
+  2026-03-20  Output Format updated  (alice)
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--since <date\|ref>` | Limit to commits after this date or ref |
+| `--format markdown` | Emit Markdown output (suitable for piping to a file) |
+
+**What it tracks per commit:**
+- Inheritance changes (`Inheritance changed: BaseEngineer → CodeAssistant`)
+- Block additions/removals (`Added block SpringBootRules`)
+- List field changes (`Constraints += "..."`, `Constraints -= "..."`)
+- Scalar field updates (`Persona updated`)
+- Prompt created / deleted events

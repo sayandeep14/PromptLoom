@@ -14,6 +14,7 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/lexer"
 	"github.com/sayandeepgiri/promptloom/internal/parser"
 	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeepgiri/promptloom/internal/secret"
 )
 
 // File extension constants for the new .loom file scheme.
@@ -55,6 +56,9 @@ func IsLoomSource(path string) bool {
 // Load reads loom.toml from dir, scans all .loom source files, parses them,
 // and returns a populated registry and the config.
 func Load(dir string) (*registry.Registry, *config.Config, error) {
+	// Load .loomsecret before anything else so API keys are available to all commands.
+	secret.Load(dir)
+
 	cfg, err := config.Load(dir)
 	if err != nil {
 		return nil, nil, err

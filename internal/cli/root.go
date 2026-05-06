@@ -72,4 +72,7 @@ func init() {
 	rootCmd.AddCommand(graphCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(packCmd)
+	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(blameCmd)
+	rootCmd.AddCommand(changelogCmd)
 }
