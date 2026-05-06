@@ -1,6 +1,6 @@
 # PromptLoom Tool Reference
 
-> Last updated after: **Milestone 14** — lockfile, incremental weave, watch mode, and CI gate
+> Last updated after: **Milestone 15** — dependency graph, token stats, and local pack system (V2 complete)
 
 PromptLoom (`loom`) is a developer-first CLI that treats prompts like source code — with inheritance, block composition, validation, and Markdown rendering.
 
@@ -1054,6 +1054,88 @@ Status: FAILED
 - name: PromptLoom CI
   run: loom ci
 ```
+
+---
+
+## Milestone 15 — Dependency Graph, Token Stats, and Local Pack System
+
+### `loom graph` — Dependency graph
+
+Visualise the full inheritance and block dependency tree.
+
+```bash
+loom graph                        # interactive terminal browser (default)
+loom graph --no-interactive       # plain ASCII output
+loom graph --format mermaid       # Mermaid diagram
+loom graph --format dot           # Graphviz DOT source
+loom graph SecurityReviewer       # subgraph for one prompt
+loom graph --unused               # highlight blocks not used by any prompt
+```
+
+**Mermaid output** can be pasted directly into GitHub Markdown, Notion, or Obsidian.
+
+### `loom stats` — Token estimates
+
+Per-field token breakdown with percentage of total.
+
+```bash
+loom stats SecurityReviewer       # breakdown for one prompt
+loom stats --all                  # all prompts sorted by total tokens
+loom stats --all --limit 4096     # flag prompts exceeding the threshold
+```
+
+**Example output:**
+
+```
+  SecurityReviewer — token estimate
+
+  Field               Tokens   %
+  ──────────────────────────────────
+  constraints            122   34%
+  instructions            69   19%
+  examples                52   14%
+  persona                 26    7%
+  context                 23    6%
+  notes                   23    6%
+  objective               16    4%
+  format                  14    3%
+  summary                 10    2%
+  ──────────────────────────────────
+  Total                  355
+```
+
+### `loom pack` — Local pack system
+
+Bundle and share prompt libraries as versioned `.lpack` archives.
+
+```bash
+loom pack init                              # create pack.toml in the current project
+loom pack build                             # bundle project into .lpack archive
+loom pack install ./engineering-1.2.0.lpack # unpack into namespaced subdirs
+loom pack list                              # list installed packs
+loom pack remove engineering-essentials     # remove an installed pack
+```
+
+**`pack.toml`:**
+
+```toml
+[pack]
+name        = "engineering-essentials"
+version     = "1.2.0"
+description = "Production-ready prompts for code review, testing, and security"
+author      = "your-name"
+license     = "MIT"
+```
+
+Installed packs go into `prompts/<pack-name>/` and `blocks/<pack-name>/`. Prompts can reference them with namespaced inheritance:
+
+```
+prompt MyReviewer inherits engineering-essentials/CodeReviewer {
+  ...
+}
+```
+
+Pack versions are recorded in `loom.lock` for reproducibility.
 
 ---
 

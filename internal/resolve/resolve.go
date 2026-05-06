@@ -39,7 +39,7 @@ func ResolveWithOptions(name string, reg *registry.Registry, opts Options) (*ast
 		FullTrace:     make(map[string][]ast.TraceEntry),
 		ScalarSources: make(map[string]ast.SourceContribution),
 		ListSources:   make(map[string][]ast.SourceContribution),
-		Vars:          append([]ast.VarDecl(nil), target.Vars...),
+		Vars:          nil, // populated after chain walk below
 		Variants:      append([]ast.VariantBlock(nil), target.Variants...),
 	}
 
@@ -80,7 +80,16 @@ func ResolveWithOptions(name string, reg *registry.Registry, opts Options) (*ast
 		rp.AppliedOverlays = append(rp.AppliedOverlays, overlay.Name)
 	}
 
-	rp.VarValues = effectiveVarValues(target.Vars, opts.Variables)
+	// Collect var/slot declarations from the full inheritance chain so that
+	// {{ tokens }} introduced by parent fields are resolvable in child prompts.
+	// Ancestor defaults are overridden by closer ancestors, then by the target,
+	// and finally by any runtime --set / --vars values.
+	var chainVars []ast.VarDecl
+	for _, node := range chain {
+		chainVars = append(chainVars, node.Vars...)
+	}
+	rp.Vars = chainVars
+	rp.VarValues = effectiveVarValues(chainVars, opts.Variables)
 	rp.UnresolvedTokens = applyVariableSubstitution(rp)
 	rp.Fingerprint, err = fingerprint.Compute(rp)
 	if err != nil {
