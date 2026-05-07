@@ -178,6 +178,17 @@ func (p *parser) parseBody(node *ast.Node) error {
 			}
 			node.Capabilities = block
 
+		case lexer.TokKwEnv:
+			if node.Kind != ast.KindPrompt {
+				t := p.peek()
+				return fmt.Errorf("%s:%d: 'env' is only valid inside prompts", p.filename, t.Line)
+			}
+			eb, err := p.parseEnvBlock()
+			if err != nil {
+				return err
+			}
+			node.EnvBlocks = append(node.EnvBlocks, *eb)
+
 		case lexer.TokIdent:
 			fieldOp, err := p.parseFieldOp()
 			if err != nil {
@@ -271,6 +282,9 @@ func (p *parser) parseSlotDecl() (*ast.VarDecl, error) {
 	if required, ok := metadata["required"]; ok {
 		decl.Required = strings.EqualFold(required, "true")
 	}
+	if secret, ok := metadata["secret"]; ok {
+		decl.Secret = strings.EqualFold(secret, "true")
+	}
 	if decl.Default != "" {
 		decl.Required = false
 	}
@@ -292,6 +306,26 @@ func (p *parser) parseVariant() (*ast.VariantBlock, error) {
 		return nil, err
 	}
 	return &ast.VariantBlock{
+		Name:   nameTok.Text,
+		Fields: fields,
+		Pos:    ast.Position{File: p.filename, Line: kw.Line, Col: kw.Col},
+	}, nil
+}
+
+func (p *parser) parseEnvBlock() (*ast.EnvBlock, error) {
+	kw := p.next()
+	nameTok, err := p.expect(lexer.TokIdent)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.TokLBrace); err != nil {
+		return nil, err
+	}
+	fields, err := p.parseNestedFieldOps("env")
+	if err != nil {
+		return nil, err
+	}
+	return &ast.EnvBlock{
 		Name:   nameTok.Text,
 		Fields: fields,
 		Pos:    ast.Position{File: p.filename, Line: kw.Line, Col: kw.Col},

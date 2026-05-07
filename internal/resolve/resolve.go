@@ -18,6 +18,7 @@ type Options struct {
 	Variables map[string]string
 	Variant   string
 	Overlays  []string
+	Env       string // apply the named env block after base resolution (e.g. "prod", "dev")
 }
 
 // Resolve fully resolves the named prompt with default options.
@@ -78,6 +79,25 @@ func ResolveWithOptions(name string, reg *registry.Registry, opts Options) (*ast
 			return nil, err
 		}
 		rp.AppliedOverlays = append(rp.AppliedOverlays, overlay.Name)
+	}
+
+	// Apply env block if requested — env blocks are additive (always +=).
+	if opts.Env != "" {
+		applied := false
+		for _, node := range chain {
+			for _, eb := range node.EnvBlocks {
+				if strings.EqualFold(eb.Name, opts.Env) {
+					if err := applyFieldOps(rp, eb.Fields, target.Name+"::env:"+eb.Name, false); err != nil {
+						return nil, err
+					}
+					applied = true
+				}
+			}
+		}
+		if !applied {
+			return nil, fmt.Errorf("env %q not declared on prompt %q", opts.Env, target.Name)
+		}
+		rp.AppliedEnv = opts.Env
 	}
 
 	// Collect var/slot declarations from the full inheritance chain so that
@@ -305,10 +325,10 @@ func applyVariableSubstitution(rp *ast.ResolvedPrompt) []string {
 		setList(rp, fieldName, out)
 	}
 
-	for _, fieldName := range []string{"summary", "persona", "context", "objective", "notes"} {
+	for _, fieldName := range []string{"summary", "persona", "context", "objective", "notes", "kind"} {
 		substituteScalar(fieldName)
 	}
-	for _, fieldName := range []string{"instructions", "constraints", "examples", "format"} {
+	for _, fieldName := range []string{"instructions", "constraints", "examples", "format", "todo", "compatible_with"} {
 		substituteList(fieldName)
 	}
 
@@ -370,6 +390,8 @@ func getScalar(rp *ast.ResolvedPrompt, name string) string {
 		return rp.Objective
 	case "notes":
 		return rp.Notes
+	case "kind":
+		return rp.Kind
 	}
 	return ""
 }
@@ -386,6 +408,8 @@ func setScalar(rp *ast.ResolvedPrompt, name, val string) {
 		rp.Objective = val
 	case "notes":
 		rp.Notes = val
+	case "kind":
+		rp.Kind = val
 	}
 }
 
@@ -399,6 +423,10 @@ func getList(rp *ast.ResolvedPrompt, name string) []string {
 		return rp.Examples
 	case "format":
 		return rp.Format
+	case "todo":
+		return rp.Todo
+	case "compatible_with":
+		return rp.CompatibleWith
 	}
 	return nil
 }
@@ -413,6 +441,10 @@ func setList(rp *ast.ResolvedPrompt, name string, val []string) {
 		rp.Examples = val
 	case "format":
 		rp.Format = val
+	case "todo":
+		rp.Todo = val
+	case "compatible_with":
+		rp.CompatibleWith = val
 	}
 }
 

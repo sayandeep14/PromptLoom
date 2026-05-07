@@ -34,6 +34,7 @@ const (
 	TokKwContract
 	TokKwCapabilities
 	TokKwOverlay
+	TokKwEnv
 )
 
 func (t TokType) String() string {
@@ -76,6 +77,8 @@ func (t TokType) String() string {
 		return "capabilities"
 	case TokKwOverlay:
 		return "overlay"
+	case TokKwEnv:
+		return "env"
 	}
 	return "UNKNOWN"
 }
@@ -436,6 +439,17 @@ func (s *scanner) scanBodyLine(indent int, trimmed string, lineNum int) error {
 			return s.errorf(lineNum, "expected variant name, got %q", parts[1])
 		}
 		s.emit(Token{Type: TokKwVariant, Text: "variant", Line: lineNum, Col: indent + 1})
+		s.emit(Token{Type: TokIdent, Text: parts[1], Line: lineNum})
+		s.emit(Token{Type: TokLBrace, Text: "{", Line: lineNum})
+		s.state = sInNestedBody
+		return nil
+	}
+
+	if len(parts) == 3 && parts[0] == "env" && parts[2] == "{" {
+		if !isIdent(parts[1]) {
+			return s.errorf(lineNum, "expected env name, got %q", parts[1])
+		}
+		s.emit(Token{Type: TokKwEnv, Text: "env", Line: lineNum, Col: indent + 1})
 		s.emit(Token{Type: TokIdent, Text: parts[1], Line: lineNum})
 		s.emit(Token{Type: TokLBrace, Text: "{", Line: lineNum})
 		s.state = sInNestedBody

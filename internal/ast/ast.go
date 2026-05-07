@@ -64,7 +64,15 @@ type VarDecl struct {
 	Default  string
 	IsSlot   bool // declared with 'slot' — triggers interactive prompting
 	Required bool // true when no default is given and field is required
+	Secret   bool // slot api_key { secret: true } — value must not appear in plain-text output
 	Pos      Position
+}
+
+// EnvBlock holds environment-specific field operations declared with `env <name> { ... }`.
+type EnvBlock struct {
+	Name   string
+	Fields []FieldOperation
+	Pos    Position
 }
 
 // VariantBlock holds a named set of field operations to apply as an alternative.
@@ -100,20 +108,28 @@ type Node struct {
 	Pos          Position
 	Vars         []VarDecl
 	Variants     []VariantBlock
+	EnvBlocks    []EnvBlock
 	Contract     *ContractBlock
 	Capabilities *CapabilitiesBlock
+
+	// M22 fields
+	NodeKindTag    string   // value of the `kind:` scalar field, if set
+	Todo           []string // items from the `todo:` list field
+	CompatibleWith []string // items from `compatible_with:` list field
 }
 
 // ScalarFields contains field names whose value is a single string.
 var ScalarFields = map[string]bool{
 	"summary": true, "persona": true, "context": true,
 	"objective": true, "notes": true,
+	"kind": true,
 }
 
 // ListFields contains field names whose value is an ordered list of strings.
 var ListFields = map[string]bool{
 	"instructions": true, "constraints": true,
 	"examples": true, "format": true,
+	"todo": true, "compatible_with": true,
 }
 
 // ValidFields is the union of ScalarFields and ListFields.
@@ -186,8 +202,15 @@ type ResolvedPrompt struct {
 	AppliedVariant string
 	// AppliedOverlays records the overlays applied at render time, in order.
 	AppliedOverlays []string
+	// AppliedEnv is the env block name applied during resolution, if any.
+	AppliedEnv string
 	// UnresolvedTokens lists any {{ token }} placeholders left after substitution.
 	UnresolvedTokens []string
 	// Fingerprint is the stable SHA-256 fingerprint of the resolved prompt fields.
 	Fingerprint string
+
+	// M22 fields
+	Kind           string   // value of `kind:` scalar field
+	Todo           []string // items from `todo:` list field
+	CompatibleWith []string // items from `compatible_with:` list field
 }

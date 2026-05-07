@@ -850,6 +850,178 @@ func dispatch(verb string, args []string, cwd string) (string, bool) {
 			return ErrorStyle.Render(fmt.Sprintf("Unknown pack subcommand %q", args[0])) + "\n", true
 		}
 
+	case "diff":
+		nonFlags := nonFlagArgs(args)
+		a := ""
+		b := ""
+		if len(nonFlags) > 0 {
+			a = nonFlags[0]
+		}
+		if len(nonFlags) > 1 {
+			b = nonFlags[1]
+		}
+		out, hasChanges := RunDiffREPL(a, b, DiffOptions{
+			All:         hasFlag(args, "--all"),
+			AgainstDist: hasFlag(args, "--against-dist"),
+			ExitCode:    false,
+		}, cwd)
+		return out, hasChanges
+
+	case "review":
+		since := firstNonFlagArg(args)
+		return RunReviewREPL(since, cwd)
+
+	case "test":
+		all := hasFlag(args, "--all")
+		model := flagValue(args, "--model")
+		name := firstNonFlagArg(args)
+		if !all && name == "" {
+			all = true
+		}
+		return RunTestREPL(name, all, model, cwd)
+
+	case "blame":
+		name := firstNonFlagArg(args)
+		if name == "" {
+			return ErrorStyle.Render("Usage: blame <PromptName>") + "\n", true
+		}
+		return RunBlameREPL(name,
+			flagValue(args, "--field"),
+			flagValue(args, "--since"),
+			flagValue(args, "--instruction"),
+			cwd)
+
+	case "changelog":
+		name := firstNonFlagArg(args)
+		since := flagValue(args, "--since")
+		return RunChangelogREPL(name, since, cwd)
+
+	case "audit":
+		all := hasFlag(args, "--all")
+		name := firstNonFlagArg(args)
+		if !all && name == "" {
+			all = true
+		}
+		return RunAuditREPL(name, all, cwd)
+
+	case "mcp":
+		if len(args) == 0 || args[0] == "manifest" {
+			sub := args
+			if len(sub) > 0 {
+				sub = sub[1:]
+			}
+			all := hasFlag(sub, "--all")
+			name := firstNonFlagArg(sub)
+			if !all && name == "" {
+				all = true
+			}
+			return RunMCPManifestREPL(name, all, cwd)
+		}
+		return ErrorStyle.Render("Usage: mcp manifest [Name]  or  mcp manifest --all") + "\n", true
+
+	case "import":
+		path := firstNonFlagArg(args)
+		if path == "" {
+			return ErrorStyle.Render("Usage: import <file.md> [--name Name] [--out dir] [--force]") + "\n", true
+		}
+		return RunImportREPL(path,
+			flagValue(args, "--name"),
+			flagValue(args, "--out"),
+			hasFlag(args, "--force"),
+			cwd)
+
+	case "lsp":
+		return WarningStyle.Render("The LSP server cannot run inside the REPL.") +
+			"\n  Exit with Ctrl+C and run: " + CommandStyle.Render("loom lsp") +
+			"\n  (Editors launch it automatically via their LSP client config.)\n", false
+
+	case "recipe":
+		sub := ""
+		if len(args) > 0 {
+			sub = args[0]
+		}
+		switch sub {
+		case "list", "":
+			out, isErr := RunRecipeListREPL()
+			return out, isErr
+		case "apply":
+			name := ""
+			if len(args) > 1 {
+				name = args[1]
+			}
+			lang := flagValue(args, "--language")
+			fw := flagValue(args, "--framework")
+			style := flagValue(args, "--style")
+			if style == "" {
+				style = "rest"
+			}
+			force := hasBoolFlag(args, "--force")
+			out, isErr := RunRecipeApplyREPL(name, lang, fw, style, force, cwd)
+			return out, isErr
+		default:
+			return ErrorStyle.Render(fmt.Sprintf("Unknown recipe subcommand %q — try: recipe list, recipe apply <name>", sub)) + "\n", true
+		}
+
+	case "playground":
+		name := ""
+		if len(nonFlagArgs(args)) > 0 {
+			name = nonFlagArgs(args)[0]
+		}
+		if name == "" {
+			return ErrorStyle.Render("Usage: playground <PromptName>\n"), true
+		}
+		return WarningStyle.Render(fmt.Sprintf("Launching playground for %q (opens full-screen TUI)…", name)) +
+			"\n  Exit with Ctrl+C and run: " + CommandStyle.Render("loom playground "+name) + "\n", false
+
+	case "minimize":
+		thresh := 0.85
+		if v := flagValue(args, "--threshold"); v != "" {
+			fmt.Sscanf(v, "%f", &thresh)
+		}
+		apply := hasBoolFlag(args, "--apply")
+		out, isErr := RunMinimizeREPL(nonFlagArgs(args), thresh, apply, cwd)
+		return out, isErr
+
+	case "stale":
+		filter := ""
+		if pos := nonFlagArgs(args); len(pos) > 0 {
+			filter = pos[0]
+		}
+		out, isErr := RunStaleREPL(filter, cwd)
+		return out, isErr
+
+	case "todos":
+		filter := ""
+		if pos := nonFlagArgs(args); len(pos) > 0 {
+			filter = pos[0]
+		}
+		out, isErr := RunTodosREPL(filter, cwd)
+		return out, isErr
+
+	case "journal":
+		sub := ""
+		if len(args) > 0 {
+			sub = args[0]
+		}
+		switch sub {
+		case "list", "":
+			filter := ""
+			if pos := nonFlagArgs(args[1:]); len(pos) > 0 {
+				filter = pos[0]
+			}
+			out, isErr := RunJournalListREPL(filter, cwd)
+			return out, isErr
+		case "add":
+			msg := strings.Join(nonFlagArgs(args[1:]), " ")
+			prompt := flagValue(args, "--prompt")
+			author := flagValue(args, "--author")
+			body := flagValue(args, "--body")
+			out, isErr := RunJournalAddREPL(msg, prompt, author, body, cwd)
+			return out, isErr
+		default:
+			return ErrorStyle.Render(fmt.Sprintf("Unknown journal subcommand %q — try: journal list, journal add <message>", sub)) + "\n", true
+		}
+
 	case "help":
 		return renderHelp(), false
 
@@ -1022,6 +1194,39 @@ func firstNonFlagArg(args []string) string {
 		return arg
 	}
 	return ""
+}
+
+func nonFlagArgs(args []string) []string {
+	var out []string
+	skipNext := false
+	for _, arg := range args {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if strings.HasPrefix(arg, "--") {
+			if !strings.Contains(arg, "=") {
+				switch arg {
+				case "--out", "--profile", "--variant", "--overlay", "--set", "--slot",
+					"--vars", "--field", "--instruction", "--format", "--target",
+					"--model", "--name", "--since":
+					skipNext = true
+				}
+			}
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func hasBoolFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
 }
 
 func toKebab(s string) string {

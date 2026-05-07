@@ -23,6 +23,8 @@ var weaveWith []string
 var weaveContext string
 var weaveWatch bool
 var weaveIncremental bool
+var weaveEnv string
+var weaveInteractive bool
 
 var weaveCmd = &cobra.Command{
 	Use:   "weave [PromptName]",
@@ -63,9 +65,18 @@ func init() {
 	weaveCmd.Flags().StringVar(&weaveContext, "context", "", "load a named context bundle from contexts/<name>.context")
 	weaveCmd.Flags().BoolVar(&weaveWatch, "watch", false, "re-render on every source file change (requires --all)")
 	weaveCmd.Flags().BoolVar(&weaveIncremental, "incremental", false, "skip prompts whose resolved hash is unchanged (requires --all)")
+	weaveCmd.Flags().StringVar(&weaveEnv, "env", "", "apply an env block (e.g. prod, dev) — adds environment-specific constraints")
+	weaveCmd.Flags().BoolVar(&weaveInteractive, "interactive", false, "launch the guided prompt assembly wizard")
 }
 
 func runWeave(cmd *cobra.Command, args []string) error {
+	if weaveInteractive {
+		cwd, err := resolveProjectDir()
+		if err != nil {
+			return err
+		}
+		return tui.RunInteractiveWeave(cwd)
+	}
 	if !weaveAll && len(args) == 0 {
 		return fmt.Errorf("specify a prompt name or use --all")
 	}
@@ -123,6 +134,7 @@ func runWeave(cmd *cobra.Command, args []string) error {
 		WithSources:      weaveWith,
 		ContextBundle:    weaveContext,
 		Incremental:      weaveIncremental,
+		Env:              weaveEnv,
 	}
 
 	// Watch mode: blocking loop, prints directly to stdout.

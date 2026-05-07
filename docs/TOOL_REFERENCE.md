@@ -1,6 +1,6 @@
 # PromptLoom Tool Reference
 
-> Last updated after: **Milestone 17** — `loom blame` and `loom changelog` git-integrated field attribution
+> Last updated after: **Milestone 20** — `loom lsp` LSP server, Lumine VS Code extension, Neovim setup
 
 PromptLoom (`loom`) is a developer-first CLI that treats prompts like source code — with inheritance, block composition, validation, and Markdown rendering.
 
@@ -1338,3 +1338,485 @@ loom changelog --format markdown
 - List field changes (`Constraints += "..."`, `Constraints -= "..."`)
 - Scalar field updates (`Persona updated`)
 - Prompt created / deleted events
+
+---
+
+## Milestone 18 — Safety: Audit, Secret Slots, Env Separation
+
+### `loom audit [Name]`
+
+Scans resolved prompt fields for dangerous patterns: hardcoded secret references, policy-bypass instructions, destructive commands without confirmation, production credential references, PII without privacy qualifiers, and more.
+
+```
+loom audit
+loom audit DeployAssistant
+loom audit --all
+```
+
+**Example output:**
+
+```
+  loom audit
+
+  ─────────────────────────────────────────────────────────
+
+  BaseEngineer                              PASS
+  DeployAssistant                           FAIL
+  ─────────────────────────────────────────────────────────
+  [HIGH]   constraints: "rm -rf /data without asking"
+           Reason: destructive command without confirmation qualifier
+           Fix: Add "only after user confirms" qualifier
+```
+
+**Exit codes:**
+- `0` — all prompts clean
+- `1` — at least one HIGH finding
+- `2` — at least one MEDIUM finding (no HIGH)
+
+**Risk levels and patterns scanned:**
+
+| Risk | Pattern |
+|---|---|
+| HIGH | Hardcoded `.env`, `credentials`, `api_key=`, `api_secret=` references |
+| HIGH | Safety bypass: `ignore policy`, `bypass validation`, `disregard previous` |
+| HIGH | Destructive commands: `rm -rf`, `drop table`, `delete all` (without confirmation qualifier) |
+| HIGH | Production references: `use production`, `production credentials` |
+| MEDIUM | PII without privacy qualifier: `social security`, `ssn`, `credit card number` |
+| MEDIUM | Removes confirmation gate: `without confirmation`, `no approval needed` |
+| LOW | Urgency without safety qualifier: `as fast as possible`, `immediately execute` |
+
+**Notes:**
+- Also runs automatically as a gate in `loom ci`.
+- Negation: if the same text contains a qualifier like `"with explicit confirmation"`, the HIGH finding is suppressed.
+
+---
+
+### Secret Slots (`slot name { secret: true }`)
+
+Slots declared with `secret: true` cannot have their values provided via `--set` on the command line. This prevents plain-text secrets from appearing in rendered output or shell history.
+
+```
+# In a .loom file:
+slot api_key { secret: true }
+
+# At the CLI — this will error:
+loom weave MyPrompt --set api_key=sk-abc123
+# Error: slot "api_key" is marked secret and cannot be rendered as plain text.
+# Pass secrets through the target tool's secure environment instead.
+```
+
+---
+
+### `--env <name>` flag (weave, weave --all)
+
+Applies an environment-specific block declared in the prompt with `env <name> { ... }`. Env blocks add field operations (typically `+=`) that layer stricter constraints for named environments like `prod` or `staging`.
+
+```
+loom weave GoEngineer --env prod --set repo_name=myrepo
+```
+
+**DSL syntax:**
+
+```
+prompt GoEngineer inherits BaseEngineer {
+  env prod {
+    constraints +=
+      - All external calls must use timeouts and retries.
+      - No debug logging in production paths.
+  }
+}
+```
+
+**Notes:**
+- Env blocks are strictly additive — only `+=` semantics are applied.
+- If `--env` names a block not declared on the prompt chain, an error is returned.
+- `loom ci` runs the audit gate using the `prod` env when declared; falls back gracefully when not present.
+
+---
+
+## Milestone 19 — MCP Manifests and Import
+
+### `loom mcp manifest [Name]`
+
+Generates an MCP-compatible tool manifest from one or all prompts. Reads `contract {}` and `capabilities {}` blocks to produce a structured JSON tool definition.
+
+```
+loom mcp manifest
+loom mcp manifest SecurityReviewer
+loom mcp manifest --all --out .claude/mcp-prompts.json
+```
+
+**Example output:**
+
+```json
+{
+  "tools": [
+    {
+      "name": "go-engineer",
+      "description": "A base engineering assistant.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_name": { "type": "string" }
+        },
+        "required": ["repo_name"]
+      },
+      "capabilities": ["read_code", "suggest_changes", "run_tests"],
+      "forbidden": ["modify_production_code", "delete_files"]
+    }
+  ]
+}
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--all` | Generate manifest for all prompts |
+| `--out <path>` | Write manifest JSON to a file instead of stdout |
+
+**How it maps DSL → JSON:**
+
+| DSL construct | MCP field |
+|---|---|
+| `slot name {}` → | `inputSchema.properties` |
+| Required slot (no default) | `inputSchema.required[]` |
+| `capabilities { allowed: ... }` | `capabilities[]` |
+| `capabilities { forbidden: ... }` | `forbidden[]` |
+| `summary:` / `objective:` | `description` |
+
+**Notes:**
+- Warns when `capabilities {}` or `contract {}` are missing from a prompt.
+- Does not execute prompts — reads metadata only.
+- Prompt names are converted to kebab-case for the `name` field.
+
+---
+
+### `loom import [file.md]`
+
+Heuristic Markdown parser that converts well-structured prompt Markdown files into PromptLoom `.loom` DSL files.
+
+```
+loom import old-prompts/CodeReviewer.md
+loom import old-prompts/CodeReviewer.md --name CodeReviewer --out prompts/
+loom import --dir old-prompts/ --out prompts/
+```
+
+**Example input (Markdown):**
+
+```markdown
+# CodeReviewer
+
+## Persona
+You are a senior software engineer with 10 years of experience.
+
+## Instructions
+- Review code for correctness.
+- Check for edge cases.
+- Suggest idiomatic alternatives.
+```
+
+**Example output (`.loom`):**
+
+```
+prompt CodeReviewer {
+  persona:
+    You are a senior software engineer with 10 years of experience.
+
+  instructions:
+    - Review code for correctness.
+    - Check for edge cases.
+    - Suggest idiomatic alternatives.
+}
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--name <Name>` | Prompt name (default: derived from filename) |
+| `--out <dir>` | Output directory (default: `prompts/`) |
+| `--dir <dir>` | Import all `.md` files from a directory |
+| `--force` | Overwrite existing `.loom` files |
+
+**Heading → field mapping:**
+
+| Markdown heading | DSL field |
+|---|---|
+| `## Persona` | `persona:` |
+| `## Summary` | `summary:` |
+| `## Context` | `context:` |
+| `## Objective` | `objective:` |
+| `## Instructions` | `instructions:` |
+| `## Constraints` | `constraints:` |
+| `## Examples` | `examples:` |
+| `## Format` / `## Output Format` | `format:` |
+| `## Notes` | `notes:` |
+| Any other heading | `notes:` (with a warning) |
+
+**Notes:**
+- Import is best-effort. Unrecognised sections are placed in `notes` with a warning.
+- Never overwrites existing `.loom` files without `--force`.
+- Automatically runs `loom inspect` after import and reports any issues.
+
+---
+
+## Milestone 20 — LSP Server and Editor Integration
+
+### `loom lsp`
+
+Starts a Language Server Protocol server on stdin/stdout (JSON-RPC 2.0 with Content-Length framing). Editors launch this automatically — it should not be run manually.
+
+```
+loom lsp
+```
+
+**LSP capabilities provided:**
+
+| Feature | Detail |
+|---|---|
+| Diagnostics | Inline errors and warnings from `loom inspect`, updated on every change |
+| Hover | Field documentation, operator semantics, and resolved prompt info |
+| Go to definition | Jump from `inherits Name` / `use Name` to the declaration file |
+| Completions | Field names + operators, prompt names after `inherits`, block names after `use` |
+| Document symbols | All prompts, blocks, fields, and vars in the outline panel |
+
+**Text sync:** Full (mode 1) — the server receives the full document text on every change.
+
+**Neovim setup:** See `docs/neovim-lsp.md` for `nvim-lspconfig` and bare `vim.lsp.start` configs.
+
+---
+
+### Lumine — VS Code Extension
+
+The **Lumine** VS Code extension (`promptloom-vscode`) provides first-class IDE support for `.loom` files. It runs standalone (no `loom lsp` dependency) using its own built-in TypeScript language analysis.
+
+**Features:**
+- Syntax highlighting (TextMate grammar for all Loom constructs)
+- IntelliSense: field names, operators, prompt/block names, variable names, `loom.toml` keys
+- Hover: field descriptions, operator semantics, prompt/block details
+- Diagnostics: real-time errors and warnings matching `loom inspect`
+- Go to definition, Find all references, Document symbols
+- Auto-formatter matching `loom fmt` output
+- Command palette: **Loom: Weave This Prompt**, **Loom: Inspect Library**, **Loom: Open Dependency Graph**
+- File icons for `.prompt.loom`, `.block.loom`, `.overlay.loom`, `.vars.loom`
+- Code snippets for all top-level constructs
+
+**Extension settings:**
+
+| Setting | Default | Description |
+|---|---|---|
+| `loom.loomExecutable` | `"loom"` | Path to the loom binary |
+| `loom.validateOnSave` | `true` | Run validation on save |
+| `loom.formatOnSave` | `false` | Auto-format on save |
+| `loom.trace.server` | `"off"` | LSP trace level |
+
+---
+
+## Milestone 21 — Recipes, Interactive Weave, and Playground
+
+### `loom recipe list`
+
+Lists all built-in scaffolding recipes with descriptions and supported flags.
+
+```
+loom recipe list
+```
+
+**Built-in recipes:**
+
+| Recipe | Description |
+|---|---|
+| `reviewer` | Code reviewer set: BaseEngineer, CodeReviewer, language/framework reviewer, SecurityReviewer, TestWriter |
+| `api-designer` | API design set: APIDesigner, SchemaReviewer, ContractValidator |
+| `migration-assistant` | Migration set: MigrationPlanner, CompatibilityChecker, RollbackPlanner |
+| `security-auditor` | Security audit set: SecurityAuditor, DependencyReviewer, ThreatModeler |
+| `docs-writer` | Documentation set: DocsWriter, READMEWriter, ChangelogWriter |
+
+---
+
+### `loom recipe apply <name>`
+
+Scaffolds a prompt library from a built-in recipe template. Supports language/framework placeholders for the `reviewer` recipe.
+
+```
+loom recipe apply <name> [--language <lang>] [--framework <fw>] [--style <style>] [--force]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--language` | `Generic` | Programming language (e.g. `go`, `rust`, `java`, `typescript`) |
+| `--framework` | _(none)_ | Framework (e.g. `gin`, `axum`, `spring-boot`, `react`) |
+| `--style` | `rest` | API style for `api-designer`: `rest` or `graphql` |
+| `--force` | false | Overwrite existing files |
+
+**Examples:**
+
+```bash
+loom recipe apply reviewer --language go --framework gin
+loom recipe apply reviewer --language rust --framework axum
+loom recipe apply api-designer --style graphql
+loom recipe apply migration-assistant
+loom recipe apply security-auditor
+loom recipe apply docs-writer
+```
+
+The `reviewer` recipe with `--language rust --framework axum` creates:
+- `prompts/BaseEngineer.prompt.loom`
+- `prompts/CodeReviewer.prompt.loom`
+- `prompts/RustAxumReviewer.prompt.loom`
+- `prompts/SecurityReviewer.prompt.loom`
+- `prompts/TestWriter.prompt.loom`
+- `blocks/RustConventions.block.loom`
+- `blocks/SecurityChecklist.block.loom`
+
+After applying, `loom inspect` is run automatically to surface any issues.
+
+---
+
+### `loom weave --interactive`
+
+Launches a guided TUI wizard for building a new prompt file step by step.
+
+```
+loom weave --interactive
+```
+
+**Wizard steps:**
+1. **Base** — Choose an existing prompt to inherit from (or none)
+2. **Blocks** — Multi-select blocks to include (Space to toggle)
+3. **Variant** — Choose a starting variant (or none)
+4. **Format** — Choose output format (markdown, json-anthropic, json-openai, etc.)
+5. **Name** — Enter the new prompt name; file is written to `prompts/<Name>.prompt.loom`
+
+**Navigation:** `↑↓`/`jk` navigate, `Enter` confirm, `Esc` go back, `q` quit.
+
+---
+
+### `loom playground <Name>`
+
+Opens a full-screen interactive TUI for live previewing a prompt with real-time variant, format, overlay, and env controls.
+
+```
+loom playground <Name>
+```
+
+**Controls:**
+
+| Key | Action |
+|---|---|
+| `1` | Scroll to top of preview |
+| `2` | Copy rendered output to clipboard |
+| `3` | Pick a variant |
+| `4` | Pick a render format |
+| `5` | Add an overlay |
+| `6` | Set an env block |
+| `7` | Reset all overlays and env |
+| `8` | Save to `dist/prompts/<Name>.md` |
+| `↑`/`k` | Scroll preview up |
+| `↓`/`j` | Scroll preview down |
+| `q` / `Ctrl+C` | Quit |
+
+The header shows the active variant, env, and applied overlays. The stats bar shows token estimate, current format, and contract status.
+
+---
+
+## Milestone 22 — Maintenance Tools
+
+### New DSL Fields: `todo:`, `kind:`, `compatible_with:`
+
+Three new fields are now valid in both prompts and blocks:
+
+```
+prompt CodeReviewer {
+  kind:
+    code-review
+
+  compatible_with:
+    - Go
+    - Rust
+    - TypeScript
+
+  todo:
+    - Add more Go-specific idiom checks
+    - Verify format output matches v2 spec
+}
+```
+
+| Field | Type | Purpose |
+|---|---|---|
+| `kind:` | scalar | Categorises the prompt (e.g. `code-review`, `api-design`, `security`). Used by `loom inspect` to warn on kind–block mismatches. |
+| `compatible_with:` | list | Documents which languages/frameworks/tools this prompt is designed for. |
+| `todo:` | list | Inline improvement notes. Surfaced by `loom todos`. |
+
+**`loom inspect` kind–block mismatch warning:** If a prompt declares `kind: X` and uses a block that declares `kind: Y` (where X ≠ Y), a warning is emitted.
+
+---
+
+### `loom minimize`
+
+Detect and report redundant content across resolved prompts: exact duplicates, near-duplicates (Levenshtein), and contradictory constraint pairs.
+
+```
+loom minimize [PromptName] [--threshold <0-1>] [--apply]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--threshold` | `0.85` | Minimum similarity ratio to flag as near-duplicate |
+| `--apply` | false | Remove exact and near-duplicates from dist output (source files unchanged) |
+
+**Finding types:**
+
+| Type | Description |
+|---|---|
+| `exact-duplicate` | Identical list items after normalisation |
+| `near-duplicate` | Items above the similarity threshold |
+| `contradiction` | Opposing constraint patterns (e.g. "never use X" vs "always use X") |
+
+---
+
+### `loom stale`
+
+Detect version mentions in prompt text that don't match the versions declared in dependency files.
+
+```
+loom stale [PromptName]
+```
+
+**Supported dependency files:** `go.mod`, `package.json`, `pom.xml`, `Cargo.toml`, `pyproject.toml`, `requirements.txt`
+
+Example: if `pom.xml` declares Spring Boot `3.3.2` but a prompt says "using Spring Boot 2.7", a stale finding is reported.
+
+---
+
+### `loom todos`
+
+List all `todo:` field items across the entire library (or a single prompt/block).
+
+```
+loom todos [PromptName]
+```
+
+---
+
+### `loom journal`
+
+A lightweight change journal stored in `.loom/journal/YYYY-MM-DD_<slug>.md` files.
+
+#### `loom journal add <message>`
+
+```
+loom journal add "Refactored SecurityReviewer hierarchy" [--prompt <name>] [--author <name>] [--body <text>]
+```
+
+#### `loom journal list [PromptName]`
+
+```
+loom journal list                  # all entries, newest first
+loom journal list CodeReviewer     # entries for a specific prompt
+```

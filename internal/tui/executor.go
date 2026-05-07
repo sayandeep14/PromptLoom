@@ -39,6 +39,7 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/sourcemap"
 	itokens "github.com/sayandeepgiri/promptloom/internal/tokens"
 	itestrunner "github.com/sayandeepgiri/promptloom/internal/testrunner"
+	iaudit "github.com/sayandeepgiri/promptloom/internal/audit"
 	"github.com/sayandeepgiri/promptloom/internal/validate"
 )
 
@@ -599,6 +600,7 @@ type WeaveOptions struct {
 	WithSources      []string // --with context sources
 	ContextBundle    string   // --context bundle name
 	Incremental      bool     // --incremental: skip prompts whose hash is unchanged
+	Env              string   // --env: apply the named env block (e.g. "prod")
 }
 
 // CopyOptions wraps WeaveOptions for loom copy / loom cast.
@@ -612,6 +614,22 @@ type DeployOptions struct {
 	DryRun       bool
 	Diff         bool
 	TargetFormat string
+}
+
+// checkSecretSlots errors if any secret slots have been given plain-text values via --set.
+func checkSecretSlots(name string, reg *registry.Registry, vars map[string]string) error {
+	node, ok := reg.LookupPrompt(name)
+	if !ok {
+		return nil
+	}
+	for _, v := range node.Vars {
+		if v.Secret && v.IsSlot {
+			if _, provided := vars[v.Name]; provided {
+				return fmt.Errorf("slot %q is marked secret and cannot be rendered as plain text.\nPass secrets through the target tool's secure environment instead.", v.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // RunWeave resolves and renders one or all prompts.
@@ -654,6 +672,7 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 				Variables: baseVars,
 				Variant:   opts.Variant,
 				Overlays:  opts.Overlays,
+				Env:       opts.Env,
 			})
 			if err != nil {
 				b.WriteString(fmt.Sprintf("  %s  %s: %v\n",
@@ -735,10 +754,16 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 		return "", fmt.Errorf("missing required values for %s", strings.Join(missing, ", "))
 	}
 
+	// Enforce secret slot protection before resolution.
+	if err := checkSecretSlots(name, reg, varValues); err != nil {
+		return "", err
+	}
+
 	rp, err := resolve.ResolveWithOptions(name, reg, resolve.Options{
 		Variables: varValues,
 		Variant:   opts.Variant,
 		Overlays:  opts.Overlays,
+		Env:       opts.Env,
 	})
 	if err != nil {
 		return "", err
@@ -842,6 +867,7 @@ func RunCopy(name string, opts CopyOptions, cwd string) (string, error) {
 		Variables: varValues,
 		Variant:   opts.Variant,
 		Overlays:  opts.Overlays,
+		Env:       opts.Env,
 	})
 	if err != nil {
 		return "", err
@@ -1382,6 +1408,7 @@ func RunWeaveFolder(folder string, opts WeaveOptions, cwd string) (string, error
 			Variables: baseVars,
 			Variant:   opts.Variant,
 			Overlays:  opts.Overlays,
+			Env:       opts.Env,
 		})
 		if err != nil {
 			b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PromptNameStyle.Render(name), err))
@@ -2527,6 +2554,40 @@ func RunCI(cwd string) (string, bool, error) {
 			}
 			results = append(results, CIResult{Name: "test", Passed: testPassed || testTotal == 0, Detail: testDetail})
 		}
+	}
+
+	// Gate 6: audit — scan for dangerous instructions (HIGH findings fail CI).
+	if reg != nil {
+		auditPassed := true
+		highCount, medCount := 0, 0
+		for _, node := range reg.Prompts() {
+			rp, err := resolve.ResolveWithOptions(node.Name, reg, resolve.Options{Env: "prod"})
+			if err != nil {
+				// env "prod" may not be declared on all prompts — skip gracefully.
+				rp, err = resolve.ResolveWithOptions(node.Name, reg, resolve.Options{})
+				if err != nil {
+					continue
+				}
+			}
+			findings := iaudit.Audit(rp)
+			for _, f := range findings {
+				switch f.Risk {
+				case iaudit.High:
+					highCount++
+					auditPassed = false
+				case iaudit.Medium:
+					medCount++
+				}
+			}
+		}
+		if !auditPassed {
+			failed = true
+		}
+		auditDetail := fmt.Sprintf("%d high, %d medium", highCount, medCount)
+		if highCount == 0 && medCount == 0 {
+			auditDetail = "no findings"
+		}
+		results = append(results, CIResult{Name: "audit", Passed: auditPassed, Detail: auditDetail})
 	}
 
 	var b strings.Builder

@@ -75,4 +75,9 @@ func init() {
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(blameCmd)
 	rootCmd.AddCommand(changelogCmd)
+	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(importCmd)
+	rootCmd.AddCommand(lspCmd)
+	rootCmd.AddCommand(recipeCmd)
 }

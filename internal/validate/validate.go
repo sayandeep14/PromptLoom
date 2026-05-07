@@ -216,6 +216,26 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 		}
 	}
 
+	// Kind–block mismatch: warn when a block declares a kind that differs from the prompt's kind.
+	promptKind := nodeKindTag(n)
+	if promptKind != "" {
+		for _, use := range n.Uses {
+			if blk, ok := reg.LookupBlock(use); ok {
+				blkKind := nodeKindTag(blk)
+				if blkKind != "" && blkKind != promptKind {
+					diags = append(diags, Diagnostic{
+						Sev: Warning,
+						Message: fmt.Sprintf(
+							"prompt %q (kind: %s) uses block %q (kind: %s) — kind mismatch may indicate a misapplied block",
+							n.Name, promptKind, use, blkKind,
+						),
+						Pos: n.Pos,
+					})
+				}
+			}
+		}
+	}
+
 	declaredVars := declaredVarSet(n)
 	for _, usage := range placeholderUsages(n) {
 		if !declaredVars[usage.name] {
@@ -526,4 +546,14 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+// nodeKindTag returns the kind tag value declared in the node's fields, or "".
+func nodeKindTag(n *ast.Node) string {
+	for _, f := range n.Fields {
+		if f.FieldName == "kind" && len(f.Value) > 0 {
+			return strings.TrimSpace(f.Value[0])
+		}
+	}
+	return ""
 }
