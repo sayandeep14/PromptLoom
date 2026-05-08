@@ -167,11 +167,16 @@ func writeScaffold(dest, content string) error {
 // toKebabCase converts CamelCase to kebab-case.
 // "SpringBootReviewer" → "spring-boot-reviewer"
 func toKebabCase(name string) string {
+	runes := []rune(name)
 	var sb strings.Builder
-	for i, r := range name {
+	for i, r := range runes {
 		if r >= 'A' && r <= 'Z' {
 			if i > 0 {
-				sb.WriteByte('-')
+				prevLower := runes[i-1] >= 'a' && runes[i-1] <= 'z'
+				nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+				if prevLower || nextLower {
+					sb.WriteByte('-')
+				}
 			}
 			sb.WriteRune(r + 32)
 		} else {

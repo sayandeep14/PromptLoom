@@ -1230,11 +1230,16 @@ func hasBoolFlag(args []string, flag string) bool {
 }
 
 func toKebab(s string) string {
+	runes := []rune(s)
 	var b strings.Builder
-	for i, r := range s {
+	for i, r := range runes {
 		if r >= 'A' && r <= 'Z' {
 			if i > 0 {
-				b.WriteByte('-')
+				prevLower := runes[i-1] >= 'a' && runes[i-1] <= 'z'
+				nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+				if prevLower || nextLower {
+					b.WriteByte('-')
+				}
 			}
 			b.WriteRune(r + 32)
 		} else {

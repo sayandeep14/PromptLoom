@@ -45,11 +45,10 @@ func Classify(diffs []diff.FieldDiff) []ChangeClass {
 			}
 
 		case "format":
-			items := mergeItems(fd.Added, fd.Removed)
 			classes = append(classes, ChangeClass{
 				Label: "format-changed",
 				Risk:  RiskLow,
-				Items: items,
+				Items: markedItems(fd.Removed, fd.Added),
 			})
 
 		case "objective":
@@ -97,11 +96,10 @@ func Classify(diffs []diff.FieldDiff) []ChangeClass {
 			})
 
 		case "examples":
-			items := mergeItems(fd.Added, fd.Removed)
 			classes = append(classes, ChangeClass{
 				Label: "examples-changed",
 				Risk:  RiskLow,
-				Items: items,
+				Items: markedItems(fd.Removed, fd.Added),
 			})
 		}
 	}
@@ -109,9 +107,13 @@ func Classify(diffs []diff.FieldDiff) []ChangeClass {
 	return classes
 }
 
-func mergeItems(a, b []string) []string {
-	out := make([]string, 0, len(a)+len(b))
-	out = append(out, a...)
-	out = append(out, b...)
+// markedItems builds a single slice with removed items prefixed by "- " and
+// added items left as-is. The renderer uses the "- " prefix to colour-code them.
+func markedItems(removed, added []string) []string {
+	out := make([]string, 0, len(removed)+len(added))
+	for _, r := range removed {
+		out = append(out, "- "+r)
+	}
+	out = append(out, added...)
 	return out
 }

@@ -1820,3 +1820,28 @@ loom journal add "Refactored SecurityReviewer hierarchy" [--prompt <name>] [--au
 loom journal list                  # all entries, newest first
 loom journal list CodeReviewer     # entries for a specific prompt
 ```
+
+---
+
+## Bug Fixes (post-M22)
+
+### Kebab-case conversion for acronyms
+
+The `toKebab` / `toKebabCase` helpers previously inserted a dash before **every** uppercase letter, so `MLFeatureEngineer` became `m-l-feature-engineer` in MCP manifests and scaffolded filenames.
+
+The fix: a dash is only inserted before an uppercase letter when the previous character is lowercase **or** the next character is lowercase (i.e., only at word boundaries). Consecutive uppercase runs (acronyms) are kept together.
+
+| Before | After |
+|---|---|
+| `m-l-feature-engineer` | `ml-feature-engineer` |
+| `a-p-i-security-reviewer` | `api-security-reviewer` |
+
+Affected: `loom mcp manifest` (name field), `loom thread` (filename), REPL prompt completion.
+
+---
+
+### Semantic diff — `format-changed` and `examples-changed` display
+
+The `--semantic` flag on `loom diff` previously showed all list items in `format-changed` and `examples-changed` blocks with `+` (green), even if they were removed from the left prompt.
+
+The fix: removed items are now prefixed internally so the renderer displays them with `-` (red) and added items with `+` (green), matching the behaviour of `constraint-added`/`constraint-removed`.

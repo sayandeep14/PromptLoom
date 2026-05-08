@@ -1722,14 +1722,16 @@ func renderSemanticDiff(name string, diffs []idiff.FieldDiff) string {
 		label := BrightStyle.Render(cls.Label)
 		risk := riskColor.Render(fmt.Sprintf("(%s risk)", cls.Risk))
 		b.WriteString(fmt.Sprintf("  %s  %s\n", label, risk))
-		for _, item := range cls.Items {
+		for i, item := range cls.Items {
 			if item == "" {
 				continue
 			}
-			if strings.HasPrefix(item, "-") || (len(cls.Items) == 2 && cls.Items[0] == item) {
-				b.WriteString(ErrorStyle.Render("    - "+item) + "\n")
+			isRemoved := strings.HasPrefix(item, "- ") || (len(cls.Items) == 2 && i == 0)
+			text := strings.TrimPrefix(item, "- ")
+			if isRemoved {
+				b.WriteString(ErrorStyle.Render("    - "+text) + "\n")
 			} else {
-				b.WriteString(SuccessStyle.Render("    + "+item) + "\n")
+				b.WriteString(SuccessStyle.Render("    + "+text) + "\n")
 			}
 		}
 		b.WriteByte('\n')
