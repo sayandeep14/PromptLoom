@@ -10,6 +10,7 @@ package tui
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +18,19 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/config"
 	"github.com/sayandeepgiri/promptloom/internal/loader"
 )
+
+// skipDirsForPicker are directories skipped in BuildFilePickerItems.
+var skipDirsForPicker = map[string]bool{
+	".git":          true,
+	".hg":           true,
+	"node_modules":  true,
+	"vendor":        true,
+	"dist":          true,
+	"__pycache__":   true,
+	".pytest_cache": true,
+	"target":        true,
+	"build":         true,
+}
 
 // isLoomPickerFile reports whether a filename belongs to a parseable loom source file.
 func isLoomPickerFile(name string) bool {
@@ -149,7 +163,8 @@ func ExtractHashFilter(s string) (int, string, bool) {
 
 // RenderPickerPanel renders the picker box as a multi-line styled string.
 // selIdx is the index within filtered (not full) items.
-func RenderPickerPanel(filtered []PickerItem, selIdx int, filter string, termWidth int) string {
+// selectedSet contains the Insert values of multi-selected items (may be nil).
+func RenderPickerPanel(filtered []PickerItem, selIdx int, filter string, termWidth int, selectedSet map[string]bool) string {
 	const maxVisible = 8
 	const minWidth = 44
 
@@ -165,8 +180,13 @@ func RenderPickerPanel(filtered []PickerItem, selIdx int, filter string, termWid
 	border := DividerStyle.Render
 
 	// ── Top border with title ──────────────────────────────────────────────
-	title := SubHeaderStyle.Render(" # Prompt Picker ")
-	titleLen := len(" # Prompt Picker ")
+	multi := len(selectedSet) > 0
+	titleText := " # Prompt Picker "
+	if multi || selectedSet != nil {
+		titleText = " # File Picker  [space=select, enter=confirm] "
+	}
+	title := SubHeaderStyle.Render(titleText)
+	titleLen := len(titleText)
 	rightDashes := boxWidth - titleLen - 1
 	if rightDashes < 0 {
 		rightDashes = 0
@@ -210,9 +230,11 @@ func RenderPickerPanel(filtered []PickerItem, selIdx int, filter string, termWid
 				arrow = "  "
 			}
 
-			// Type badge.
+			// Type badge — check mark for multi-selected, type for others.
 			var badge string
-			if it.IsFolder {
+			if selectedSet[it.Insert] {
+				badge = SuccessStyle.Render("  ✓  ")
+			} else if it.IsFolder {
 				badge = BlockNameStyle.Render("[dir]")
 			} else {
 				badge = BulletStyle.Render("  ●  ")
@@ -267,4 +289,84 @@ func RenderPickerPanel(filtered []PickerItem, selIdx int, filter string, termWid
 	b.WriteString("  " + border("╰"+strings.Repeat("─", boxWidth+1)+"╯") + "\n")
 
 	return b.String()
+}
+
+// BuildFilePickerItems builds a picker list of files and directories relative
+// to cwd, suitable for use with 'loom summarize'. Order: workspace special
+// item → top-level directories → files in the root directory.
+func BuildFilePickerItems(cwd string) []PickerItem {
+	var items []PickerItem
+
+	// "workspace" — whole project summary.
+	items = append(items, PickerItem{
+		Display:  "workspace",
+		Insert:   "workspace",
+		IsFolder: true,
+		Meta:     "whole project",
+	})
+
+	entries, err := os.ReadDir(cwd)
+	if err != nil {
+		return items
+	}
+
+	var dirs, files []fs.DirEntry
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if e.IsDir() {
+			if !skipDirsForPicker[e.Name()] {
+				dirs = append(dirs, e)
+			}
+		} else {
+			files = append(files, e)
+		}
+	}
+
+	// Sort both groups.
+	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Name() < dirs[j].Name() })
+	sort.Slice(files, func(i, j int) bool { return files[i].Name() < files[j].Name() })
+
+	for _, d := range dirs {
+		// Count files one level deep.
+		count := 0
+		_ = filepath.WalkDir(filepath.Join(cwd, d.Name()), func(p string, e fs.DirEntry, err error) error {
+			if err != nil || e.IsDir() {
+				return nil
+			}
+			count++
+			return nil
+		})
+		items = append(items, PickerItem{
+			Display:  d.Name() + "/",
+			Insert:   d.Name() + "/",
+			IsFolder: true,
+			Meta:     fmt.Sprintf("%d files", count),
+		})
+	}
+
+	for _, f := range files {
+		info, _ := f.Info()
+		size := ""
+		if info != nil && info.Size() > 0 {
+			sz := info.Size()
+			switch {
+			case sz >= 1024*1024:
+				size = fmt.Sprintf("%.1fMB", float64(sz)/(1024*1024))
+			case sz >= 1024:
+				size = fmt.Sprintf("%dKB", sz/1024)
+			default:
+				size = fmt.Sprintf("%dB", sz)
+			}
+		}
+		items = append(items, PickerItem{
+			Display:  f.Name(),
+			Insert:   f.Name(),
+			IsFolder: false,
+			Meta:     size,
+		})
+	}
+
+	return items
 }

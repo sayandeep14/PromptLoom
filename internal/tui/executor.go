@@ -40,6 +40,7 @@ import (
 	itokens "github.com/sayandeepgiri/promptloom/internal/tokens"
 	itestrunner "github.com/sayandeepgiri/promptloom/internal/testrunner"
 	iaudit "github.com/sayandeepgiri/promptloom/internal/audit"
+	isummarize "github.com/sayandeepgiri/promptloom/internal/summarize"
 	"github.com/sayandeepgiri/promptloom/internal/validate"
 )
 
@@ -2982,4 +2983,37 @@ func RunPackRemove(name, cwd string) (string, bool) {
 	}
 	return "  " + SuccessStyle.Render("✓") + "  " + PromptNameStyle.Render(name) +
 		MutedStyle.Render(" removed") + "\n", false
+}
+
+// RunSummarize generates a summary of the workspace or specific paths.
+// "workspace" targets the whole project; otherwise args are file/dir paths.
+func RunSummarize(args []string, cwd string) (string, bool) {
+	_, cfg, err := loader.Load(cwd)
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+
+	opts := isummarize.Options{Save: false}
+
+	var result *isummarize.Result
+
+	if len(args) == 1 && strings.ToLower(args[0]) == "workspace" {
+		opts.Save = true
+		result, err = isummarize.SummarizeWorkspace(cwd, cfg, opts)
+	} else {
+		result, err = isummarize.SummarizePaths(args, cwd, cfg, opts)
+	}
+	if err != nil {
+		return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+	}
+
+	var b strings.Builder
+	b.WriteString(result.Content)
+	b.WriteString("\n")
+	if result.SavedTo != "" {
+		b.WriteString("\n  " + SuccessStyle.Render("✓") + "  saved to " +
+			PathStyle.Render(result.SavedTo) + "\n")
+		b.WriteString("  " + MutedStyle.Render("Tip: attach with --with file:"+result.SavedTo) + "\n")
+	}
+	return b.String(), false
 }

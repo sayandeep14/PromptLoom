@@ -1845,3 +1845,160 @@ Affected: `loom mcp manifest` (name field), `loom thread` (filename), REPL promp
 The `--semantic` flag on `loom diff` previously showed all list items in `format-changed` and `examples-changed` blocks with `+` (green), even if they were removed from the left prompt.
 
 The fix: removed items are now prefixed internally so the renderer displays them with `-` (red) and added items with `+` (green), matching the behaviour of `constraint-added`/`constraint-removed`.
+
+---
+
+## Milestone 23 — Workspace Intelligence and Quest Mode
+
+### `loom start`
+
+Generates a tailored PromptLoom starter library by reading project context files and (by default) calling an LLM.
+
+**Prerequisites:** `loom.toml` must exist (run `loom init` first). `CLAUDE.md` must be present in the project directory.
+
+```
+loom start                    # LLM generation, moderate token budget
+loom start --minimal          # LLM generation, 3-5 prompts only
+loom start --best             # LLM generation, maximum quality and coverage
+loom start --nollm            # no LLM — uses built-in templates for detected stack
+loom start --nollm --stack go # override stack detection
+```
+
+#### Workflow
+
+1. Scans workspace: reads `CLAUDE.md` (required) and `TODO.md` (optional).
+2. Detects tech stack from `go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`, `pom.xml`, etc.
+3. Generates a plan (file list with descriptions).
+4. Shows plan and prompts: **[y] Generate  [e] Edit plan  [n] Cancel**.
+5. If `e`: opens plan in `$EDITOR` for free-form editing, then re-parses.
+6. Writes files to the configured `paths.prompts` and `paths.blocks` directories (overwrites existing files).
+
+#### Token Tiers
+
+| Flag | Files generated | Token budget |
+|---|---|---|
+| `--minimal` | 3-5 prompts + 1 block | Low |
+| (default) | 8-12 prompts + 2-4 blocks | Moderate |
+| `--best` | 15-20 prompts + 5-8 blocks | High (180 s timeout) |
+
+#### Stack Detection
+
+Automatically detected stacks: `go`, `python`, `typescript`, `javascript`, `rust`, `java-spring`, `java`.
+
+Detection logic:
+
+| File present | Detected stack |
+|---|---|
+| `go.mod` | go |
+| `pyproject.toml` / `requirements.txt` | python |
+| `tsconfig.json` + `package.json` | typescript |
+| `package.json` | javascript |
+| `Cargo.toml` | rust |
+| `pom.xml` with spring-boot | java-spring |
+| `pom.xml` | java |
+| (none) | universal fallback |
+
+#### `--nollm` Built-in Templates
+
+When `--nollm` is used, stack-specific templates are applied:
+
+| Stack | Templates included |
+|---|---|
+| `go` | BaseGoEngineer, GoCodeReviewer, GoTestWriter, GoDocWriter, SecurityReviewer + GoConventions block |
+| `python` | BasePythonEngineer, PythonCodeReviewer, PythonTestWriter + PythonConventions block |
+| `typescript` / `javascript` | BaseNodeEngineer, NodeCodeReviewer, NodeTestWriter + NodeConventions block |
+| `rust` | BaseRustEngineer, RustCodeReviewer + RustConventions block |
+| `java` / `java-spring` | BaseJavaEngineer, JavaCodeReviewer, JavaTestWriter + JavaConventions block |
+| (unknown) | BaseEngineer, CodeReviewer, TestWriter, DocWriter |
+
+#### Plan Edit Format
+
+When `e` is chosen, the plan is opened as a text file with this format:
+
+```
+## FileName.prompt.loom | Short description
+prompt FileName {
+  ...
+}
+
+## BlockName.block.loom | Short description
+block BlockName {
+  ...
+}
+```
+
+Lines starting with `#` are comments. Each `##` header starts a new file entry.
+
+#### Internal Packages
+
+| Package | Purpose |
+|---|---|
+| `internal/workspace` | Scans project directory; detects stack, reads CLAUDE.md and TODO.md |
+| `internal/starter` | Plan type, plan format/parse, file writer |
+| `internal/starter` (llm.go) | LLM API calls (Gemini and Anthropic) for plan generation |
+| `internal/starter` (templates.go) | Embedded no-LLM templates per stack |
+
+---
+
+### `loom summarize`
+
+Generates a structured Markdown summary of your project or specific files using an LLM. The summary is suitable for attaching to prompts via `--with file:`.
+
+```
+loom summarize workspace          # whole-project architecture summary
+loom summarize src/               # specific directory
+loom summarize main.go utils.go   # specific files
+loom summarize src/ tests/        # multiple paths at once
+```
+
+#### Workspace mode
+
+`loom summarize workspace` always saves the output to `.loom/context/architecture-summary.md`. It generates sections: Overview, Tech Stack, Key Directories, Entry Points, Testing, Configuration, Notable Patterns.
+
+Context is built from: file tree, file counts per directory, and key file contents (README.md, CLAUDE.md, go.mod, package.json, Cargo.toml, pom.xml, Makefile, Dockerfile, loom.toml). Large files are truncated at 3 KB; total context is capped at 40 KB.
+
+#### Path mode
+
+`loom summarize <path...>` reads specified files and directories and produces a concise summary covering: purpose, key components, dependencies, patterns, and gotchas. File content capped at 8 KB each; total at 50 KB.
+
+#### Flags
+
+| Flag | Description |
+|---|---|
+| `--save` | Save output to `.loom/context/<name>-summary.md` |
+| `--out <path>` | Write output to a specific file path |
+
+#### REPL multi-select file picker
+
+In the REPL, typing `summarize #` opens a **file picker** (not the prompt picker). This picker supports multi-select:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Navigate items |
+| `Space` | Toggle item selection (checkmark appears) |
+| `Enter` | Confirm — inserts all selected items |
+| `Esc` | Cancel picker |
+| Type | Filter items by name |
+
+Items shown: `workspace` (whole project), top-level directories with file counts, root-level files with sizes.
+
+Example flow:
+```
+> summarize #src     ← type to filter
+  ▶ ✓ src/          (42 files)   ← Space to select
+    ✓ tests/        (18 files)   ← Space to select
+[Enter] → summarize src/ tests/
+```
+
+#### After generation
+
+The saved file can be attached to any prompt:
+```
+loom copy CodeReviewer --with file:.loom/context/architecture-summary.md
+```
+
+#### Internal Packages
+
+| Package | Purpose |
+|---|---|
+| `internal/summarize` | Core summarization logic — file tree builder, LLM call, output writing |

@@ -80,4 +80,6 @@ func init() {
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(lspCmd)
 	rootCmd.AddCommand(recipeCmd)
+	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(summarizeCmd)
 }

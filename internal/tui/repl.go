@@ -53,12 +53,16 @@ type replModel struct {
 	compIdx     int
 	compActive  bool
 
-	// # prompt picker.
+	// # prompt/file picker.
 	pickerActive   bool
-	pickerAll      []PickerItem // full unfiltered list
+	pickerAll      []PickerItem // prompt picker — full unfiltered list
+	pickerFileAll  []PickerItem // file picker — full unfiltered list
 	pickerFiltered []PickerItem // filtered by current filter text
 	pickerIdx      int          // selected index in pickerFiltered
 	pickerHashByte int          // byte offset of '#' in input value
+	pickerMulti    bool         // true when summarize command is active (multi-select)
+	// pickerSelected tracks Insert values of multi-chosen items.
+	pickerSelected    map[string]bool
 
 	outputLines []string
 
@@ -92,7 +96,7 @@ func Run(version, cwd string) error {
 	names := PromptNames(cwd)
 
 	ti := textinput.New()
-	ti.Placeholder = "type a command…  # to pick a prompt"
+	ti.Placeholder = "type a command…  # to pick prompt  'summarize #' to pick files"
 	ti.Focus()
 	ti.CharLimit = 256
 	ti.Width = 60
@@ -116,6 +120,7 @@ func Run(version, cwd string) error {
 		spinner:          sp,
 		bannerVersion:    version,
 		pickerAll:        BuildPickerItems(cwd),
+		pickerFileAll:    BuildFilePickerItems(cwd),
 	}
 
 	prog := tea.NewProgram(m, tea.WithAltScreen())
@@ -187,6 +192,7 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case tea.KeyEscape:
 				m = m.closePicker(true)
+				m.pickerSelected = nil
 				return m, nil
 
 			case tea.KeyUp:
@@ -200,6 +206,18 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.pickerIdx++
 				}
 				return m, nil
+
+			case tea.KeySpace:
+				// Space toggles item selection in multi-select mode;
+				// in single-select mode fall through to text input.
+				if m.pickerMulti {
+					m = m.togglePickerSelection()
+					return m, nil
+				}
+				var cmd tea.Cmd
+				m.input, cmd = m.input.Update(msg)
+				m = m.syncPicker()
+				return m, cmd
 
 			default:
 				// All other keys go to the text input, then we re-sync picker.
@@ -363,7 +381,8 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // syncPicker checks the current input value for an active '#' token and
-// updates picker state accordingly.
+// updates picker state accordingly. When the command prefix is "summarize",
+// it switches to file-picker mode with multi-select.
 func (m replModel) syncPicker() replModel {
 	val := m.input.Value()
 	hashIdx, filter, ok := ExtractHashFilter(val)
@@ -372,34 +391,89 @@ func (m replModel) syncPicker() replModel {
 			m.pickerActive = false
 			m.pickerFiltered = nil
 			m.pickerIdx = 0
+			m.pickerMulti = false
+			// Keep pickerSelected alive until the command is submitted.
 		}
 		return m
 	}
+
+	// Detect whether this is a summarize command.
+	prefix := strings.TrimSpace(val[:hashIdx])
+	isSummarize := prefix == "summarize" || strings.HasPrefix(prefix, "summarize ")
+
 	m.pickerActive = true
 	m.pickerHashByte = hashIdx
-	m.pickerFiltered = FilterPickerItems(m.pickerAll, filter)
-	// Reset selection only when filter changes; keep position when navigating.
+	m.pickerMulti = isSummarize
+
+	if isSummarize {
+		if m.pickerSelected == nil {
+			m.pickerSelected = map[string]bool{}
+		}
+		m.pickerFiltered = FilterPickerItems(m.pickerFileAll, filter)
+	} else {
+		m.pickerFiltered = FilterPickerItems(m.pickerAll, filter)
+	}
+
+	// Reset selection index only when it falls out of bounds.
 	if m.pickerIdx >= len(m.pickerFiltered) {
 		m.pickerIdx = 0
 	}
 	return m
 }
 
-// applyPickerSelection inserts the selected item's Insert value into the input,
+// applyPickerSelection inserts the selected item(s) into the input,
 // replacing the '#<filter>' token.
+// In multi-select mode (summarize), Enter confirms all selected items
+// (or the highlighted item if nothing is selected yet).
 func (m replModel) applyPickerSelection() replModel {
 	if len(m.pickerFiltered) == 0 {
 		return m
 	}
-	item := m.pickerFiltered[m.pickerIdx]
 	val := m.input.Value()
 	before := val[:m.pickerHashByte]
-	newVal := before + item.Insert + " "
-	m.input.SetValue(newVal)
+
+	if m.pickerMulti && len(m.pickerSelected) > 0 {
+		// Build space-separated list of selected items.
+		var parts []string
+		// Iterate over fileAll to preserve stable order.
+		for _, it := range m.pickerFileAll {
+			if m.pickerSelected[it.Insert] {
+				parts = append(parts, it.Insert)
+			}
+		}
+		newVal := before + strings.Join(parts, " ") + " "
+		m.input.SetValue(newVal)
+	} else {
+		// Single-select: just insert the highlighted item.
+		item := m.pickerFiltered[m.pickerIdx]
+		newVal := before + item.Insert + " "
+		m.input.SetValue(newVal)
+	}
+
 	m.input.CursorEnd()
 	m.pickerActive = false
 	m.pickerFiltered = nil
 	m.pickerIdx = 0
+	m.pickerMulti = false
+	m.pickerSelected = nil
+	return m
+}
+
+// togglePickerSelection adds or removes the currently highlighted item from
+// the multi-select set. Only meaningful when pickerMulti is true.
+func (m replModel) togglePickerSelection() replModel {
+	if !m.pickerMulti || len(m.pickerFiltered) == 0 {
+		return m
+	}
+	if m.pickerSelected == nil {
+		m.pickerSelected = map[string]bool{}
+	}
+	key := m.pickerFiltered[m.pickerIdx].Insert
+	if m.pickerSelected[key] {
+		delete(m.pickerSelected, key)
+	} else {
+		m.pickerSelected[key] = true
+	}
 	return m
 }
 
@@ -501,7 +575,7 @@ func (m replModel) View() string {
 	// # Picker panel (replaces completions row when active).
 	if m.pickerActive {
 		b.WriteString(RenderPickerPanel(m.pickerFiltered, m.pickerIdx,
-			m.pickerFilter(), m.width))
+			m.pickerFilter(), m.width, m.pickerSelected))
 	} else if m.compActive && len(m.completions) > 0 {
 		parts := make([]string, len(m.completions))
 		for i, c := range m.completions {
@@ -1022,6 +1096,13 @@ func dispatch(verb string, args []string, cwd string) (string, bool) {
 			return ErrorStyle.Render(fmt.Sprintf("Unknown journal subcommand %q — try: journal list, journal add <message>", sub)) + "\n", true
 		}
 
+	case "summarize":
+		if len(args) == 0 {
+			return ErrorStyle.Render("Usage: summarize workspace  or  summarize <path...>  or  summarize #") + "\n", true
+		}
+		out, isErr := RunSummarize(args, cwd)
+		return out, isErr
+
 	case "help":
 		return renderHelp(), false
 
@@ -1115,6 +1196,9 @@ func renderHelp() string {
 		{"thread vars <Name>    ", "Scaffold a new .vars.loom file"},
 		{"fmt                   ", "Format .loom source files"},
 		{"fmt --check           ", "Check formatting (no writes)"},
+		{"summarize workspace   ", "LLM architecture summary of the project"},
+		{"summarize <path...>   ", "LLM summary of specific files or dirs"},
+		{"summarize #           ", "Open file picker (space=select, enter=confirm)"},
 		{"theme [dark|light]    ", "Switch color theme"},
 		{"clear                 ", "Clear output area"},
 		{"exit                  ", "Quit the REPL"},
@@ -1123,7 +1207,7 @@ func renderHelp() string {
 		b.WriteString(fmt.Sprintf("  %s  %s\n",
 			CommandStyle.Render(r.cmd), ArgDescStyle.Render(r.desc)))
 	}
-	b.WriteString("\n  " + MutedStyle.Render("Tip: type # anywhere to open the prompt picker.") + "\n\n")
+	b.WriteString("\n  " + MutedStyle.Render("Tip: type # to pick a prompt, or 'summarize #' to pick files (space=multi-select).") + "\n\n")
 	return b.String()
 }
 
