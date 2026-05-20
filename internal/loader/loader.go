@@ -12,6 +12,7 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/ast"
 	"github.com/sayandeepgiri/promptloom/internal/config"
 	"github.com/sayandeepgiri/promptloom/internal/lexer"
+	"github.com/sayandeepgiri/promptloom/internal/namespacereg"
 	"github.com/sayandeepgiri/promptloom/internal/parser"
 	"github.com/sayandeepgiri/promptloom/internal/registry"
 	"github.com/sayandeepgiri/promptloom/internal/secret"
@@ -85,6 +86,11 @@ func Load(dir string) (*registry.Registry, *config.Config, error) {
 	if err := loadVarsFiles(dir, reg); err != nil {
 		return nil, nil, err
 	}
+
+	// Attach namespace resolver so pack-qualified references (e.g. "go-backend.GoCodeReviewer")
+	// and within-pack bare names resolve correctly during inheritance chain walks.
+	ns := namespacereg.ScanProjectDir(dir)
+	reg.SetNamespaceRegistry(ns)
 
 	return reg, cfg, nil
 }

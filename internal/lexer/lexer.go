@@ -35,6 +35,7 @@ const (
 	TokKwCapabilities
 	TokKwOverlay
 	TokKwEnv
+	TokComma // separates parent names in "inherits A, B, C"
 )
 
 func (t TokType) String() string {
@@ -79,6 +80,8 @@ func (t TokType) String() string {
 		return "overlay"
 	case TokKwEnv:
 		return "env"
+	case TokComma:
+		return ","
 	}
 	return "UNKNOWN"
 }
@@ -108,6 +111,7 @@ type scanner struct {
 	fieldIndent       int
 	nestedFieldIndent int
 	tokens            []Token
+	fromBlockDepth    int // tracks open { ... } blocks inside a from() expression
 }
 
 // Scan tokenizes src and returns the full token stream, including a terminal TokEOF.
@@ -153,35 +157,40 @@ func isIdent(s string) bool {
 	return true
 }
 
-// isNamespacedIdent returns true for plain identifiers and for namespaced
-// identifiers of the form "pack-name/PromptName" used in inherits declarations.
+// isNamespacedIdent returns true for plain identifiers and for namespace-qualified
+// identifiers of the form "slug.Name" (v2 dot notation) or legacy "pack/Name".
 func isNamespacedIdent(s string) bool {
-	if idx := len(s) - len("/") - 1; idx > 0 {
-		if slash := strings.Index(s, "/"); slash > 0 {
-			return isIdent(s[:slash]) && isIdent(s[slash+1:])
-		}
+	if dot := strings.IndexByte(s, '.'); dot > 0 {
+		return isIdent(s[:dot]) && isIdent(s[dot+1:])
+	}
+	if slash := strings.IndexByte(s, '/'); slash > 0 {
+		return isIdent(s[:slash]) && isIdent(s[slash+1:])
 	}
 	return isIdent(s)
 }
 
-// parseFieldDecl tries to recognise a field declaration in trimmed.
-func parseFieldDecl(trimmed string) (name, op string, ok bool) {
+// parseFieldDecl recognises a field declaration in trimmed.
+// Returns (name, op, inline, ok) where inline is any content on the same line
+// after the operator (used for from() expressions and inline scalars).
+func parseFieldDecl(trimmed string) (name, op, inline string, ok bool) {
 	for _, candidate := range []string{":=", "+=", "-="} {
-		if strings.HasSuffix(trimmed, candidate) {
-			n := strings.TrimRight(trimmed[:len(trimmed)-len(candidate)], " \t")
+		if idx := strings.Index(trimmed, candidate); idx > 0 {
+			n := strings.TrimRight(trimmed[:idx], " \t")
 			if isIdent(n) {
-				return n, candidate, true
+				rest := strings.TrimSpace(trimmed[idx+len(candidate):])
+				return n, candidate, rest, true
 			}
 		}
 	}
+	// bare colon: "fieldname:" with nothing after
 	bare := strings.TrimRight(trimmed, " \t")
-	if strings.HasSuffix(bare, ":") {
+	if strings.HasSuffix(bare, ":") && !strings.Contains(bare[:len(bare)-1], ":") {
 		n := bare[:len(bare)-1]
 		if isIdent(n) {
-			return n, ":", true
+			return n, ":", "", true
 		}
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
 func stripInlineComment(s string) string {
@@ -294,13 +303,21 @@ func (s *scanner) scan() error {
 				return err
 			}
 		case sInFieldContent:
-			if indent <= s.fieldIndent {
+			// A closing brace that belongs to a from() "and { ... }" block.
+			if trimmed == "}" && s.fromBlockDepth > 0 {
+				s.emit(Token{Type: TokTextLine, Text: "}", Line: lineNum, Col: indent + 1})
+				s.fromBlockDepth--
+			} else if indent <= s.fieldIndent {
 				s.state = sInBody
 				if err := s.scanBodyLine(indent, trimmed, lineNum); err != nil {
 					return err
 				}
 			} else {
 				s.emit(Token{Type: TokTextLine, Text: trimmed, Line: lineNum, Col: indent + 1})
+				// Track opening braces inside from() expressions.
+				if strings.HasSuffix(trimmed, "{") {
+					s.fromBlockDepth++
+				}
 			}
 		case sInNestedBody:
 			if err := s.scanNestedBodyLine(indent, trimmed, lineNum); err != nil {
@@ -335,26 +352,36 @@ func (s *scanner) scanTopLine(trimmed string, lineNum int) error {
 		}
 		s.emit(Token{Type: TokKwPrompt, Text: "prompt", Line: lineNum, Col: 1})
 
-		switch len(parts) {
-		case 3:
-			if !isIdent(parts[1]) {
-				return s.errorf(lineNum, "expected prompt name, got %q", parts[1])
-			}
-			s.emit(Token{Type: TokIdent, Text: parts[1], Line: lineNum})
-		case 5:
-			if parts[2] != "inherits" {
-				return s.errorf(lineNum, "expected 'inherits', got %q", parts[2])
-			}
-			if !isIdent(parts[1]) {
-				return s.errorf(lineNum, "expected prompt name, got %q", parts[1])
-			}
-			s.emit(Token{Type: TokIdent, Text: parts[1], Line: lineNum})
+		if len(parts) < 3 {
+			return s.errorf(lineNum, "invalid prompt declaration: %q", trimmed)
+		}
+		if !isIdent(parts[1]) {
+			return s.errorf(lineNum, "expected prompt name, got %q", parts[1])
+		}
+		s.emit(Token{Type: TokIdent, Text: parts[1], Line: lineNum})
+
+		if len(parts) == 3 {
+			// "prompt Name {" — no inheritance
+		} else if parts[2] == "inherits" {
+			// "prompt Name inherits A, B, C {" — single or multiple parents
 			s.emit(Token{Type: TokKwInherits, Text: "inherits", Line: lineNum})
-			if !isNamespacedIdent(parts[3]) {
-				return s.errorf(lineNum, "expected parent prompt name, got %q", parts[3])
+			// Collect everything between "inherits" and the closing "{".
+			rawParents := strings.Join(parts[3:len(parts)-1], "")
+			parentNames := strings.Split(rawParents, ",")
+			for i, pn := range parentNames {
+				pn = strings.TrimSpace(pn)
+				if pn == "" {
+					return s.errorf(lineNum, "empty parent name in inherits list")
+				}
+				if !isNamespacedIdent(pn) {
+					return s.errorf(lineNum, "expected parent prompt name, got %q", pn)
+				}
+				if i > 0 {
+					s.emit(Token{Type: TokComma, Text: ",", Line: lineNum})
+				}
+				s.emit(Token{Type: TokIdent, Text: pn, Line: lineNum})
 			}
-			s.emit(Token{Type: TokIdent, Text: parts[3], Line: lineNum})
-		default:
+		} else {
 			return s.errorf(lineNum, "invalid prompt declaration: %q", trimmed)
 		}
 
@@ -401,7 +428,7 @@ func (s *scanner) scanBodyLine(indent int, trimmed string, lineNum int) error {
 
 	parts := strings.Fields(trimmed)
 	if len(parts) == 2 && parts[0] == "use" {
-		if !isIdent(parts[1]) {
+		if !isNamespacedIdent(parts[1]) {
 			return s.errorf(lineNum, "expected block name after 'use', got %q", parts[1])
 		}
 		s.emit(Token{Type: TokKwUse, Text: "use", Line: lineNum})
@@ -470,7 +497,7 @@ func (s *scanner) scanBodyLine(indent int, trimmed string, lineNum int) error {
 		return nil
 	}
 
-	if name, op, ok := parseFieldDecl(trimmed); ok {
+	if name, op, inline, ok := parseFieldDecl(trimmed); ok {
 		s.emit(Token{Type: TokIdent, Text: name, Line: lineNum, Col: indent + 1})
 		switch op {
 		case ":":
@@ -481,6 +508,13 @@ func (s *scanner) scanBodyLine(indent int, trimmed string, lineNum int) error {
 			s.emit(Token{Type: TokPlusEq, Text: "+=", Line: lineNum})
 		case "-=":
 			s.emit(Token{Type: TokMinusEq, Text: "-=", Line: lineNum})
+		}
+		// Emit inline content (e.g. "from(parent[*])" or "from(parent[*]) and {").
+		if inline != "" {
+			s.emit(Token{Type: TokTextLine, Text: inline, Line: lineNum, Col: indent + 1})
+			if strings.HasSuffix(inline, "{") {
+				s.fromBlockDepth++
+			}
 		}
 		s.state = sInFieldContent
 		s.fieldIndent = indent
@@ -497,7 +531,7 @@ func (s *scanner) scanNestedBodyLine(indent int, trimmed string, lineNum int) er
 		return nil
 	}
 
-	if name, op, ok := parseFieldDecl(trimmed); ok {
+	if name, op, inline, ok := parseFieldDecl(trimmed); ok {
 		s.emit(Token{Type: TokIdent, Text: name, Line: lineNum, Col: indent + 1})
 		switch op {
 		case ":":
@@ -508,6 +542,9 @@ func (s *scanner) scanNestedBodyLine(indent int, trimmed string, lineNum int) er
 			s.emit(Token{Type: TokPlusEq, Text: "+=", Line: lineNum})
 		case "-=":
 			s.emit(Token{Type: TokMinusEq, Text: "-=", Line: lineNum})
+		}
+		if inline != "" {
+			s.emit(Token{Type: TokTextLine, Text: inline, Line: lineNum, Col: indent + 1})
 		}
 		s.state = sInNestedFieldContent
 		s.nestedFieldIndent = indent

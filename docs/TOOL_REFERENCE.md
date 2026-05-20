@@ -1,6 +1,6 @@
 # PromptLoom Tool Reference
 
-> Last updated after: **Milestone 20** — `loom lsp` LSP server, Lumine VS Code extension, Neovim setup
+> Last updated after: **Pack v2 Phase 3** — `from()` expression language, multiple inheritance (`inherits A, B, C`), namespaced `use`/`inherits` (`slug.Name`), `TokComma` in lexer
 
 PromptLoom (`loom`) is a developer-first CLI that treats prompts like source code — with inheritance, block composition, validation, and Markdown rendering.
 
@@ -2002,3 +2002,724 @@ loom copy CodeReviewer --with file:.loom/context/architecture-summary.md
 | Package | Purpose |
 |---|---|
 | `internal/summarize` | Core summarization logic — file tree builder, LLM call, output writing |
+
+
+---
+
+## `loom publish`
+
+Uploads a local vault directory (containing `vault.toml` + `.loom` files) to the PromptLoom registry.
+
+```
+loom publish <pack-dir> [--registry <url>] [--secret <token>] [--dry-run]
+```
+
+### Pack Directory Layout
+
+```
+my-pack/
+  vault.toml                    ← required: vault metadata
+  BaseEngineer.prompt.loom
+  Conventions.block.loom
+  CodeReviewer.prompt.loom
+  ...
+```
+
+### `vault.toml` Format
+
+```toml
+[vault]
+name        = "Go Backend"
+slug        = "go-backend"          # URL-safe identifier, used in loom install
+version     = "1.0.0"
+description = "Prompt pack for Go backend development."
+author      = "your-name"
+tags        = ["go", "backend"]
+```
+
+### Flags
+
+| Flag | Description |
+|---|---|
+| `--registry <url>` | Override registry base URL (also `$LOOM_REGISTRY_URL`) |
+| `--secret <token>` | Upload secret (also `$UPLOAD_SECRET`) |
+| `--dry-run` | Preview what would be uploaded without sending |
+
+### File type inference
+
+| File suffix | Uploaded as |
+|---|---|
+| `.block.loom` | `block` |
+| `.overlay.loom` | `overlay` |
+| any other `.loom` | `prompt` |
+
+---
+
+## `loom install`
+
+Downloads a named vault (prompt-pack) from the PromptLoom registry, writes the raw `.loom` source files, and compiles them to rendered `.md` files.
+
+```
+loom install <vault-name> [--registry <url>]
+```
+
+### Directory Layout
+
+After `loom install go-backend`, the following tree is created under the current working directory:
+
+```
+loompack/
+  go-backend/
+    source/           ← raw .loom files exactly as stored in the registry
+      base-go-engineer.prompt.loom
+      go-conventions.block.loom
+      ...
+    compiled/         ← rendered Markdown, one .md per prompt
+      BaseGoEngineer.md
+      GoCodeReviewer.md
+      ...
+    pack.json         ← vault metadata + install timestamp
+```
+
+### Flags
+
+| Flag | Description |
+|---|---|
+| `--registry <url>` | Override registry base URL (also `$LOOM_REGISTRY_URL`) |
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOOM_REGISTRY_URL` | `https://registry.promptloom.dev` | Registry base URL |
+
+### Compilation
+
+The source `.loom` files are compiled locally using the same parse → register → resolve → render pipeline as `loom weave`. Each prompt in the vault produces one `.md` file in `compiled/`. Files that fail to parse are skipped silently — the source is always written first.
+
+### Internal Packages
+
+| Package | Purpose |
+|---|---|
+| `internal/installer` | Fetch bundle, write source files, compile to Markdown, write `pack.json` |
+| `internal/cli/install.go` | Cobra command wiring and output formatting |
+
+---
+
+## Registry Server (`server/`)
+
+The PromptLoom registry is a standalone Go HTTP service in `server/`. It stores vaults and their `.loom` files in PostgreSQL and exposes a REST API.
+
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/vaults` | List all vaults |
+| `GET` | `/api/v1/vaults/{slug}` | Get vault metadata |
+| `GET` | `/api/v1/vaults/{slug}/bundle` | Download full vault bundle (JSON) |
+| `POST` | `/api/v1/vaults` | Upload / replace a vault (requires `X-Upload-Secret` header) |
+| `DELETE` | `/api/v1/vaults/{slug}` | Delete a vault (requires `X-Upload-Secret` header) |
+| `GET` | `/healthz` | Health check |
+
+### Bundle JSON Format
+
+The bundle endpoint returns the vault metadata plus all source files:
+
+```json
+{
+  "name": "Go Backend",
+  "slug": "go-backend",
+  "version": "1.0.0",
+  "description": "Prompt pack for Go backend development",
+  "author": "sayandeep",
+  "tags": ["go", "backend"],
+  "files": [
+    {
+      "path": "base-go-engineer.prompt.loom",
+      "file_type": "prompt",
+      "content": "prompt BaseGoEngineer { ... }"
+    }
+  ]
+}
+```
+
+### Configuration (`.env`)
+
+Copy `server/.env.example` to `server/.env` and fill in values:
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection URL |
+| `PORT` | HTTP port (default `8080`) |
+| `UPLOAD_SECRET` | Shared secret for upload/delete operations |
+| `CORS_ORIGINS` | Allowed CORS origins (`*` for all) |
+
+### Database Setup
+
+```bash
+# Apply schema
+psql "$DATABASE_URL" -f server/internal/db/schema.sql
+```
+
+### Running the server
+
+```bash
+cd server
+cp .env.example .env   # fill in DATABASE_URL etc.
+go run .
+```
+
+### Server Internal Packages
+
+| Package | Purpose |
+|---|---|
+| `server/internal/db` | Connection pool (`pgxpool`) + schema file |
+| `server/internal/models` | `Vault`, `VaultFile`, `Bundle`, `ListItem` types |
+| `server/internal/store` | CRUD — `ListVaults`, `GetVault`, `GetBundle`, `UpsertVault`, `DeleteVault` |
+| `server/internal/handlers` | HTTP handlers, CORS middleware |
+
+---
+
+## LoomLocker (`loomlocker` binary)
+
+A separate binary that protects secrets during AI-assisted development sessions by replacing real values with random tokens. Lives in `loomlocker/`.
+
+### Quick start
+
+```bash
+cd loomlocker && go build -o ~/.local/bin/loomlocker ./cmd/loomlocker
+
+# In your project directory (where .loom.config lives):
+loomlocker start          # prompts for password, starts server + REPL
+```
+
+### Interactive REPL commands
+
+| Command | Description |
+|---|---|
+| `lock` | Replace all secret values with `lk_*` tokens |
+| `unlock` | Re-enter password to restore original values |
+| `status` | Show locked state, file list, secret count |
+| `stop` | Unlock (if needed) and shut down |
+| `help` | Show command list |
+
+### Client commands (from another terminal)
+
+| Command | Description |
+|---|---|
+| `loomlocker lock` | Lock secrets via HTTP |
+| `loomlocker unlock` | Unlock via HTTP (prompts password) |
+| `loomlocker status` | Show current state |
+| `loomlocker stop` | Stop server (prompts password if locked) |
+
+### `.loom.config` reference
+
+```json
+{
+  "secret": [
+    ".loom.secret",
+    ".env:{DB_PASSWORD}",
+    "application.yaml:{kafka.consumer-id}"
+  ],
+  "loomlocker": {
+    "active": true,
+    "lockhost": "http://localhost",
+    "port": "8053",
+    "recoverable": false,
+    "unlock_duration_seconds": 10
+  },
+  "custom": {
+    "runproject": "python server.py",
+    "testproject": "pytest"
+  }
+}
+```
+
+### Secret entry formats
+
+| Format | Effect |
+|---|---|
+| `".loom.secret"` | Lock ALL key=value pairs in the file |
+| `".env:{KEY}"` | Lock only the value of KEY |
+| `"app.yaml:{a.b.c}"` | Lock YAML key at dotted path `a → b → c` |
+
+### Token format
+
+Locked values look like `lk_7f3a9b2c1d4e5a6b` (recognizable, safe to inspect).
+
+### Crypto
+
+- Non-recoverable (default): random AES-256 key in memory; if server crashes while locked, restore from git
+- Recoverable: Argon2id key derivation from password → AES-256-GCM → `.loom.secret.lock`
+- Password verification: bcrypt (cost=12), in-memory only
+
+### HTTP API
+
+Base: `http://localhost:{port}/api`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/ping` | none | Health check |
+| `GET` | `/status` | none | Detailed state |
+| `POST` | `/lock` | none | Lock all secrets |
+| `POST` | `/unlock` | `{"password":"..."}` | Unlock + start timer |
+| `POST` | `/autolock` | none | Immediate relock (for language libs) |
+| `POST` | `/stop` | password if locked | Unlock + shutdown |
+
+### Internal packages
+
+| Package | Purpose |
+|---|---|
+| `loomlocker/internal/config` | `.loom.config` JSON parser, walk-up finder |
+| `loomlocker/internal/crypto` | AES-256-GCM, Argon2id key derivation, bcrypt, random tokens |
+| `loomlocker/internal/locker` | `State` (in-memory mapping), env/YAML file lock/unlock logic |
+| `loomlocker/internal/server` | HTTP server, lock/unlock state machine, auto-relock timer |
+| `loomlocker/internal/repl` | Interactive REPL loop |
+| `loomlocker/cli` | Cobra commands: `start`, `lock`, `unlock`, `stop`, `status` |
+
+---
+
+## `loom execute`
+
+Run a custom shell command defined in `.loom.config → custom`. With `--unlock`, temporarily restores secrets for the startup window.
+
+```
+loom execute <custom-command> [--unlock]
+```
+
+### Flow with `--unlock`
+
+1. Check if loomlocker is running (`GET /api/ping`)
+2. If running and **locked**: prompt for password (masked) → `POST /api/unlock`
+3. If running and **already unlocked**: skip (idempotent)
+4. If **not running**: skip unlock, run normally
+5. Run the shell command
+6. Loomlocker's auto-relock timer handles re-locking independently
+
+### Example
+
+```bash
+# .loom.config has: "custom": { "runproject": "python server.py" }
+loom execute runproject --unlock
+# → prompts password → unlocks → runs python server.py → auto-relocks in 10s
+```
+
+---
+
+## Phase 3 — New Workspace Structure
+
+### New `loom init` workspace layout
+
+`loom init` now creates a structured `loom/` workspace directory instead of placing files at the project root:
+
+```
+loom/
+  src/
+    prompts/     ← .prompt.loom files
+    blocks/      ← .block.loom files
+    overlays/    ← .overlay.loom files
+  loompack/      ← installed packs (loom install)
+  context/
+    docs/        ← context files (REPO.md, TODO.md, etc.)
+    REPO.md      ← project context for AI sessions
+    TODO.md      ← current tasks
+  .export.loom   ← export rules
+  .dependency.loom ← pack dependency declarations
+  .loom.env      ← environment variable stubs (not committed)
+  .loom.config   ← server connection config (not committed)
+  .loom.secret   ← API keys (not committed, .gitignore'd)
+```
+
+`loom.toml` is created in the project root with paths pointing into `loom/src/`.
+
+`.gitignore` is updated to exclude `loom/.loom.secret`, `loom/.loom.config`, and `loom/loompack/`.
+
+`loom install` auto-detects the workspace: if `loom/` exists, packs go to `loom/loompack/`; otherwise the legacy `loompack/` path is used.
+
+---
+
+### `.export.loom` — Export rules
+
+Declares which prompt files to include when publishing a vault.
+
+**Location:** `loom/.export.loom`
+
+**Syntax:**
+
+```
+export `pkg`
+export `pkg` match `glob`
+export `pkg` match `glob` except `file`
+export `pkg` except match `glob`
+```
+
+**Example:**
+
+```
+export `go-backend`
+export `reviewers` match `*Reviewer*`
+export `security-pack` match `*.block.loom` except `internal-rules.block.loom`
+```
+
+**Rules:**
+- Bare `export \`pkg\`` — include all `.loom` files in the source directories
+- `match \`glob\`` — restrict to files matching the glob pattern
+- `except match \`glob\`` — exclude files matching the glob
+- `except \`file\`` — exclude a specific file
+
+**Internal package:** `internal/export`
+
+| Function | Description |
+|---|---|
+| `ParseFile(path)` | Parse `.export.loom` → `[]Rule` |
+| `Rule.Match(baseDir)` | Apply glob rules → list of matching file paths |
+| `WriteDefault(path)` | Write empty template to a new project |
+
+---
+
+### `.dependency.loom` — Pack dependencies
+
+Declares remote vault dependencies for a project. Format mirrors `requirements.txt`.
+
+**Location:** `loom/.dependency.loom`
+
+**Syntax:**
+
+```
+# one dependency per line; comments with #
+go-backend==1.0.0
+security-essentials>=0.3.0
+reviewers~=2.1
+```
+
+**Supported operators:** `==`, `>=`, `>`, `<=`, `<`, `~=`
+
+**Checking installed state:**
+
+`loom inspect` reads `.dependency.loom` and warns when a declared dependency is not found in `loompack/` (or `loom/loompack/`).
+
+**Internal package:** `internal/deps`
+
+| Function | Description |
+|---|---|
+| `ParseFile(path)` | Parse `.dependency.loom` → `[]Dependency` |
+| `Installed(packDir)` | Scan `loompack/` → `map[slug]version` |
+| `Missing(deps, installed)` | Return deps not satisfied by installed set |
+| `WriteDefault(path)` | Write empty template to a new project |
+
+---
+
+## Phase 4 — Language Libraries
+
+Client libraries for integrating LoomLocker into application startup. All libraries read `.loom.config` (walking up the directory tree) and fall back to `LOOM_HOST` / `LOOM_PORT` env vars. If loomlocker is not running, all operations are transparent no-ops.
+
+### bloompy (Python)
+
+**Location:** `libs/bloompy/`  
+**Install:** `pip install bloompy` or `pip install -e libs/bloompy`  
+**Requires:** Python 3.8+, optional `requests` (falls back to stdlib `urllib`)
+
+```python
+from bloompy import Safe
+from dotenv import load_dotenv
+
+Safe().unlock().execute(load_dotenv).autolock()
+
+# Context manager form:
+with Safe().unlock() as safe:
+    load_dotenv()
+# autolock called automatically on __exit__
+
+app.run()
+```
+
+**API:**
+
+| Method | Description |
+|---|---|
+| `Safe(config=None)` | Auto-detect config from `.loom.config` or env vars |
+| `.silent()` | Suppress log output |
+| `.unlock(password=None)` | Unlock; falls back to `LOOM_SESSION_PASSWORD` env var |
+| `.execute(fn)` | Call `fn()` — always runs regardless of lock state |
+| `.autolock()` | Signal startup complete → trigger immediate relock |
+| `with Safe().unlock() as safe:` | Context manager; autolock on exit |
+
+---
+
+### gloom (Go)
+
+**Location:** `libs/gloom/`  
+**Module:** `github.com/sayandeepgiri/promptloom/libs/gloom`  
+**Requires:** Go 1.22+, no external dependencies
+
+```go
+import "github.com/sayandeepgiri/promptloom/libs/gloom"
+
+func main() {
+    gloom.NewSafe().
+        Unlock().           // LOOM_SESSION_PASSWORD fallback
+        Execute(func() {
+            godotenv.Load()
+        }).
+        Autolock()
+
+    server.Start()
+}
+```
+
+**API:**
+
+| Function / Method | Description |
+|---|---|
+| `NewSafe()` | Auto-detect config from `.loom.config` or env vars |
+| `WithConfig(cfg)` | Explicit config |
+| `(*Safe).Silent()` | Suppress log output |
+| `(*Safe).Unlock(password...)` | Unlock; falls back to `LOOM_SESSION_PASSWORD` |
+| `(*Safe).Execute(fn func())` | Run `fn` — always called |
+| `(*Safe).Autolock()` | Signal startup complete → immediate relock |
+
+---
+
+### loomj (Java)
+
+**Location:** `libs/loomj/`  
+**Artifact:** `dev.promptloom:loomj:0.1.0`  
+**Requires:** Java 11+ (`java.net.http.HttpClient`), no external dependencies
+
+```java
+import dev.promptloom.loomj.Safe;
+
+public class App {
+    public static void main(String[] args) {
+        new Safe()
+            .unlock()                    // LOOM_SESSION_PASSWORD fallback
+            .execute(() -> Dotenv.load())
+            .autolock();
+
+        server.start();
+    }
+}
+```
+
+**API:**
+
+| Method | Description |
+|---|---|
+| `new Safe()` | Auto-detect config from `.loom.config` or env vars |
+| `new Safe(LockerConfig)` | Explicit config |
+| `.silent()` | Suppress log output |
+| `.unlock(String... password)` | Unlock; falls back to `LOOM_SESSION_PASSWORD` |
+| `.execute(Runnable fn)` | Run `fn` — always called |
+| `.autolock()` | Signal startup complete → immediate relock |
+
+**Config (`LockerConfig`):**
+
+| Method | Description |
+|---|---|
+| `LockerConfig.fromEnv()` | Load from `.loom.config` + env var overrides |
+| `getHost()` / `getPort()` | Connection settings |
+| `baseUrl()` | `host:port/api` |
+
+---
+
+### Common configuration
+
+All three libraries resolve config in the same order:
+
+1. `.loom.config` found by walking up from the working directory (JSON, `loomlocker.lockhost` / `loomlocker.port`)
+2. `LOOM_HOST` / `LOOM_PORT` environment variables (override file values)
+3. Built-in defaults: `http://localhost:8053`
+
+Password resolution order for `unlock()`:
+
+1. Argument passed directly to `unlock()`
+2. `LOOM_SESSION_PASSWORD` environment variable
+3. Skip — secrets stay locked, `execute` still runs normally
+
+---
+
+## Pack v2 Phase 3 — DSL Extensions
+
+### Multiple Inheritance
+
+Prompts can now inherit from multiple parents:
+
+```
+prompt Combined inherits ReviewerA, ReviewerB {
+  instructions := from(parent[*])
+}
+```
+
+- `parent[0]` = first named parent (`ReviewerA`)
+- `parent[1]` = second named parent (`ReviewerB`)
+- If a field is defined in multiple parents and the child has no `:=` for it: first parent wins + warning (Phase 4 resolver)
+
+Namespaced parents (installed packs):
+
+```
+prompt MyPrompt inherits go-backend.GoCodeReviewer {
+}
+```
+
+### Namespaced `use`
+
+Block references in `use` now accept `slug.BlockName`:
+
+```
+prompt Foo {
+  use go-backend.GoConventions
+}
+```
+
+### `from()` Expression Language
+
+The `from()` expression is used on the RHS of `:=` to compose values from parents.
+
+| Syntax | Meaning |
+|---|---|
+| `from(parent[*])` | All items from all parents |
+| `from(parent[0])` | From first parent only |
+| `from(parent[1])` | From second parent only |
+| `from(pack.Name)` | From a specific named parent |
+| `parent[0].instructions[*]` | Explicit field + subscript from parent 0 |
+| `parent[0].instructions[0..5]` | Items 0–4 from parent 0 |
+| `from(parent[*]) and { ... }` | All parents + additional inline items |
+| `from(parent[0]) and from(parent[1])` | Explicit two-parent merge |
+
+**Subscript notation:**
+
+| Notation | Meaning |
+|---|---|
+| `[*]` | All items |
+| `[N]` | Single item at 0-based index N |
+| `[N..M]` | Items N..(M-1), exclusive end |
+
+**Inline literal block:**
+
+```
+instructions := from(parent[*]) and {
+  - new instruction 1
+  - new instruction 2
+}
+```
+
+**Type rules (enforced at resolve time in Phase 4):**
+- `from(parent[*])` on a scalar field = type error (vector on scalar)
+- `and { ... }` always produces a vector
+- `from(parent[0])` on a scalar = valid (single source)
+
+---
+
+## Pack v2 Phase 4 — Resolver v2 (Multi-Parent Resolution)
+
+### Recursive Resolver
+
+The resolver was rewritten from a linear chain-walk to a recursive model (`resolveNode`). Each parent is fully resolved before the child merges from it, enabling true multi-parent DAG traversal.
+
+### Multi-Parent Merge Semantics
+
+When a prompt inherits multiple parents and does **not** use `from()` for a field:
+
+- **First-parent-wins**: the resolved value from `parent[0]` is used
+- A warning is recorded in `ResolvedPrompt.Warnings` when two or more parents both define the same field
+
+When a prompt uses `from()`, explicit merge control overrides first-parent-wins.
+
+### Deduplication
+
+After all `from()` expressions are evaluated and list items collected, exact-string-match duplicates are removed (first occurrence kept). This applies to all list fields: `instructions`, `constraints`, `examples`, `format`.
+
+### `InheritsChain`
+
+For multi-parent prompts, `InheritsChain` contains all ancestor names from all parent branches, deduplicated, in a breadth-first order, with the child prompt last. Example: `["A", "B", "C"]` for `C inherits A, B`.
+
+### Cycle Detection
+
+Cycle detection uses an `inProgress` map keyed by `resolvedNamespace:promptName`. Diamond inheritance (two parents sharing a common grandparent) is handled correctly — the grandparent is resolved once and reused.
+
+### Namespace-Aware Resolution
+
+When resolving a prompt from an installed pack (e.g. `go-backend.GoCodeReviewer`), bare parent names inside that prompt are resolved within the `go-backend` namespace first, then fall back to local.
+
+### `AllEnvBlocks`
+
+`ResolvedPrompt.AllEnvBlocks` accumulates all `env { }` blocks from the full inheritance chain (root-first). This is used by `ResolveWithOptions` when `opts.Env` is set to find and apply the matching env block.
+
+### Type Errors at Resolve Time
+
+| Expression | Field type | Result |
+|---|---|---|
+| `from(parent[*])` | scalar | error: vector on scalar field |
+| `from(parent[0])` | scalar | valid |
+| `from(parent[*])` | list | valid |
+| `and { ... }` | scalar | error |
+| `and { ... }` | list | valid |
+
+---
+
+## Pack v2 Phase 5 — `loom install` Recursive Dependency Resolution
+
+### `loom install <slug>`
+
+`loom install` now performs recursive transitive dependency installation:
+
+1. Fetches and installs the requested pack
+2. Reads the pack's `.dependency.loom`
+3. For each dependency not already installed at a satisfying version → installs recursively
+4. Detects version conflicts across the full dependency graph
+5. Writes / updates `loompack.lock` with exact installed versions
+
+### `.dependency.loom` — `as` alias support
+
+```
+webdev==0.0.1 as dev
+mypack as mp
+```
+
+The `as <alias>` clause scopes the namespace alias to the declaring pack's internal prompts only.
+
+### Version Constraint Operators
+
+| Operator | Meaning |
+|---|---|
+| `==1.0.0` | Exact version |
+| `>=1.0.0` | Minimum version |
+| `>1.0.0` | Greater than |
+| `<=2.0.0` | Maximum version |
+| `<2.0.0` | Less than |
+| `~=1.4.2` | Compatible release: `>=1.4.2` and same `major.minor` (1.4.x) |
+| _(none)_ | Any version |
+
+### `loompack.lock`
+
+Written to `loompack.lock` in the project root after every `loom install`. Records exact installed versions and which pack required each dependency.
+
+```toml
+# loompack.lock — generated by loom install; do not edit manually
+
+[[pack]]
+slug = "go-backend"
+version = "1.0.0"
+
+[[pack]]
+slug = "python"
+version = "2.1.0"
+required_by = ["go-backend"]
+```
+
+### Conflict Detection
+
+If two packs require incompatible versions of the same dependency (e.g. `a` needs `shared>=2.0.0` and `b` needs `shared<2.0.0`), `loom install` prints all conflicts and exits 1. The `loompack.lock` is still written with the installed state for manual inspection.
+
+### CLI Output
+
+Transitive dependencies are shown with a `↳` prefix and `(transitive dependency)` label. The tip and file listings are only shown for the directly requested pack.
+
+### Packages Involved
+
+| Package | Role |
+|---|---|
+| `internal/deps/deps.go` | `.dependency.loom` parsing, `ParseContent`, `as` alias |
+| `internal/deps/version.go` | Semver parsing and constraint checking (`Satisfies`) |
+| `internal/deps/packlock.go` | `loompack.lock` read/write, `Upsert`, `Find` |
+| `internal/installer/recurse.go` | `InstallWithDeps`, conflict detection, recursive traversal |

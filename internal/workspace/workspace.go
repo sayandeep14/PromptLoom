@@ -53,8 +53,11 @@ func Scan(dir string) (*Info, error) {
 
 	info := &Info{Dir: abs}
 
-	info.ClaudeMD, info.HasClaudeMD = readFile(abs, "CLAUDE.md")
-	info.TodoMD, info.HasTodoMD = readFile(abs, "TODO.md")
+	// Support both old (CLAUDE.md/TODO.md at root) and new (loom/context/) structures.
+	info.ClaudeMD, info.HasClaudeMD = readFileMulti(abs,
+		"loom/context/REPO.md", "CLAUDE.md")
+	info.TodoMD, info.HasTodoMD = readFileMulti(abs,
+		"loom/context/TODO.md", "TODO.md")
 
 	detectStack(abs, info)
 	detectAITools(abs, info)
@@ -216,6 +219,16 @@ func detectAITools(dir string, info *Info) {
 			}
 		}
 	}
+}
+
+// readFileMulti tries each candidate path in order and returns the first found.
+func readFileMulti(dir string, candidates ...string) (string, bool) {
+	for _, name := range candidates {
+		if content, ok := readFile(dir, name); ok {
+			return content, true
+		}
+	}
+	return "", false
 }
 
 func readFile(dir, name string) (string, bool) {

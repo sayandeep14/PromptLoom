@@ -17,8 +17,8 @@ type Operator int
 const (
 	OpDefine   Operator = iota // :   — set field value (override if inherited)
 	OpOverride                 // :=  — unconditionally replace inherited value
-	OpAppend                   // +=  — append to inherited value
-	OpRemove                   // -=  — remove items from inherited list
+	OpAppend                   // +=  — append to inherited value (deprecated; use from() in v2)
+	OpRemove                   // -=  — remove items from inherited list (deprecated; no v2 equivalent)
 )
 
 func (o Operator) String() string {
@@ -49,12 +49,66 @@ func (p Position) String() string {
 	return fmt.Sprintf("%s:%d", p.File, p.Line)
 }
 
+// SubscriptKind distinguishes the three subscript notations inside a from() expression.
+type SubscriptKind int
+
+const (
+	SubAll   SubscriptKind = iota // [*]     — all items
+	SubIndex                      // [N]     — single item at 0-based index N
+	SubRange                      // [N..M]  — items N..(M-1), exclusive end
+)
+
+// Subscript is a parsed subscript inside a from() expression.
+type Subscript struct {
+	Kind SubscriptKind
+	N    int // SubIndex: the index; SubRange: start (inclusive)
+	M    int // SubRange: end (exclusive)
+}
+
+// FromUnitKind distinguishes the four forms a from() unit can take.
+type FromUnitKind int
+
+const (
+	// from(parent[sub]) — pull field values from indexed parents
+	FromParentRef FromUnitKind = iota
+	// from(pack.Name) or from(BareName) — pull from a specific named parent
+	FromNamedRef
+	// parent[sub].fieldName[sub] — explicit source + field + subscript
+	FromFieldRef
+	// { - item ... } — literal inline items to append
+	FromLiteral
+)
+
+// FromUnit is one segment of a from() expression, joined by "and".
+type FromUnit struct {
+	Kind FromUnitKind
+	// FromParentRef: which parent(s) to pull the current field from
+	ParentSub Subscript
+	// FromNamedRef: the named parent reference (bare or slug.Name)
+	ParentName string
+	// FromFieldRef: source parent subscript, field name, and field subscript
+	SourceSub Subscript
+	FieldName string
+	FieldSub  Subscript
+	// FromLiteral: the inline items (bullet prefixes already stripped)
+	Items []string
+	Pos   Position
+}
+
+// FromExpression is a parsed from() expression on the RHS of a := field assignment.
+type FromExpression struct {
+	Units []FromUnit
+	Pos   Position
+}
+
 // FieldOperation is one field assignment in a prompt or block body.
 // Value holds raw content lines as emitted by the lexer (may include "- " prefix).
+// FromExpr is non-nil when the := RHS contains a from() expression.
 type FieldOperation struct {
 	FieldName string
 	Op        Operator
 	Value     []string
+	FromExpr  *FromExpression // non-nil when Op==OpOverride and RHS uses from() syntax
 	Pos       Position
 }
 
@@ -100,9 +154,14 @@ type CapabilitiesBlock struct {
 
 // Node is a parsed prompt or block declaration.
 type Node struct {
-	Kind         NodeKind
-	Name         string
-	Parent       string   // set for prompts with "inherits Parent"
+	Kind    NodeKind
+	Name    string
+	// Parent holds the first (or only) parent name for backward compatibility.
+	// For single-parent prompts it equals Parents[0]; for base prompts it is "".
+	Parent  string
+	// Parents holds all declared parent names in order (v2 multiple inheritance).
+	// len==0 for base prompts, len==1 for single-parent, len>1 for multi-parent.
+	Parents      []string
 	Uses         []string // ordered block names from "use BlockName" statements
 	Fields       []FieldOperation
 	Pos          Position
@@ -208,6 +267,11 @@ type ResolvedPrompt struct {
 	UnresolvedTokens []string
 	// Fingerprint is the stable SHA-256 fingerprint of the resolved prompt fields.
 	Fingerprint string
+	// Warnings holds non-fatal resolution notices (e.g. multi-parent field conflicts).
+	Warnings []string
+	// AllEnvBlocks accumulates env blocks from the full inheritance chain (root-first).
+	// Used by the resolver to apply opts.Env; not rendered.
+	AllEnvBlocks []EnvBlock
 
 	// M22 fields
 	Kind           string   // value of `kind:` scalar field

@@ -339,7 +339,19 @@ func (m *graphViewModel) renderDetail(width, height int) []string {
 	var all []string
 
 	// ── Header ──
-	all = append(all, PromptNameStyle.Render(name))
+	header := PromptNameStyle.Render(name)
+	if m.g.HasCycles() {
+		cycleSet := make(map[string]bool)
+		for _, c := range m.g.Cycles() {
+			for _, n := range c {
+				cycleSet[n] = true
+			}
+		}
+		if cycleSet[name] {
+			header += "  " + ErrorStyle.Render("↻ cycle")
+		}
+	}
+	all = append(all, header)
 	all = append(all, hr)
 	all = append(all, "")
 
@@ -350,10 +362,16 @@ func (m *graphViewModel) renderDetail(width, height int) []string {
 	}
 	all = append(all, detailRow("Kind", MutedStyle.Render(kindStr)))
 
-	if node.Parent != "" {
-		all = append(all, detailRow("Parent", InheritsStyle.Render("▸ "+node.Parent)))
-	} else {
+	switch len(node.Parents) {
+	case 0:
 		all = append(all, detailRow("Parent", MutedStyle.Render("—")))
+	case 1:
+		all = append(all, detailRow("Parent", InheritsStyle.Render("▸ "+node.Parents[0])))
+	default:
+		for i, p := range node.Parents {
+			label := fmt.Sprintf("parent[%d]", i)
+			all = append(all, detailRow(label, InheritsStyle.Render("▸ "+p)))
+		}
 	}
 
 	children := m.g.Children(name)

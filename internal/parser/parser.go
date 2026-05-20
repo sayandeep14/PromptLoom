@@ -87,11 +87,21 @@ func (p *parser) parseNode() (*ast.Node, error) {
 
 	if node.Kind == ast.KindPrompt && p.peek().Type == lexer.TokKwInherits {
 		p.next()
-		parentTok, err := p.expect(lexer.TokIdent)
-		if err != nil {
-			return nil, err
+		// Collect comma-separated parent names: Ident (Comma Ident)*.
+		for {
+			parentTok, err := p.expect(lexer.TokIdent)
+			if err != nil {
+				return nil, err
+			}
+			node.Parents = append(node.Parents, parentTok.Text)
+			if p.peek().Type != lexer.TokComma {
+				break
+			}
+			p.next() // consume comma
 		}
-		node.Parent = parentTok.Text
+		if len(node.Parents) > 0 {
+			node.Parent = node.Parents[0] // backward compat
+		}
 	}
 
 	if _, err := p.expect(lexer.TokLBrace); err != nil {
@@ -230,6 +240,16 @@ func (p *parser) parseFieldOp() (*ast.FieldOperation, error) {
 
 	for p.peek().Type == lexer.TokTextLine {
 		fo.Value = append(fo.Value, p.next().Text)
+	}
+
+	// If this is a := assignment and the first value line looks like a from()
+	// expression, parse it into a structured FromExpression.
+	if fo.Op == ast.OpOverride && len(fo.Value) > 0 && looksLikeFromExpr(fo.Value[0]) {
+		fe, err := parseFromExpression(fo.Value, fo.Pos)
+		if err != nil {
+			return nil, fmt.Errorf("%s:%d: in from() expression for %q: %w", p.filename, fo.Pos.Line, fo.FieldName, err)
+		}
+		fo.FromExpr = fe
 	}
 
 	return fo, nil

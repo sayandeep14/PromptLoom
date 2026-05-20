@@ -126,8 +126,10 @@ func RunList(cwd string, onlyPrompts, onlyBlocks bool) string {
 		for _, p := range prompts {
 			name := PromptNameStyle.Render(fmt.Sprintf("%-30s", p.Name))
 			var meta []string
-			if p.Parent != "" {
-				meta = append(meta, InheritsStyle.Render("inherits "+p.Parent))
+			if len(p.Parents) == 1 {
+				meta = append(meta, InheritsStyle.Render("inherits "+p.Parents[0]))
+			} else if len(p.Parents) > 1 {
+				meta = append(meta, InheritsStyle.Render("inherits "+strings.Join(p.Parents, ", ")))
 			}
 			if len(p.Variants) > 0 {
 				var names []string
@@ -406,30 +408,55 @@ func renderProjectTraceTree(reg *registry.Registry, focus string) (string, error
 	prompts := reg.Prompts()
 	sort.Slice(prompts, func(i, j int) bool { return prompts[i].Name < prompts[j].Name })
 
+	// Build parent→children map using the full Parents slice so that a prompt
+	// with multiple parents is registered as a child of each of them.
+	promptSet := make(map[string]bool, len(prompts))
+	for _, p := range prompts {
+		promptSet[p.Name] = true
+	}
+
 	children := map[string][]*ast.Node{}
 	roots := []*ast.Node{}
 	for _, prompt := range prompts {
-		if prompt.Parent == "" {
-			roots = append(roots, prompt)
-			continue
+		isRoot := true
+		for _, parentName := range prompt.Parents {
+			if promptSet[parentName] {
+				children[parentName] = append(children[parentName], prompt)
+				isRoot = false
+				// Don't break — register as child of every resolvable parent.
+			}
 		}
-		children[prompt.Parent] = append(children[prompt.Parent], prompt)
+		if isRoot {
+			roots = append(roots, prompt)
+		}
 	}
 	sort.Slice(roots, func(i, j int) bool { return roots[i].Name < roots[j].Name })
 	for parent := range children {
 		sort.Slice(children[parent], func(i, j int) bool { return children[parent][i].Name < children[parent][j].Name })
 	}
 
+	// Detect cycles.
+	g := igraph.Build(reg)
 	var b strings.Builder
+
+	if g.HasCycles() {
+		b.WriteString("\n  " + ErrorStyle.Render("⚠ Inheritance cycles detected:") + "\n")
+		for _, cycle := range g.Cycles() {
+			b.WriteString("    " + ErrorStyle.Render("↻") + " " + strings.Join(cycle, " → ") + "\n")
+		}
+		b.WriteString("\n")
+	}
+
 	if focus == "" {
 		b.WriteString("\n  " + HeaderStyle.Render("Project Tree") + "\n\n")
 	} else {
 		b.WriteString("\n  " + HeaderStyle.Render("Project Tree") + "   " + PromptNameStyle.Render(focus) + "\n\n")
 	}
 
+	visiting := make(map[string]bool)
 	for i, root := range roots {
 		lastRoot := i == len(roots)-1
-		renderPromptTreeNode(&b, root, children, focus, "", lastRoot, true)
+		renderPromptTreeNode(&b, root, children, focus, "", lastRoot, true, visiting)
 		if !lastRoot {
 			b.WriteByte('\n')
 		}
@@ -438,7 +465,7 @@ func renderProjectTraceTree(reg *registry.Registry, focus string) (string, error
 	return b.String(), nil
 }
 
-func renderPromptTreeNode(b *strings.Builder, node *ast.Node, children map[string][]*ast.Node, focus, prefix string, isLast bool, isRoot bool) {
+func renderPromptTreeNode(b *strings.Builder, node *ast.Node, children map[string][]*ast.Node, focus, prefix string, isLast bool, isRoot bool, visiting map[string]bool) {
 	branch := ""
 	nextPrefix := prefix
 	if !isRoot {
@@ -450,13 +477,20 @@ func renderPromptTreeNode(b *strings.Builder, node *ast.Node, children map[strin
 		}
 	}
 
+	cycleMarker := ""
+	if visiting[node.Name] {
+		// Back-edge: this node is an ancestor of itself — cycle.
+		b.WriteString("  " + prefix + branch + ErrorStyle.Render(node.Name+" ↩ [cycle]") + "\n")
+		return
+	}
+
 	rendered := TextStyle.Render(node.Name)
 	if node.Name == focus {
 		rendered = FocusedPromptStyle.Render(node.Name)
-	} else if node.Parent == "" {
+	} else if len(node.Parents) == 0 {
 		rendered = PromptNameStyle.Render(node.Name)
 	}
-	b.WriteString("  " + prefix + branch + rendered + "\n")
+	b.WriteString("  " + prefix + branch + rendered + cycleMarker + "\n")
 
 	var extras []string
 	for _, use := range node.Uses {
@@ -474,10 +508,13 @@ func renderPromptTreeNode(b *strings.Builder, node *ast.Node, children map[strin
 		}
 		b.WriteString("  " + nextPrefix + extraBranch + BlockNameStyle.Render(extra) + "\n")
 	}
+
+	visiting[node.Name] = true
 	for _, child := range childNodes {
 		index++
-		renderPromptTreeNode(b, child, children, focus, nextPrefix, index == total, false)
+		renderPromptTreeNode(b, child, children, focus, nextPrefix, index == total, false, visiting)
 	}
+	delete(visiting, node.Name)
 }
 
 func sourceOpName(contrib ast.SourceContribution) string {
@@ -2784,14 +2821,24 @@ func RunGraph(name, format string, unused bool, cwd string) (string, bool) {
 		return g.DOT(), false
 	default: // ascii
 		var b strings.Builder
-		b.WriteString("  " + HeaderStyle.Render("Dependency Graph") + "\n")
-		b.WriteString("  " + Divider(60) + "\n")
+		if g.HasCycles() {
+			b.WriteString("  " + ErrorStyle.Render("⚠ Inheritance cycles detected — fix before rendering:") + "\n")
+			for _, cycle := range g.Cycles() {
+				b.WriteString("    " + ErrorStyle.Render("↻") + " " + strings.Join(cycle, " → ") + "\n")
+			}
+			b.WriteString("\n")
+		}
 		if name != "" {
-			b.WriteString(g.ASCIISubgraph(name))
+			b.WriteString("  " + HeaderStyle.Render("Ancestor Tree") + "   " + PromptNameStyle.Render(name) + "\n")
+			b.WriteString("  " + Divider(60) + "\n")
+			b.WriteString(g.AncestorTree(name))
 		} else {
+			b.WriteString("  " + HeaderStyle.Render("Dependency Graph") + "\n")
+			b.WriteString("  " + Divider(60) + "\n")
 			b.WriteString(g.ASCII())
 		}
-		return b.String(), false
+		hasErr := g.HasCycles()
+		return b.String(), hasErr
 	}
 }
 

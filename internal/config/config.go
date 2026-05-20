@@ -154,6 +154,40 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// WorkspaceTOML is the loom.toml written by `loom init` for the new loom/ workspace structure.
+const WorkspaceTOML = `[project]
+name = "my-project"
+version = "0.1.0"
+
+[paths]
+prompts  = "loom/src/prompts"
+blocks   = "loom/src/blocks"
+overlays = "loom/src/overlays"
+out      = "loom/dist"
+
+[render]
+default_format      = "markdown"
+include_metadata    = false
+include_sourcemap   = false
+include_fingerprint = false
+
+[validation]
+require_objective        = true
+require_format           = true
+require_contract         = false
+warn_on_empty_context    = true
+warn_on_deep_inheritance = true
+max_inheritance_depth    = 3
+smell_constraint_limit   = 25
+token_limit_warn         = 0
+
+[testing]
+provider      = "gemini"
+api_key_env   = "GEMINI_API_KEY"
+default_model = "gemini-2.5-flash"
+timeout_sec   = 30
+`
+
 const DefaultTOML = `[project]
 name = "my-prompts"
 version = "0.1.0"

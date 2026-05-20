@@ -82,4 +82,7 @@ func init() {
 	rootCmd.AddCommand(recipeCmd)
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(summarizeCmd)
+	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(publishCmd)
+	rootCmd.AddCommand(executeCmd)
 }

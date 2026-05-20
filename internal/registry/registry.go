@@ -4,10 +4,19 @@ package registry
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sayandeepgiri/promptloom/internal/ast"
 	"github.com/sayandeepgiri/promptloom/internal/lexer"
 )
+
+// NamespaceResolver resolves namespace-qualified prompt and block names
+// ("slug.Name") from installed packs. Implemented by namespacereg.NamespaceRegistry.
+type NamespaceResolver interface {
+	LookupPrompt(slug, name string) (*ast.Node, bool)
+	LookupBlock(slug, name string) (*ast.Node, bool)
+	LookupOverlay(slug, name string) (*ast.Node, bool)
+}
 
 // Registry holds all known prompts and blocks indexed by name.
 type Registry struct {
@@ -15,6 +24,7 @@ type Registry struct {
 	blocks     map[string]*ast.Node
 	overlays   map[string]*ast.Node
 	globalVars []lexer.VarEntry // from .vars.loom files
+	ns         NamespaceResolver // optional; set by loader after scanning loompack/
 }
 
 // New returns an empty Registry.
@@ -115,3 +125,62 @@ func (r *Registry) RegisterGlobalVars(vars []lexer.VarEntry) {
 
 // GlobalVars returns all project-level variable declarations from .vars.loom files.
 func (r *Registry) GlobalVars() []lexer.VarEntry { return r.globalVars }
+
+// SetNamespaceRegistry attaches an installed-pack resolver. Called by loader after
+// scanning loompack/ so that pack-qualified lookups work without a circular import.
+func (r *Registry) SetNamespaceRegistry(ns NamespaceResolver) { r.ns = ns }
+
+// LookupPromptFull resolves a prompt name with namespace awareness.
+// Priority:
+//  1. Explicit "slug.Name" — resolved directly against installed packs.
+//  2. Bare name + non-empty contextNS — resolved within the named pack first,
+//     then falls back to the local project registry.
+//  3. Bare name with no context — local project registry only.
+//
+// Returns (node, resolvedNamespace, found). resolvedNamespace is the pack slug
+// when the match came from an installed pack, or "" for local project nodes.
+func (r *Registry) LookupPromptFull(name, contextNS string) (*ast.Node, string, bool) {
+	if idx := strings.IndexByte(name, '.'); idx > 0 {
+		slug, localName := name[:idx], name[idx+1:]
+		if r.ns != nil {
+			if n, ok := r.ns.LookupPrompt(slug, localName); ok {
+				return n, slug, true
+			}
+		}
+		return nil, "", false
+	}
+	// Bare name: try contextNS pack first.
+	if contextNS != "" && r.ns != nil {
+		if n, ok := r.ns.LookupPrompt(contextNS, name); ok {
+			return n, contextNS, true
+		}
+	}
+	// Fall back to local project.
+	if n, ok := r.prompts[name]; ok {
+		return n, "", true
+	}
+	return nil, "", false
+}
+
+// LookupBlockFull resolves a block name with namespace awareness.
+// Same priority as LookupPromptFull.
+func (r *Registry) LookupBlockFull(name, contextNS string) (*ast.Node, bool) {
+	if idx := strings.IndexByte(name, '.'); idx > 0 {
+		slug, localName := name[:idx], name[idx+1:]
+		if r.ns != nil {
+			if n, ok := r.ns.LookupBlock(slug, localName); ok {
+				return n, true
+			}
+		}
+		return nil, false
+	}
+	if contextNS != "" && r.ns != nil {
+		if n, ok := r.ns.LookupBlock(contextNS, name); ok {
+			return n, true
+		}
+	}
+	if n, ok := r.blocks[name]; ok {
+		return n, true
+	}
+	return nil, false
+}
