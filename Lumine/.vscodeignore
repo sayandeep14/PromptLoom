@@ -1,0 +1,10 @@
+src/**
+build.js
+tsconfig.json
+node_modules/**
+.vscode/**
+.claude/**
+.git/**
+.gitignore
+plan.md
+**/*.map

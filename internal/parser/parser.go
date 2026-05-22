@@ -199,6 +199,14 @@ func (p *parser) parseBody(node *ast.Node) error {
 			}
 			node.EnvBlocks = append(node.EnvBlocks, *eb)
 
+		case lexer.TokKwTags:
+			p.next() // consume TokKwTags
+			rawTok, err := p.expect(lexer.TokTextLine)
+			if err != nil {
+				return err
+			}
+			node.Tags = parseTagList(rawTok.Text)
+
 		case lexer.TokIdent:
 			fieldOp, err := p.parseFieldOp()
 			if err != nil {
@@ -458,6 +466,23 @@ func stripBullets(lines []string) []string {
 	out := make([]string, len(lines))
 	for i, line := range lines {
 		out[i] = strings.TrimPrefix(line, "- ")
+	}
+	return out
+}
+
+// parseTagList splits a comma-separated tag string into trimmed, non-empty tokens.
+// E.g. "python, backend, api" → ["python", "backend", "api"].
+func parseTagList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			out = append(out, t)
+		}
 	}
 	return out
 }

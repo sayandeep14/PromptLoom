@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -96,12 +97,15 @@ func installRecursive(
 	}
 	visited[slug] = true
 
-	// Check if already installed at a satisfying version.
+	// Check if already installed at a satisfying version AND present on disk.
 	existing := packLock.Find(slug)
 	reqs := requirements[slug]
 	if existing != nil && reqs != nil && allSatisfied(existing.Version, reqs.constraints) {
-		// Already installed and satisfies all current constraints — skip network fetch.
-		return nil
+		// Only skip if the pack directory actually exists on disk.
+		// If it was deleted or never written, fall through to reinstall.
+		if _, err := os.Stat(PackDir(slug, cwd)); err == nil {
+			return nil
+		}
 	}
 
 	result, err := Install(slug, cwd)

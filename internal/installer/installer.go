@@ -76,6 +76,15 @@ type Result struct {
 // Install fetches the named vault from the registry and installs it.
 // In the new workspace structure (loom/ directory present), installs under
 // loom/loompack/<vault>. Otherwise falls back to loompack/<vault>.
+// PackDir returns the directory where a named pack is (or would be) installed.
+func PackDir(slug, cwd string) string {
+	packRoot := "loompack"
+	if _, err := os.Stat(filepath.Join(cwd, "loom")); err == nil {
+		packRoot = filepath.Join("loom", "loompack")
+	}
+	return filepath.Join(cwd, packRoot, slug)
+}
+
 func Install(vaultName, cwd string) (*Result, error) {
 	registryURL := os.Getenv("LOOM_REGISTRY_URL")
 	if registryURL == "" {
@@ -88,11 +97,7 @@ func Install(vaultName, cwd string) (*Result, error) {
 		return nil, err
 	}
 
-	packRoot := "loompack"
-	if _, err := os.Stat(filepath.Join(cwd, "loom")); err == nil {
-		packRoot = filepath.Join("loom", "loompack")
-	}
-	packDir := filepath.Join(cwd, packRoot, bundle.Slug)
+	packDir := PackDir(bundle.Slug, cwd)
 	sourceDir := filepath.Join(packDir, "source")
 	compiledDir := filepath.Join(packDir, "compiled")
 

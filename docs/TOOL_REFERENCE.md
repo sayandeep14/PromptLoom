@@ -1,8 +1,13 @@
 # PromptLoom Tool Reference
 
-> Last updated after: **Pack v2 Phase 3** — `from()` expression language, multiple inheritance (`inherits A, B, C`), namespaced `use`/`inherits` (`slug.Name`), `TokComma` in lexer
+> Last updated after: **Pack v2 Phases 7–9 + LOOM_COMMAND.md** — `loom inspect` v2, Lumine extension v2 DSL, `loom fmt` semantic simplification, complete CLI command reference
 
 PromptLoom (`loom`) is a developer-first CLI that treats prompts like source code — with inheritance, block composition, validation, and Markdown rendering.
+
+**Documentation:**
+- `docs/LOOM_LANGUAGE.md` — DSL syntax reference (fields, operators, `from()`, packs, contracts)
+- `docs/LOOM_COMMAND.md` — Complete CLI command reference (every flag, example, and use-case)
+- `docs/PACKMAKER_DESIGN.md` — Pack v2 technical design and implementation phases
 
 ---
 
@@ -2723,3 +2728,176 @@ Transitive dependencies are shown with a `↳` prefix and `(transitive dependenc
 | `internal/deps/version.go` | Semver parsing and constraint checking (`Satisfies`) |
 | `internal/deps/packlock.go` | `loompack.lock` read/write, `Upsert`, `Find` |
 | `internal/installer/recurse.go` | `InstallWithDeps`, conflict detection, recursive traversal |
+
+---
+
+## Phase 7 — `loom inspect` Updates (v2 Validation)
+
+`loom inspect` was updated to handle multiple inheritance, namespace-qualified references, and static validation of `from()` expressions.
+
+### Multi-Parent Validation
+
+Each entry in the `inherits` list is now validated independently. If a prompt inherits two unknown parents, two separate error messages are emitted (one per unknown parent). Only bare (non-namespaced) names get "Did you mean?" suggestions.
+
+```
+Error: prompt "Child" inherits unknown prompt "NoSuchA"
+Error: prompt "Child" inherits unknown prompt "NoSuchB"
+```
+
+Cycle detection now walks the full multi-parent graph. Diamond inheritance (`D inherits B, C; B inherits A; C inherits A`) is correctly identified as cycle-free.
+
+### Namespace-Qualified References
+
+Block and prompt references of the form `pack-slug.Name` are resolved against installed packs via the namespace registry. An error is emitted only if the slug is installed but the name is not found there, or if the slug is not installed at all. Bare names that fall through namespace lookup also get typo suggestions.
+
+### `from()` Static Validation
+
+The following are caught statically without running the resolver:
+
+| Error | Example |
+|---|---|
+| `from(parent[*])` on a scalar field | `persona := from(parent[*])` when `persona` is scalar |
+| `from(parent[N])` index out of bounds | `from(parent[5])` on a single-parent prompt |
+| `from(parent[N..M])` range out of bounds | `from(parent[0..10])` on a 2-parent prompt |
+| Named ref not in parents | `from(OtherPrompt)` when `OtherPrompt` is not declared in `inherits` |
+| Unknown field in `from()` | `parent[0].badfield[*]` |
+| `from()` in a block | Blocks have no parents; `from()` is meaningless |
+
+### Deprecated Operator Warnings
+
+`+=` and `-=` in prompts now emit deprecation warnings:
+
+```
+Warning: prompt "Foo" field "instructions": '+=' is deprecated in v2 — use ':= from(parent[*]) and { ... }' instead
+Warning: prompt "Foo" field "items": '-=' is deprecated in v2 and has no direct replacement — flag for manual resolution
+```
+
+These are warnings (not errors), so existing packs continue to compile. The `examples/legacy/` directory contains old-syntax packs that will produce these warnings.
+
+### Updated Helper Functions
+
+| Function | Change |
+|---|---|
+| `detectCycle` | DFS over full `n.Parents` slice (multi-parent) |
+| `inheritanceDepth` | Returns max depth across all parent chains |
+| `hasInheritedField` | Walks all ancestors recursively via multi-parent edges |
+| `allAncestorFields` | Accepts `[]string` parent names; walks full ancestry |
+| `checkBlock` | Reports error if a `from()` expression appears in a block field |
+
+---
+
+## Phase 8 — Lumine VS Code Extension (v2 DSL Support)
+
+Phase 8 updates the Lumine language server extension to fully support the v2 DSL: multi-parent inheritance, `from()` expression language, new fields (`kind`, `todo`, `compatible_with`), and deprecation warnings for `+=`/`-=`.
+
+### Parser Changes (`src/server/parser.ts`)
+
+- `PROMPT_RE` updated to capture comma-separated multi-parent list: `inherits A, B, C`
+- `LoomNode` now has `parents: string[]` and `parentRanges: Range[]` (multi-parent). The existing `parent` and `parentRange` fields remain as backward-compat aliases to `parents[0]` / `parentRanges[0]`
+- `FIELD_OP_RE` extended to recognize `kind`, `todo`, `compatible_with`
+- `FieldOp` gains optional `fromExprRaw?: string` — populated when `:=` RHS starts with `from(` or `parent[`
+
+### Registry Changes (`src/server/registry.ts`)
+
+- `inheritanceChain()` rewritten as BFS over `node.parents[]` — returns flat deduplicated list of all ancestors
+- `hasCycle()` rewritten as DFS over `node.parents[]` using `onPath` + `visited` sets
+
+### Validator Changes (`src/server/validator.ts`)
+
+- Check #3 (unknown parent): loops over `node.parents[]`, uses per-parent `parentRanges[i]` for error location
+- Check #5 (inheritance cycle): uses `node.parents.length > 0` guard
+- Check #10 (ambiguous `:`): merges field sets from all parents
+- Check #10 (deep inheritance): uses `node.parents.length > 0` guard
+- **New check #11**: deprecated `+=` emits warning `'+=' is deprecated in v2 — use ':= from(parent[*]) and { ... }' instead`; `-=` emits `'-=' is deprecated in v2 and has no direct replacement`
+- **New check #12**: `from(parent[*])` on a scalar field (`summary`, `persona`, `context`, `objective`, `notes`, `kind`) emits an error
+- `SCALAR_FIELDS` and `ALL_VALID_FIELDS` updated to include `kind`, `todo`, `compatible_with`
+
+### Syntax Highlighting (`syntaxes/loom.tmLanguage.json`)
+
+- `prompt-declaration` pattern updated to allow comma-separated multi-parent list and `.` in names
+- `field-declaration` pattern updated to include `kind`, `todo`, `compatible_with`
+- New `from-expression` rule highlights `from(parent[*|N|N...M])` with distinct scopes for `from` keyword, `parent`, and subscript
+- New `from-and-keyword` rule highlights `and` before `{` as an operator keyword
+
+### Completion Provider (`src/providers/completion.ts`)
+
+- `SCALAR_FIELDS` gains `kind`; `LIST_FIELDS` gains `todo` and `compatible_with`
+- `inherits` trigger regex updated to `/\binherits\s+[a-zA-Z0-9_./-]*(?:\s*,\s*[a-zA-Z0-9_./-]*)*$/` for multi-parent completions
+- `OP_DETAIL` for `+=` and `-=` prefixed with `⚠ deprecated —`
+- Deprecated operators sorted below modern ones via `sortText: 'zz_...'`
+- New `from()` completions trigger when cursor is on a line matching `fieldname :=` (empty RHS): offers `from(parent[*])`, `from(parent[0])`, `from(parent[*]) and { ... }`, and `from(parent[N...M])` as snippet completions
+
+### Hover Provider (`src/providers/hover.ts`)
+
+- `FIELD_DOCS` updated with `kind`, `todo`, `compatible_with`
+- `FIELD_OP_RE` updated to include new fields
+- `INHERITS_RE` updated to match full multi-parent comma list
+- `nodeDeclHover`: shows all parents as `Inherits: **A**, **B**, **C**`
+- `promptNameHover`: shows all parents on "Inherits from" line
+- Inherited-by calculation uses `node.parents[]` instead of `node.parent`
+- Hover on `inherits` clause works for any parent in multi-parent list (second+)
+- New hover for `from` keyword explains the expression language
+
+### Definition Provider (`src/providers/definition.ts`)
+
+- `INHERITS_RE` updated to match full multi-parent list
+- Go-to-definition on `inherits` clause works for any parent in a comma-separated list (checks `inherits` keyword exists before cursor position)
+
+### Snippets (`snippets/loom.json`)
+
+| Prefix | Description |
+|---|---|
+| `promptmi` | Prompt with multi-parent inheritance (`inherits A, B`) |
+| `frompall` | `from(parent[*])` — all items from all parents |
+| `frompone` | `from(parent[N])` — items from one parent |
+| `frompadd` | `from(parent[*]) and { ... }` — merge and add |
+| `overlay` | Updated to use v2 `:= from(parent[*]) and { ... }` style |
+
+---
+
+## Phase 9 — `loom fmt` Semantic Simplification of `from()` Expressions
+
+`loom fmt` was updated to properly serialize and semantically simplify `from()` AST nodes. Previously the formatter only re-emitted raw source lines; now it rebuilds `from()` output from the parsed AST, enabling canonical formatting and simplification.
+
+### Multi-Parent Inherits Formatting
+
+`loom fmt` now serializes multi-parent `inherits` lists correctly:
+
+```
+# Input (irregular spacing)
+prompt Child  inherits   A,   B {
+
+# Output (canonical)
+prompt Child inherits A, B {
+```
+
+### Canonical `from()` Serialization
+
+`from()` expressions are rebuilt from the AST into canonical form:
+
+| Expression type | Canonical output |
+|---|---|
+| Single `from(parent[*])` | `from(parent[*])` on one line |
+| Single `from(parent[N])` | `from(parent[N])` on one line |
+| Named ref | `from(PromptName)` on one line |
+| With literal block | `from(parent[*]) and {` / items / `}` multi-line |
+
+Indentation is always consistent: expression at field-body indent, literal items at +2, closing `}` at field-body indent.
+
+### Semantic Simplifications
+
+Three simplifications are applied automatically, all safe to perform without registry context:
+
+| Rule | Before | After |
+|---|---|---|
+| **Remove empty literal** | `from(parent[*]) and {}` | `from(parent[*])` |
+| **Deduplicate adjacent identical units** | `from(parent[0]) and from(parent[0])` | `from(parent[0])` |
+| **Collapse single-element range to index** | `from(parent[0..1])` | `from(parent[0])` |
+
+Distinct units are preserved: `from(parent[0]) and from(parent[1])` is left as-is.
+
+### Packages Involved
+
+| Package | Role |
+|---|---|
+| `internal/format/format.go` | `formatFromExpr`, `formatFromUnit`, `formatSubscript`, `simplifyFromExpr`, `fromUnitsEqual` |

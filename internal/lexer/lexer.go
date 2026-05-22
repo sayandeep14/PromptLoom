@@ -35,7 +35,8 @@ const (
 	TokKwCapabilities
 	TokKwOverlay
 	TokKwEnv
-	TokComma // separates parent names in "inherits A, B, C"
+	TokComma  // separates parent names in "inherits A, B, C"
+	TokKwTags // `tags:` metadata declaration
 )
 
 func (t TokType) String() string {
@@ -82,6 +83,8 @@ func (t TokType) String() string {
 		return "env"
 	case TokComma:
 		return ","
+	case TokKwTags:
+		return "tags"
 	}
 	return "UNKNOWN"
 }
@@ -494,6 +497,16 @@ func (s *scanner) scanBodyLine(indent int, trimmed string, lineNum int) error {
 		s.emit(Token{Type: TokKwCapabilities, Text: "capabilities", Line: lineNum, Col: indent + 1})
 		s.emit(Token{Type: TokLBrace, Text: "{", Line: lineNum})
 		s.state = sInNestedBody
+		return nil
+	}
+
+	// `tags: value1, value2, ...` — inline comma-separated metadata declaration.
+	// Must be checked before parseFieldDecl because parseFieldDecl's bare-colon
+	// rule only matches "fieldname:" with nothing after the colon.
+	if strings.HasPrefix(trimmed, "tags:") {
+		raw := strings.TrimSpace(strings.TrimPrefix(trimmed, "tags:"))
+		s.emit(Token{Type: TokKwTags, Text: "tags", Line: lineNum, Col: indent + 1})
+		s.emit(Token{Type: TokTextLine, Text: raw, Line: lineNum})
 		return nil
 	}
 

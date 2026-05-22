@@ -1472,6 +1472,98 @@ func RunWeaveFolder(folder string, opts WeaveOptions, cwd string) (string, error
 	return b.String(), nil
 }
 
+// RunWeaveFromDir parses all .loom source files under fromDir, resolves every
+// prompt, and renders them to toDir (created if absent). If toDir is empty it
+// defaults to a "compiled" sibling of fromDir. Returns styled output lines.
+func RunWeaveFromDir(fromDir, toDir string, opts WeaveOptions) (string, error) {
+	fromDir = filepath.Clean(fromDir)
+	if _, err := os.Stat(fromDir); err != nil {
+		return "", fmt.Errorf("--from directory not found: %s", fromDir)
+	}
+
+	if toDir == "" {
+		toDir = filepath.Join(filepath.Dir(fromDir), "compiled")
+	}
+	if !opts.Stdout {
+		if err := os.MkdirAll(toDir, 0755); err != nil {
+			return "", fmt.Errorf("creating output directory: %w", err)
+		}
+	}
+
+	// Collect all .loom source files.
+	var loomFiles []string
+	_ = filepath.Walk(fromDir, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && strings.HasSuffix(p, ".loom") {
+			loomFiles = append(loomFiles, p)
+		}
+		return nil
+	})
+	if len(loomFiles) == 0 {
+		return MutedStyle.Render(fmt.Sprintf("  No .loom files found in %s", fromDir)) + "\n", nil
+	}
+
+	reg := registry.New()
+	cfg := config.Defaults()
+
+	for _, f := range loomFiles {
+		content, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		nodes, err := iparser.Parse(f, string(content))
+		if err != nil {
+			continue
+		}
+		_ = reg.Register(nodes)
+	}
+
+	prompts := reg.Prompts()
+	sort.Slice(prompts, func(i, j int) bool { return prompts[i].Name < prompts[j].Name })
+	if len(prompts) == 0 {
+		return MutedStyle.Render(fmt.Sprintf("  No prompts found in %s", fromDir)) + "\n", nil
+	}
+
+	var b strings.Builder
+	b.WriteString("\n  " + HeaderStyle.Render(fmt.Sprintf("Weaving %s (%d prompts)", filepath.Base(fromDir), len(prompts))) + "\n\n")
+
+	vars := opts.Variables
+	if vars == nil {
+		vars = map[string]string{}
+	}
+
+	for _, p := range prompts {
+		rp, err := resolve.ResolveWithOptions(p.Name, reg, resolve.Options{
+			Variables: vars,
+			Variant:   opts.Variant,
+			Overlays:  opts.Overlays,
+			Env:       opts.Env,
+		})
+		if err != nil {
+			b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
+			continue
+		}
+
+		body, format, err := render.RenderFormat(rp, cfg, opts.Format)
+		if err != nil {
+			b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
+			continue
+		}
+
+		if opts.Stdout {
+			b.WriteString(body)
+			continue
+		}
+
+		dest := filepath.Join(toDir, format.DefaultFileName(p.Name))
+		if err := os.WriteFile(dest, []byte(body), 0644); err != nil {
+			b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
+			continue
+		}
+		b.WriteString(fmt.Sprintf("  %s  wove  %s\n", SuccessStyle.Render("✓"), PathStyle.Render(dest)))
+	}
+	return b.String(), nil
+}
+
 // RunTraceFolder runs trace for every prompt in prompts/<folder>.
 func RunTraceFolder(folder, cwd string) (string, error) {
 	cfg, err := config.Load(cwd)

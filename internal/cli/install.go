@@ -28,7 +28,8 @@ Registry URL resolution order:
   1. --registry flag
   2. $LOOM_REGISTRY_URL environment variable
   3. LOOM_REGISTRY_URL in loom/.loom.env
-  4. Default: https://registry.promptloom.dev
+  4. [registry] url in loom.toml
+  5. Default: https://registry.promptloom.dev
 
 Examples:
   loom install go-backend
@@ -50,17 +51,19 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	registryURL := resolveRegistryURL(cwd)
+	registryURL, registrySource := resolveRegistryURL(cwd)
 	if installRegistry != "" {
 		registryURL = installRegistry
+		registrySource = "--registry flag"
 	}
 	// Propagate so installer.Install picks it up via os.Getenv.
 	os.Setenv("LOOM_REGISTRY_URL", registryURL)
 
-	fmt.Printf("%s  fetching %s from %s…\n",
+	fmt.Printf("%s  fetching %s from %s  %s\n",
 		tui.MutedStyle.Render("→"),
 		tui.BrightStyle.Render(vaultName),
-		tui.MutedStyle.Render(registryURL))
+		tui.MutedStyle.Render(registryURL),
+		tui.MutedStyle.Render("("+registrySource+")"))
 
 	results, conflicts, err := installer.InstallWithDeps(vaultName, cwd)
 	if err != nil {
@@ -148,30 +151,24 @@ func printInstallResult(r *installer.Result, cwd string, direct bool) {
 	}
 }
 
-// resolveRegistryURL returns the registry base URL using the resolution order:
-// shell env → loom/.loom.env file → default.
-func resolveRegistryURL(dir string) string {
+// resolveRegistryURL returns the registry base URL and its source label.
+// Resolution order: --registry flag → shell env → loom/.loom.env → default.
+func resolveRegistryURL(dir string) (url, source string) {
 	if v := os.Getenv("LOOM_REGISTRY_URL"); v != "" {
-		return v
+		return v, "$LOOM_REGISTRY_URL"
 	}
-	if v := loomEnvValue(dir, "LOOM_REGISTRY_URL"); v != "" {
-		return v
+	if path := findLoomEnvFile(dir); path != "" {
+		env := readLoomEnvFromPath(path)
+		if v := env["LOOM_REGISTRY_URL"]; v != "" {
+			return v, path
+		}
 	}
-	return "https://registry.promptloom.dev"
+	return "https://registry.promptloom.dev", "default"
 }
 
 // loomEnvValue reads key from the first loom/.loom.env (or .loom.env) found
 // by walking up from dir.
-func loomEnvValue(dir string, key string) string {
-	env := readLoomEnv(dir)
-	return env[key]
-}
-
-func readLoomEnv(dir string) map[string]string {
-	path := findLoomEnvFile(dir)
-	if path == "" {
-		return nil
-	}
+func readLoomEnvFromPath(path string) map[string]string {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -191,7 +188,6 @@ func readLoomEnv(dir string) map[string]string {
 		}
 		k := strings.TrimSpace(line[:idx])
 		v := strings.TrimSpace(line[idx+1:])
-		// Strip optional surrounding quotes.
 		if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
 			v = v[1 : len(v)-1]
 		}

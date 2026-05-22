@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#B45309"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="16" height="16" rx="2.5" fill="url(#g)"/>
+  <!-- Isometric cube: front face (brightest) -->
+  <polygon points="2.5,6 9.5,6 9.5,13 2.5,13" fill="white" fill-opacity="0.93"/>
+  <!-- Top face (mid brightness) -->
+  <polygon points="2.5,6 5.5,3 12.5,3 9.5,6"  fill="white" fill-opacity="0.65"/>
+  <!-- Right face (darkest) -->
+  <polygon points="9.5,6 12.5,3 12.5,10 9.5,13" fill="white" fill-opacity="0.40"/>
+  <!-- Edge lines for definition -->
+  <polyline points="2.5,13 2.5,6 5.5,3 12.5,3 12.5,10 9.5,13 2.5,13 9.5,13 9.5,6 2.5,6"
+            fill="none" stroke="#92400E" stroke-width="0.4" stroke-opacity="0.35" stroke-linejoin="round"/>
+  <line x1="9.5" y1="6" x2="12.5" y2="3" stroke="#92400E" stroke-width="0.4" stroke-opacity="0.35"/>
+</svg>

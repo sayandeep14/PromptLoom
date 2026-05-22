@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#3730A3"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="16" height="16" rx="2.5" fill="url(#g)"/>
+  <!--
+    Loom weave pattern: warp threads (vertical) drawn first,
+    then weft threads (horizontal) on top, with gradient-coloured
+    rectangles covering alternating intersections to create the
+    true over/under weave illusion.
+  -->
+  <!-- Warp threads (vertical) -->
+  <line x1="6"  y1="3" x2="6"  y2="13" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>
+  <line x1="10" y1="3" x2="10" y2="13" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>
+  <!-- Weft threads (horizontal) -->
+  <line x1="3" y1="5.5"  x2="13" y2="5.5"  stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>
+  <line x1="3" y1="8"    x2="13" y2="8"    stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>
+  <line x1="3" y1="10.5" x2="13" y2="10.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-opacity="0.9"/>
+  <!-- Cover warp where weft goes OVER (warp-right at row-1, warp-left at row-2, warp-right at row-3) -->
+  <rect x="9.2"  y="4.7"  width="1.6" height="1.6" fill="url(#g)"/>
+  <rect x="5.2"  y="7.2"  width="1.6" height="1.6" fill="url(#g)"/>
+  <rect x="9.2"  y="9.7"  width="1.6" height="1.6" fill="url(#g)"/>
+</svg>

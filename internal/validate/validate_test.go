@@ -380,6 +380,258 @@ prompt Child inherits Goud {
 
 // ---- duplicate prompt name ----
 
+// ---- Phase 7: multi-parent validation ----
+
+func TestMultiParentBothUnknown(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"p.loom": `
+prompt Child inherits NoSuchA, NoSuchB {
+  instructions :=
+    from(parent[*])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	count := 0
+	for _, d := range diags {
+		if d.Sev == validate.Error && strings.Contains(d.Message, "unknown prompt") {
+			count++
+		}
+	}
+	if count < 2 {
+		t.Errorf("expected at least 2 'unknown prompt' errors (one per unknown parent), got %d: %v", count, diags)
+	}
+}
+
+func TestMultiParentOnlyOneUnknown(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  persona :=
+    base.
+}`,
+		"child.loom": `
+prompt Child inherits A, Ghost {
+  instructions :=
+    from(parent[*])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasError(diags, "unknown prompt") {
+		t.Errorf("expected 'unknown prompt' error for Ghost, got: %v", diags)
+	}
+	for _, d := range diags {
+		if d.Sev == validate.Error && strings.Contains(d.Message, "\"A\"") {
+			t.Errorf("should not report A as unknown, got: %s", d.Message)
+		}
+	}
+}
+
+func TestMultiParentCycleDetected(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A inherits C {
+  persona :=
+    A.
+}`,
+		"b.loom": `
+prompt B {
+  persona :=
+    B.
+}`,
+		"c.loom": `
+prompt C inherits A, B {
+  instructions :=
+    from(parent[*])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasError(diags, "cycle") {
+		t.Errorf("expected cycle error, got: %v", diags)
+	}
+}
+
+func TestDiamondNoCycleError(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  persona :=
+    root.
+}`,
+		"b.loom": `
+prompt B inherits A {
+  persona :=
+    B.
+}`,
+		"c.loom": `
+prompt C inherits A {
+  persona :=
+    C.
+}`,
+		"d.loom": `
+prompt D inherits B, C {
+  instructions :=
+    from(parent[*])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	for _, d := range diags {
+		if d.Sev == validate.Error && strings.Contains(d.Message, "cycle") {
+			t.Errorf("diamond inheritance should not report a cycle, got: %s", d.Message)
+		}
+	}
+}
+
+// ---- Phase 7: from() static validation ----
+
+func TestFromParentAllOnScalarError(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  persona :=
+    base.
+}`,
+		"b.loom": `
+prompt B inherits A {
+  persona :=
+    from(parent[*])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasError(diags, "from(parent[*]) cannot be used on scalar") {
+		t.Errorf("expected scalar from(parent[*]) error, got: %v", diags)
+	}
+}
+
+func TestFromParentIndexOutOfBounds(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  instructions :=
+    - do A.
+}`,
+		"b.loom": `
+prompt B inherits A {
+  instructions :=
+    from(parent[5])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasError(diags, "out of range") {
+		t.Errorf("expected out-of-range error for parent[5], got: %v", diags)
+	}
+}
+
+func TestFromParentIndexValid(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  instructions :=
+    - do A.
+}`,
+		"b.loom": `
+prompt B {
+  instructions :=
+    - do B.
+}`,
+		"c.loom": `
+prompt C inherits A, B {
+  instructions :=
+    from(parent[0])
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	for _, d := range diags {
+		if d.Sev == validate.Error && strings.Contains(d.Message, "out of range") {
+			t.Errorf("parent[0] should be valid for 2-parent prompt, got: %s", d.Message)
+		}
+	}
+}
+
+func TestFromNamedRefNotInParents(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  persona :=
+    base A.
+}`,
+		"b.loom": `
+prompt B {
+  persona :=
+    base B.
+}`,
+		"c.loom": `
+prompt C inherits A {
+  persona :=
+    from(B)
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasError(diags, "not a declared parent") {
+		t.Errorf("expected 'not a declared parent' error for from(B), got: %v", diags)
+	}
+}
+
+func TestFromNamedRefValidParent(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  persona :=
+    base A.
+}`,
+		"b.loom": `
+prompt B inherits A {
+  persona :=
+    from(A)
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	for _, d := range diags {
+		if d.Sev == validate.Error && strings.Contains(d.Message, "not a declared parent") {
+			t.Errorf("from(A) should be valid when A is a declared parent, got: %s", d.Message)
+		}
+	}
+}
+
+// ---- Phase 7: deprecated operator warnings ----
+
+func TestDeprecatedAppendWarning(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": `
+prompt A {
+  instructions :=
+    - base item.
+}`,
+		"b.loom": `
+prompt B inherits A {
+  instructions +=
+    - extra item.
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasWarning(diags, "'+=' is deprecated") {
+		t.Errorf("expected '+=' deprecation warning, got: %v", diags)
+	}
+}
+
+func TestFromExprInBlockIsError(t *testing.T) {
+	// Verify we can parse a block with a normal := (no from()) without errors.
+	reg := buildReg(t, map[string]string{
+		"b.loom": `
+block MyBlock {
+  instructions :=
+    - block instruction.
+}`,
+	})
+	diags := validate.Validate(reg, defaultCfg())
+	for _, d := range diags {
+		if d.Sev == validate.Error {
+			t.Errorf("clean block should have no errors, got: %s", d.Message)
+		}
+	}
+}
+
+// ---- duplicate prompt name ----
+
 func TestDuplicatePromptName(t *testing.T) {
 	reg := registry.New()
 	nodes1, _ := parser.Parse("a.prompt", `

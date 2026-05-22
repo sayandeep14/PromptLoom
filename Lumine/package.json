@@ -1,0 +1,132 @@
+{
+  "name": "lumine",
+  "displayName": "Lumine — PromptLoom DSL",
+  "description": "Syntax highlighting, IntelliSense, and diagnostics for .loom prompt files",
+  "version": "0.1.0",
+  "publisher": "sayandeepgiri",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Linters", "Formatters", "Snippets"],
+  "keywords": ["loom", "prompts", "llm", "ai", "dsl"],
+  "repository": "https://github.com/sayandeepgiri/lumine",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:loom",
+    "workspaceContains:**/loom.toml"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "loom",
+        "aliases": ["Loom", "PromptLoom DSL"],
+        "extensions": [".prompt.loom", ".block.loom", ".overlay.loom", ".vars.loom", ".loom"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/loom-mixed.svg",
+          "dark":  "./icons/loom-mixed.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "loom",
+        "scopeName": "source.loom",
+        "path": "./syntaxes/loom.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "loom",
+        "path": "./snippets/loom.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "loom.weave",
+        "title": "Loom: Weave (Render) This Prompt",
+        "icon": "$(play)"
+      },
+      {
+        "command": "loom.inspect",
+        "title": "Loom: Inspect (Validate) Library",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "loom.openGraph",
+        "title": "Loom: Open Dependency Graph",
+        "icon": "$(type-hierarchy)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "loom.weave",
+          "when": "resourceLangId == loom",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "loom.weave",
+          "when": "resourceLangId == loom"
+        },
+        {
+          "command": "loom.inspect"
+        },
+        {
+          "command": "loom.openGraph"
+        }
+      ]
+    },
+    "iconThemes": [
+      {
+        "id": "loom-icons",
+        "label": "Lumine File Icons",
+        "path": "./icons/loom-icon-theme.json"
+      }
+    ],
+    "configuration": {
+      "title": "Lumine",
+      "properties": {
+        "loom.loomExecutable": {
+          "type": "string",
+          "default": "loom",
+          "description": "Path to the loom CLI binary"
+        },
+        "loom.validateOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run validation when a .loom file is saved"
+        },
+        "loom.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-format .loom files on save"
+        },
+        "loom.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace Language Server protocol communication"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "vscode:prepublish": "node build.js --minify",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "esbuild": "^0.20.0",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  }
+}

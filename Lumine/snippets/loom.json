@@ -1,0 +1,160 @@
+{
+  "New prompt": {
+    "prefix": "prompt",
+    "scope": "loom",
+    "body": [
+      "prompt ${1:PromptName} {",
+      "  summary:",
+      "    ${2:Brief description.}",
+      "",
+      "  persona:",
+      "    ${3:You are a...}",
+      "",
+      "  objective:",
+      "    ${4:Describe the task.}",
+      "",
+      "  constraints:",
+      "    - ${5:First constraint.}",
+      "",
+      "  format:",
+      "    - ${6:Output section.}",
+      "}"
+    ],
+    "description": "New prompt declaration"
+  },
+  "Prompt with inheritance": {
+    "prefix": "prompti",
+    "scope": "loom",
+    "body": [
+      "prompt ${1:ChildName} inherits ${2:ParentName} {",
+      "  objective :=",
+      "    ${3:Override the parent objective.}",
+      "}"
+    ],
+    "description": "New prompt with single-parent inheritance"
+  },
+  "Prompt with multi-parent inheritance": {
+    "prefix": "promptmi",
+    "scope": "loom",
+    "body": [
+      "prompt ${1:ChildName} inherits ${2:ParentA}, ${3:ParentB} {",
+      "  objective :=",
+      "    ${4:Override the merged objective.}",
+      "",
+      "  instructions :=",
+      "    from(parent[*]) and {",
+      "      - ${5:Additional instruction.}",
+      "    }",
+      "}"
+    ],
+    "description": "New prompt with multi-parent inheritance (v2)"
+  },
+  "New block": {
+    "prefix": "block",
+    "scope": "loom",
+    "body": [
+      "block ${1:BlockName} {",
+      "  constraints:",
+      "    - ${2:First constraint.}",
+      "}"
+    ],
+    "description": "New block declaration"
+  },
+  "New overlay": {
+    "prefix": "overlay",
+    "scope": "loom",
+    "body": [
+      "overlay ${1:OverlayName} {",
+      "  // Use := with from() to merge parent values (v2 style)",
+      "  constraints :=",
+      "    from(parent[*]) and {",
+      "      - ${2:Additional constraint.}",
+      "    }",
+      "}"
+    ],
+    "description": "New overlay declaration (v2 style)"
+  },
+  "use block": {
+    "prefix": "use",
+    "scope": "loom",
+    "body": ["use ${1:BlockName}"],
+    "description": "Include a block"
+  },
+  "var declaration": {
+    "prefix": "var",
+    "scope": "loom",
+    "body": ["var ${1:varName} = \"${2:defaultValue}\""],
+    "description": "Variable declaration"
+  },
+  "slot declaration": {
+    "prefix": "slot",
+    "scope": "loom",
+    "body": ["slot ${1:slotName} { required: ${2:true} }"],
+    "description": "Slot declaration"
+  },
+  "variant block": {
+    "prefix": "variant",
+    "scope": "loom",
+    "body": [
+      "  variant ${1:variantName} {",
+      "    ${2:fieldName} :=",
+      "      ${3:Override value.}",
+      "  }"
+    ],
+    "description": "Named variant block"
+  },
+  "contract block": {
+    "prefix": "contract",
+    "scope": "loom",
+    "body": [
+      "  contract {",
+      "    required_sections:",
+      "      - ${1:Introduction}",
+      "    must_not_include:",
+      "      - \"${2:forbidden text}\"",
+      "  }"
+    ],
+    "description": "Output contract block"
+  },
+  "capabilities block": {
+    "prefix": "capabilities",
+    "scope": "loom",
+    "body": [
+      "  capabilities {",
+      "    allowed:",
+      "      - ${1:code_generation}",
+      "    forbidden:",
+      "      - ${2:system_commands}",
+      "  }"
+    ],
+    "description": "Capabilities block"
+  },
+  "variable interpolation": {
+    "prefix": "{{",
+    "scope": "loom",
+    "body": ["{{ ${1:varName} }}"],
+    "description": "Variable token"
+  },
+  "from() all parents (list field)": {
+    "prefix": "frompall",
+    "scope": "loom",
+    "body": ["from(parent[*])"],
+    "description": "Merge all items from all parents (list fields only, v2)"
+  },
+  "from() single parent (scalar field)": {
+    "prefix": "frompone",
+    "scope": "loom",
+    "body": ["from(parent[${1:0}])"],
+    "description": "Select items from one parent by index (v2)"
+  },
+  "from() merge with additions": {
+    "prefix": "frompadd",
+    "scope": "loom",
+    "body": [
+      "from(parent[*]) and {",
+      "  - ${1:new item}",
+      "}"
+    ],
+    "description": "Merge all parent items then add new ones (v2)"
+  }
+}

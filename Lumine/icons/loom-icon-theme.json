@@ -1,0 +1,32 @@
+{
+  "iconDefinitions": {
+    "loom-prompt": {
+      "iconPath": "./loom-prompt.svg"
+    },
+    "loom-block": {
+      "iconPath": "./loom-block.svg"
+    },
+    "loom-overlay": {
+      "iconPath": "./loom-overlay.svg"
+    },
+    "loom-vars": {
+      "iconPath": "./loom-vars.svg"
+    },
+    "loom-mixed": {
+      "iconPath": "./loom-mixed.svg"
+    },
+    "loom-config": {
+      "iconPath": "./loom-config.svg"
+    }
+  },
+  "fileExtensions": {
+    "prompt.loom": "loom-prompt",
+    "block.loom":  "loom-block",
+    "overlay.loom": "loom-overlay",
+    "vars.loom":   "loom-vars",
+    "loom":        "loom-mixed"
+  },
+  "fileNames": {
+    "loom.toml": "loom-config"
+  }
+}

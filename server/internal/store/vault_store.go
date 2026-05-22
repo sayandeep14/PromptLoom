@@ -30,9 +30,13 @@ func ListVaults(ctx context.Context) ([]models.ListItem, error) {
 	var items []models.ListItem
 	for rows.Next() {
 		var it models.ListItem
-		if err := rows.Scan(&it.PackID, &it.Name, &it.Slug, &it.Description,
+		var packID *string // nullable in legacy rows
+		if err := rows.Scan(&packID, &it.Name, &it.Slug, &it.Description,
 			&it.Author, &it.Version, &it.Tags, &it.UpdatedAt, &it.FileCount); err != nil {
 			return nil, err
+		}
+		if packID != nil {
+			it.PackID = *packID
 		}
 		items = append(items, it)
 	}
@@ -42,6 +46,7 @@ func ListVaults(ctx context.Context) ([]models.ListItem, error) {
 // GetVault returns metadata for a single vault by slug.
 func GetVault(ctx context.Context, slug string) (*models.Vault, error) {
 	var v models.Vault
+	var packID *string // nullable in legacy rows
 	err := db.Pool.QueryRow(ctx, `
 		SELECT v.id, v.pack_id, v.name, v.slug, v.description, v.author, v.version,
 		       v.tags, v.related_libraries, v.created_at, v.updated_at,
@@ -50,8 +55,11 @@ func GetVault(ctx context.Context, slug string) (*models.Vault, error) {
 		LEFT JOIN vault_files f ON f.vault_id = v.id
 		WHERE v.slug = $1
 		GROUP BY v.id`, slug).Scan(
-		&v.ID, &v.PackID, &v.Name, &v.Slug, &v.Description, &v.Author, &v.Version,
+		&v.ID, &packID, &v.Name, &v.Slug, &v.Description, &v.Author, &v.Version,
 		&v.Tags, &v.RelatedLibraries, &v.CreatedAt, &v.UpdatedAt, &v.FileCount)
+	if packID != nil {
+		v.PackID = *packID
+	}
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}

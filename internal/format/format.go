@@ -24,8 +24,8 @@ func Node(n *ast.Node) string {
 
 	switch n.Kind {
 	case ast.KindPrompt:
-		if n.Parent != "" {
-			fmt.Fprintf(&sb, "prompt %s inherits %s {\n", n.Name, n.Parent)
+		if len(n.Parents) > 0 {
+			fmt.Fprintf(&sb, "prompt %s inherits %s {\n", n.Name, strings.Join(n.Parents, ", "))
 		} else {
 			fmt.Fprintf(&sb, "prompt %s {\n", n.Name)
 		}
@@ -49,6 +49,10 @@ func Node(n *ast.Node) string {
 
 func renderBodyGroups(n *ast.Node) []string {
 	var groups []string
+
+	if len(n.Tags) > 0 {
+		groups = append(groups, "  tags: "+strings.Join(n.Tags, ", ")+"\n")
+	}
 
 	if n.Kind == ast.KindPrompt && len(n.Vars) > 0 {
 		var lines []string
@@ -138,11 +142,18 @@ func formatFieldOps(fields []ast.FieldOperation, indent int) string {
 		sb.WriteString(f.FieldName)
 		sb.WriteString(opSuffix(f.Op))
 		sb.WriteString("\n")
-		for _, line := range f.Value {
-			sb.WriteString(bodyPrefix)
-			sb.WriteString(line)
-			sb.WriteString("\n")
+
+		if f.FromExpr != nil {
+			simplified := simplifyFromExpr(f.FromExpr)
+			sb.WriteString(formatFromExpr(simplified, bodyPrefix))
+		} else {
+			for _, line := range f.Value {
+				sb.WriteString(bodyPrefix)
+				sb.WriteString(line)
+				sb.WriteString("\n")
+			}
 		}
+
 		if i < len(fields)-1 {
 			sb.WriteString("\n")
 		}
@@ -178,4 +189,161 @@ func opSuffix(op ast.Operator) string {
 		return " -="
 	}
 	return ":"
+}
+
+// ── from() expression serialisation ──────────────────────────────────────────
+
+// formatFromExpr serialises a (possibly simplified) from() expression into
+// canonical indented source.
+//
+// Layout rules:
+//   - If there are no FromLiteral units: one line at bodyPrefix.
+//   - If there is a literal block: non-literal units first, then `and {`,
+//     items at bodyPrefix+2, closing `}` at bodyPrefix.
+func formatFromExpr(fe *ast.FromExpression, bodyPrefix string) string {
+	if fe == nil || len(fe.Units) == 0 {
+		return ""
+	}
+
+	var nonLiteralParts []string
+	var literalItems []string
+
+	for _, unit := range fe.Units {
+		if unit.Kind == ast.FromLiteral {
+			for _, item := range unit.Items {
+				literalItems = append(literalItems, item)
+			}
+		} else {
+			part := formatFromUnit(unit)
+			if part != "" {
+				nonLiteralParts = append(nonLiteralParts, part)
+			}
+		}
+	}
+
+	var sb strings.Builder
+	itemPrefix := bodyPrefix + "  "
+
+	if len(literalItems) == 0 {
+		// Simple one-line form.
+		sb.WriteString(bodyPrefix)
+		sb.WriteString(strings.Join(nonLiteralParts, " and "))
+		sb.WriteString("\n")
+	} else {
+		// Multi-line form with literal block.
+		if len(nonLiteralParts) > 0 {
+			sb.WriteString(bodyPrefix)
+			sb.WriteString(strings.Join(nonLiteralParts, " and "))
+			sb.WriteString(" and {\n")
+		} else {
+			sb.WriteString(bodyPrefix + "{\n")
+		}
+		for _, item := range literalItems {
+			sb.WriteString(itemPrefix)
+			// Items from the AST have bullet prefixes already stripped; add them back.
+			if !strings.HasPrefix(item, "- ") && !strings.HasPrefix(item, "-\t") {
+				sb.WriteString("- ")
+			}
+			sb.WriteString(item)
+			sb.WriteString("\n")
+		}
+		sb.WriteString(bodyPrefix + "}\n")
+	}
+
+	return sb.String()
+}
+
+// formatFromUnit serialises a single from() unit to its inline string form.
+// FromLiteral is handled separately in formatFromExpr and returns "".
+func formatFromUnit(unit ast.FromUnit) string {
+	switch unit.Kind {
+	case ast.FromParentRef:
+		return "from(parent" + formatSubscript(unit.ParentSub) + ")"
+	case ast.FromNamedRef:
+		return "from(" + unit.ParentName + ")"
+	case ast.FromFieldRef:
+		return "parent" + formatSubscript(unit.SourceSub) + "." + unit.FieldName + formatSubscript(unit.FieldSub)
+	}
+	return ""
+}
+
+// formatSubscript serialises a subscript expression to its bracket form.
+func formatSubscript(s ast.Subscript) string {
+	switch s.Kind {
+	case ast.SubAll:
+		return "[*]"
+	case ast.SubIndex:
+		return "[" + strconv.Itoa(s.N) + "]"
+	case ast.SubRange:
+		return "[" + strconv.Itoa(s.N) + ".." + strconv.Itoa(s.M) + "]"
+	}
+	return "[*]"
+}
+
+// ── Semantic simplification ───────────────────────────────────────────────────
+
+// simplifyFromExpr applies semantic simplifications to a from() expression
+// that are safe to perform without registry context:
+//
+//  1. Remove empty FromLiteral units (no items — they are no-ops).
+//  2. Deduplicate adjacent identical non-literal units.
+//  3. Collapse single-element ranges to a plain index:
+//     from(parent[N..N+1]) → from(parent[N]).
+func simplifyFromExpr(fe *ast.FromExpression) *ast.FromExpression {
+	if fe == nil || len(fe.Units) == 0 {
+		return fe
+	}
+
+	out := make([]ast.FromUnit, 0, len(fe.Units))
+	for _, unit := range fe.Units {
+		// Rule 1: drop empty literal blocks.
+		if unit.Kind == ast.FromLiteral && len(unit.Items) == 0 {
+			continue
+		}
+
+		// Rule 2: deduplicate adjacent identical non-literal units.
+		if unit.Kind != ast.FromLiteral && len(out) > 0 {
+			prev := out[len(out)-1]
+			if prev.Kind != ast.FromLiteral && fromUnitsEqual(prev, unit) {
+				continue
+			}
+		}
+
+		// Rule 3: collapse single-element ranges to a plain index.
+		u := unit
+		if u.Kind == ast.FromParentRef && u.ParentSub.Kind == ast.SubRange {
+			if u.ParentSub.M == u.ParentSub.N+1 {
+				u.ParentSub = ast.Subscript{Kind: ast.SubIndex, N: u.ParentSub.N}
+			}
+		}
+		if u.Kind == ast.FromFieldRef && u.SourceSub.Kind == ast.SubRange {
+			if u.SourceSub.M == u.SourceSub.N+1 {
+				u.SourceSub = ast.Subscript{Kind: ast.SubIndex, N: u.SourceSub.N}
+			}
+		}
+
+		out = append(out, u)
+	}
+
+	if len(out) == 0 {
+		return fe // safety: never produce an empty expression
+	}
+	return &ast.FromExpression{Units: out, Pos: fe.Pos}
+}
+
+// fromUnitsEqual reports whether two non-literal from() units are semantically
+// identical (same kind + same subscripts / names).
+func fromUnitsEqual(a, b ast.FromUnit) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case ast.FromParentRef:
+		return a.ParentSub == b.ParentSub
+	case ast.FromNamedRef:
+		return a.ParentName == b.ParentName
+	case ast.FromFieldRef:
+		return a.SourceSub == b.SourceSub && a.FieldName == b.FieldName && a.FieldSub == b.FieldSub
+	}
+	return false
 }

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FB7185"/>
+      <stop offset="100%" stop-color="#9F1239"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="16" height="16" rx="2.5" fill="url(#g)"/>
+  <!-- Settings sliders icon: three horizontal tracks with handles -->
+  <!-- Track 1 -->
+  <line x1="3.5" y1="5"  x2="12.5" y2="5"  stroke="white" stroke-width="1"   stroke-linecap="round" stroke-opacity="0.4"/>
+  <!-- Track 2 -->
+  <line x1="3.5" y1="8"  x2="12.5" y2="8"  stroke="white" stroke-width="1"   stroke-linecap="round" stroke-opacity="0.4"/>
+  <!-- Track 3 -->
+  <line x1="3.5" y1="11" x2="12.5" y2="11" stroke="white" stroke-width="1"   stroke-linecap="round" stroke-opacity="0.4"/>
+  <!-- Handle 1 (left position) -->
+  <circle cx="6.5" cy="5"  r="2.1" fill="white" fill-opacity="0.95"/>
+  <!-- Handle 2 (right position) -->
+  <circle cx="10"  cy="8"  r="2.1" fill="white" fill-opacity="0.95"/>
+  <!-- Handle 3 (mid position) -->
+  <circle cx="7.5" cy="11" r="2.1" fill="white" fill-opacity="0.95"/>
+</svg>

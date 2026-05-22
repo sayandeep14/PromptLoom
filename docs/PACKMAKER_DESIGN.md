@@ -291,6 +291,6 @@ Converts old DSL to v2:
 | 4 | Resolver v2 — multi-parent, `from()` evaluation, dedup, type-checking | ✅ Done |
 | 5 | `loom install` recursive dep resolution, conflict detection, `loompack.lock` | ✅ Done |
 | 6 | `loom migrate` — auto-convert `:` → `:=`, flag `+=`/`-=` | ❌ Cancelled — new packs use v2 syntax from the start; old examples moved to `examples/legacy/` |
-| 7 | `loom inspect` updates — namespace refs, `from()` static validation | Pending (low priority) |
-| 8 | Lumine extension — syntax, completions, diagnostics for new DSL | Pending |
-| 9 | `loom fmt` semantic simplification of `from()` expressions | Pending (low priority) |
+| 7 | `loom inspect` updates — namespace refs, `from()` static validation | ✅ Done |
+| 8 | Lumine extension — syntax, completions, diagnostics for new DSL | ✅ Done |
+| 9 | `loom fmt` semantic simplification of `from()` expressions | ✅ Done |

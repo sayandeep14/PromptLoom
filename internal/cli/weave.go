@@ -25,6 +25,8 @@ var weaveWatch bool
 var weaveIncremental bool
 var weaveEnv string
 var weaveInteractive bool
+var weaveFrom string
+var weaveTo string
 
 var weaveCmd = &cobra.Command{
 	Use:   "weave [PromptName]",
@@ -67,6 +69,8 @@ func init() {
 	weaveCmd.Flags().BoolVar(&weaveIncremental, "incremental", false, "skip prompts whose resolved hash is unchanged (requires --all)")
 	weaveCmd.Flags().StringVar(&weaveEnv, "env", "", "apply an env block (e.g. prod, dev) — adds environment-specific constraints")
 	weaveCmd.Flags().BoolVar(&weaveInteractive, "interactive", false, "launch the guided prompt assembly wizard")
+	weaveCmd.Flags().StringVar(&weaveFrom, "from", "", "source directory containing .loom files (e.g. loompack/python-starter/source)")
+	weaveCmd.Flags().StringVar(&weaveTo, "to", "", "output directory for compiled files (default: <from>/../compiled/)")
 }
 
 func runWeave(cmd *cobra.Command, args []string) error {
@@ -77,6 +81,32 @@ func runWeave(cmd *cobra.Command, args []string) error {
 		}
 		return tui.RunInteractiveWeave(cwd)
 	}
+
+	// --from mode: weave directly from an arbitrary source directory.
+	if weaveFrom != "" {
+		cwd, _ := resolveProjectDir()
+		fromDir := weaveFrom
+		if !filepath.IsAbs(fromDir) {
+			fromDir = filepath.Join(cwd, fromDir)
+		}
+		toDir := weaveTo
+		if toDir != "" && !filepath.IsAbs(toDir) {
+			toDir = filepath.Join(cwd, toDir)
+		}
+		opts := tui.WeaveOptions{
+			Stdout:  weaveStdout,
+			Format:  weaveFormat,
+			Variant: weaveVariant,
+			Env:     weaveEnv,
+		}
+		out, err := tui.RunWeaveFromDir(fromDir, toDir, opts)
+		if err != nil {
+			return err
+		}
+		fmt.Print(out)
+		return nil
+	}
+
 	if !weaveAll && len(args) == 0 {
 		return fmt.Errorf("specify a prompt name or use --all")
 	}

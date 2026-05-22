@@ -1,0 +1,130 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Loom",
+  "scopeName": "source.loom",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#prompt-declaration" },
+    { "include": "#block-declaration" },
+    { "include": "#overlay-declaration" },
+    { "include": "#tags-declaration" },
+    { "include": "#use-statement" },
+    { "include": "#var-declaration" },
+    { "include": "#slot-declaration" },
+    { "include": "#subblock-keywords" },
+    { "include": "#from-expression" },
+    { "include": "#from-and-keyword" },
+    { "include": "#field-declaration" },
+    { "include": "#variable-interpolation" },
+    { "include": "#list-bullet" },
+    { "include": "#braces" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.loom",
+      "match": "^\\s*//.*$"
+    },
+    "prompt-declaration": {
+      "name": "meta.prompt.loom",
+      "match": "\\b(prompt)\\s+([a-zA-Z0-9_-]+)(?:\\s+(inherits)\\s+([a-zA-Z0-9_./-]+(?:\\s*,\\s*[a-zA-Z0-9_./-]+)*))?\\s*(?=\\{)",
+      "captures": {
+        "1": { "name": "keyword.control.prompt.loom" },
+        "2": { "name": "entity.name.type.prompt.loom" },
+        "3": { "name": "keyword.control.inherits.loom" },
+        "4": { "name": "entity.name.type.parent.loom" }
+      }
+    },
+    "block-declaration": {
+      "match": "\\b(block)\\s+([a-zA-Z0-9_-]+)\\s*(?=\\{)",
+      "captures": {
+        "1": { "name": "keyword.control.block.loom" },
+        "2": { "name": "entity.name.type.block.loom" }
+      }
+    },
+    "overlay-declaration": {
+      "match": "\\b(overlay)\\s+([a-zA-Z0-9_-]+)\\s*(?=\\{)",
+      "captures": {
+        "1": { "name": "keyword.control.overlay.loom" },
+        "2": { "name": "entity.name.type.overlay.loom" }
+      }
+    },
+    "tags-declaration": {
+      "comment": "Inline metadata tags — never rendered, never inherited. Distinct color so developers can visually distinguish them from content fields.",
+      "match": "^(\\s+)(tags)\\s*:\\s*(.+)$",
+      "captures": {
+        "2": { "name": "keyword.other.tags.loom" },
+        "3": { "name": "entity.other.attribute-name.tags-values.loom" }
+      }
+    },
+    "use-statement": {
+      "match": "^\\s+(use)\\s+([a-zA-Z0-9_./-]+)",
+      "captures": {
+        "1": { "name": "keyword.control.use.loom" },
+        "2": { "name": "entity.name.type.block-ref.loom" }
+      }
+    },
+    "var-declaration": {
+      "match": "^\\s*(var)\\s+([a-zA-Z0-9_-]+)\\s*(=)\\s*(\"[^\"]*\")",
+      "captures": {
+        "1": { "name": "keyword.control.var.loom" },
+        "2": { "name": "variable.other.loom" },
+        "3": { "name": "keyword.operator.assignment.loom" },
+        "4": { "name": "string.quoted.double.loom" }
+      }
+    },
+    "slot-declaration": {
+      "match": "^\\s*(slot)\\s+([a-zA-Z0-9_-]+)(?:\\s*(\\{[^}]*\\}))?",
+      "captures": {
+        "1": { "name": "keyword.control.slot.loom" },
+        "2": { "name": "variable.other.slot.loom" },
+        "3": { "name": "meta.slot-metadata.loom" }
+      }
+    },
+    "subblock-keywords": {
+      "match": "^\\s+(variant|contract|capabilities)\\b(?:\\s+([a-zA-Z0-9_-]+))?",
+      "captures": {
+        "1": { "name": "keyword.control.subblock.loom" },
+        "2": { "name": "entity.name.type.variant.loom" }
+      }
+    },
+    "from-expression": {
+      "name": "meta.from-expression.loom",
+      "match": "\\b(from)\\((parent)(\\[(?:\\*|[0-9]+(?:\\.\\.\\.[0-9]+)?)\\])\\)",
+      "captures": {
+        "1": { "name": "keyword.control.from.loom" },
+        "2": { "name": "variable.language.parent.loom" },
+        "3": { "name": "meta.subscript.loom" }
+      }
+    },
+    "from-and-keyword": {
+      "name": "keyword.operator.and.loom",
+      "match": "\\band\\b(?=\\s*\\{)"
+    },
+    "field-declaration": {
+      "match": "^\\s+(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with|required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\\s*(:=|\\+=|-=|:)",
+      "captures": {
+        "1": { "name": "support.type.field-name.loom" },
+        "2": { "name": "keyword.operator.field.loom" }
+      }
+    },
+    "variable-interpolation": {
+      "name": "meta.interpolation.loom",
+      "match": "(\\{\\{)\\s*([a-zA-Z0-9_-]+)\\s*(\\}\\})",
+      "captures": {
+        "1": { "name": "punctuation.definition.template-expression.begin.loom" },
+        "2": { "name": "variable.other.interpolated.loom" },
+        "3": { "name": "punctuation.definition.template-expression.end.loom" }
+      }
+    },
+    "list-bullet": {
+      "match": "^(\\s+)(-)\\s",
+      "captures": {
+        "2": { "name": "punctuation.definition.list.bullet.loom" }
+      }
+    },
+    "braces": {
+      "name": "punctuation.definition.block.loom",
+      "match": "[{}]"
+    }
+  }
+}

@@ -3,6 +3,7 @@ package validate
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -63,23 +64,27 @@ func Validate(reg *registry.Registry, cfg *config.Config) []Diagnostic {
 func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diagnostic {
 	var diags []Diagnostic
 
-	// Unknown parent reference.
-	if n.Parent != "" {
-		if _, ok := reg.LookupPrompt(n.Parent); !ok {
-			msg := fmt.Sprintf("prompt %q inherits unknown prompt %q", n.Name, n.Parent)
-			if suggestion := suggest(n.Parent, promptNames(reg)); suggestion != "" {
-				msg += fmt.Sprintf("\n  Did you mean %q?", suggestion)
+	// Unknown parent references — validate all parents (multiple inheritance).
+	for _, parentRef := range n.Parents {
+		if _, _, ok := reg.LookupPromptFull(parentRef, ""); !ok {
+			msg := fmt.Sprintf("prompt %q inherits unknown prompt %q", n.Name, parentRef)
+			if !strings.Contains(parentRef, ".") {
+				if suggestion := suggest(parentRef, promptNames(reg)); suggestion != "" {
+					msg += fmt.Sprintf("\n  Did you mean %q?", suggestion)
+				}
 			}
 			diags = append(diags, Diagnostic{Sev: Error, Message: msg, Pos: n.Pos})
 		}
 	}
 
-	// Unknown block references.
+	// Unknown block references — namespace-aware lookup.
 	for _, use := range n.Uses {
-		if _, ok := reg.LookupBlock(use); !ok {
+		if _, ok := reg.LookupBlockFull(use, ""); !ok {
 			msg := fmt.Sprintf("prompt %q uses unknown block %q", n.Name, use)
-			if suggestion := suggest(use, blockNames(reg)); suggestion != "" {
-				msg += fmt.Sprintf("\n  Did you mean %q?", suggestion)
+			if !strings.Contains(use, ".") {
+				if suggestion := suggest(use, blockNames(reg)); suggestion != "" {
+					msg += fmt.Sprintf("\n  Did you mean %q?", suggestion)
+				}
 			}
 			diags = append(diags, Diagnostic{Sev: Error, Message: msg, Pos: n.Pos})
 		}
@@ -96,6 +101,15 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 
 	// Invalid field names.
 	for _, f := range n.Fields {
+		if f.FieldName == "tags" {
+			// Tags must use the inline `tags: a, b, c` syntax, not a field operator.
+			diags = append(diags, Diagnostic{
+				Sev:     Warning,
+				Message: fmt.Sprintf("prompt %q: use `tags: value1, value2` inline syntax for tags — operator syntax (%s) is not supported", n.Name, f.Op),
+				Pos:     f.Pos,
+			})
+			continue
+		}
 		if !ast.ValidFields[f.FieldName] {
 			diags = append(diags, Diagnostic{
 				Sev:     Error,
@@ -153,12 +167,34 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 		}
 	}
 
+	// Deprecated operators: += and -= are v1 syntax; v2 uses := with from() expressions.
+	for _, f := range n.Fields {
+		switch f.Op {
+		case ast.OpAppend:
+			diags = append(diags, Diagnostic{
+				Sev:     Warning,
+				Message: fmt.Sprintf("prompt %q field %q: '+=' is deprecated in v2 — use ':= from(parent[*]) and { ... }' instead", n.Name, f.FieldName),
+				Pos:     f.Pos,
+			})
+		case ast.OpRemove:
+			if !ast.ScalarFields[f.FieldName] { // scalar -=  is already an error above
+				diags = append(diags, Diagnostic{
+					Sev:     Warning,
+					Message: fmt.Sprintf("prompt %q field %q: '-=' is deprecated in v2 and has no direct replacement — flag for manual resolution", n.Name, f.FieldName),
+					Pos:     f.Pos,
+				})
+			}
+		}
+	}
+
+	// Static validation of from() expressions.
+	diags = append(diags, checkFromExpressions(n)...)
+
 	// Required fields (configurable).
 	fieldSet := fieldNameSet(n)
 	depth := inheritanceDepth(n.Name, reg)
-	isLeaf := depth == 0 || n.Parent != "" // only check prompts that extend something or stand alone
+	_ = depth
 
-	_ = isLeaf // check all prompts for required fields for simplicity
 	if cfg.Validation.RequireObjective && !fieldSet["objective"] && !hasInheritedField(n.Name, "objective", reg) {
 		diags = append(diags, Diagnostic{
 			Sev:     Warning,
@@ -200,14 +236,14 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 	}
 
 	// Ambiguous redefinition warning: using ':' on an inherited field.
-	if n.Parent != "" {
-		inheritedFields := allAncestorFields(n.Parent, reg)
+	if len(n.Parents) > 0 {
+		inheritedFields := allAncestorFields(n.Parents, reg)
 		for _, f := range n.Fields {
 			if f.Op == ast.OpDefine && inheritedFields[f.FieldName] {
 				diags = append(diags, Diagnostic{
 					Sev: Warning,
 					Message: fmt.Sprintf(
-						"prompt %q redefines inherited field %q with ':' instead of ':=' or '+=' — use an explicit operator to clarify intent",
+						"prompt %q redefines inherited field %q with ':' instead of ':=' — use an explicit operator to clarify intent",
 						n.Name, f.FieldName,
 					),
 					Pos: f.Pos,
@@ -259,15 +295,127 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 	return diags
 }
 
-func checkBlock(n *ast.Node, reg *registry.Registry) []Diagnostic {
+// checkFromExpressions statically validates all from() expressions in a prompt's fields.
+// Checks: scalar type errors, out-of-bounds parent indices, named refs not in parents list.
+func checkFromExpressions(n *ast.Node) []Diagnostic {
+	var diags []Diagnostic
+	parentCount := len(n.Parents)
+
+	for _, f := range n.Fields {
+		if f.FromExpr == nil {
+			continue
+		}
+		isScalar := ast.ScalarFields[f.FieldName]
+
+		for _, unit := range f.FromExpr.Units {
+			switch unit.Kind {
+			case ast.FromParentRef:
+				switch unit.ParentSub.Kind {
+				case ast.SubAll:
+					if isScalar {
+						diags = append(diags, Diagnostic{
+							Sev: Error,
+							Message: fmt.Sprintf(
+								"prompt %q field %q: from(parent[*]) cannot be used on scalar fields — use from(parent[N]) to select one specific parent",
+								n.Name, f.FieldName,
+							),
+							Pos: unit.Pos,
+						})
+					}
+				case ast.SubIndex:
+					if unit.ParentSub.N >= parentCount {
+						diags = append(diags, Diagnostic{
+							Sev: Error,
+							Message: fmt.Sprintf(
+								"prompt %q field %q: parent[%d] is out of range — prompt has %d parent(s) (indices are 0-based)",
+								n.Name, f.FieldName, unit.ParentSub.N, parentCount,
+							),
+							Pos: unit.Pos,
+						})
+					}
+				case ast.SubRange:
+					if unit.ParentSub.N >= parentCount || unit.ParentSub.M > parentCount {
+						diags = append(diags, Diagnostic{
+							Sev: Error,
+							Message: fmt.Sprintf(
+								"prompt %q field %q: parent[%d..%d] is out of range — prompt has %d parent(s)",
+								n.Name, f.FieldName, unit.ParentSub.N, unit.ParentSub.M, parentCount,
+							),
+							Pos: unit.Pos,
+						})
+					}
+				}
+
+			case ast.FromNamedRef:
+				// The referenced name must be one of the declared parents.
+				if !slices.Contains(n.Parents, unit.ParentName) {
+					diags = append(diags, Diagnostic{
+						Sev: Error,
+						Message: fmt.Sprintf(
+							"prompt %q field %q: from(%s) references %q which is not a declared parent — only declared parents may appear in from() expressions",
+							n.Name, f.FieldName, unit.ParentName, unit.ParentName,
+						),
+						Pos: unit.Pos,
+					})
+				}
+
+			case ast.FromFieldRef:
+				// The referenced field name must be valid.
+				if unit.FieldName != "" && !ast.ValidFields[unit.FieldName] {
+					diags = append(diags, Diagnostic{
+						Sev: Error,
+						Message: fmt.Sprintf(
+							"prompt %q field %q: from() references unknown field %q",
+							n.Name, f.FieldName, unit.FieldName,
+						),
+						Pos: unit.Pos,
+					})
+				}
+				// Validate parent subscript bounds.
+				if unit.SourceSub.Kind == ast.SubIndex && unit.SourceSub.N >= parentCount {
+					diags = append(diags, Diagnostic{
+						Sev: Error,
+						Message: fmt.Sprintf(
+							"prompt %q field %q: parent[%d] is out of range in from() expression — prompt has %d parent(s)",
+							n.Name, f.FieldName, unit.SourceSub.N, parentCount,
+						),
+						Pos: unit.Pos,
+					})
+				}
+			}
+		}
+	}
+	return diags
+}
+
+func checkBlock(n *ast.Node, _ *registry.Registry) []Diagnostic {
 	var diags []Diagnostic
 
 	for _, f := range n.Fields {
+		if f.FieldName == "tags" {
+			diags = append(diags, Diagnostic{
+				Sev:     Warning,
+				Message: fmt.Sprintf("block %q: use `tags: value1, value2` inline syntax for tags — operator syntax (%s) is not supported", n.Name, f.Op),
+				Pos:     f.Pos,
+			})
+			continue
+		}
 		if !ast.ValidFields[f.FieldName] {
 			diags = append(diags, Diagnostic{
 				Sev:     Error,
 				Message: fmt.Sprintf("block %q uses unknown field %q", n.Name, f.FieldName),
 				Pos:     f.Pos,
+			})
+		}
+		// from() expressions make no sense in blocks (blocks have no parents).
+		if f.FromExpr != nil {
+			diags = append(diags, Diagnostic{
+				Sev: Error,
+				Message: fmt.Sprintf(
+					"block %q field %q: from() expressions are not valid in blocks — blocks have no parents",
+					n.Name, f.FieldName,
+				),
+				Pos: f.Pos,
 			})
 		}
 		for _, line := range f.Value {
@@ -286,6 +434,14 @@ func checkBlock(n *ast.Node, reg *registry.Registry) []Diagnostic {
 func checkOverlay(n *ast.Node) []Diagnostic {
 	var diags []Diagnostic
 	for _, f := range n.Fields {
+		if f.FieldName == "tags" {
+			diags = append(diags, Diagnostic{
+				Sev:     Warning,
+				Message: fmt.Sprintf("overlay %q: use `tags: value1, value2` inline syntax for tags — operator syntax (%s) is not supported", n.Name, f.Op),
+				Pos:     f.Pos,
+			})
+			continue
+		}
 		if !ast.ValidFields[f.FieldName] {
 			diags = append(diags, Diagnostic{
 				Sev:     Error,
@@ -308,96 +464,148 @@ func checkOverlay(n *ast.Node) []Diagnostic {
 
 // ---- helpers ----
 
-// detectCycle returns a string like "A -> B -> C -> A" if a cycle is found, else "".
+// detectCycle runs a DFS from `name` over the multi-parent graph and returns
+// a cycle path string like "A -> B -> C -> A" if a cycle is reachable, else "".
 func detectCycle(name string, reg *registry.Registry) string {
-	visited := []string{}
-	seen := map[string]bool{}
-	current := name
+	onPath := map[string]bool{}
+	visited := map[string]bool{}
+	var path []string
 
-	for {
-		if seen[current] {
-			// Find where the cycle starts in the visited chain.
-			for i, v := range visited {
-				if v == current {
-					cycle := append(visited[i:], current)
+	var dfs func(cur string) string
+	dfs = func(cur string) string {
+		if onPath[cur] {
+			// Back-edge found — build the cycle path.
+			for i, v := range path {
+				if v == cur {
+					cycle := make([]string, 0, len(path)-i+1)
+					cycle = append(cycle, path[i:]...)
+					cycle = append(cycle, cur)
 					return strings.Join(cycle, " -> ")
 				}
 			}
+			return cur + " -> ..."
 		}
-		seen[current] = true
-		visited = append(visited, current)
-
-		n, ok := reg.LookupPrompt(current)
-		if !ok || n.Parent == "" {
+		if visited[cur] {
 			return ""
 		}
-		current = n.Parent
+		onPath[cur] = true
+		path = append(path, cur)
+
+		if n, ok := reg.LookupPrompt(cur); ok {
+			for _, p := range n.Parents {
+				if res := dfs(p); res != "" {
+					return res
+				}
+			}
+		}
+
+		path = path[:len(path)-1]
+		delete(onPath, cur)
+		visited[cur] = true
+		return ""
 	}
+
+	return dfs(name)
 }
 
-// inheritanceDepth returns how many ancestors the prompt named `name` has.
+// inheritanceDepth returns the maximum ancestor depth of the prompt named `name`.
+// For multi-parent prompts the deepest parent chain wins.
 func inheritanceDepth(name string, reg *registry.Registry) int {
-	depth := 0
-	current := name
-	seen := map[string]bool{}
-	for {
-		n, ok := reg.LookupPrompt(current)
-		if !ok || n.Parent == "" {
-			return depth
+	seen := map[string]bool{name: true}
+
+	var maxDepth func(cur string) int
+	maxDepth = func(cur string) int {
+		n, ok := reg.LookupPrompt(cur)
+		if !ok || len(n.Parents) == 0 {
+			return 0
 		}
-		if seen[n.Parent] {
-			return depth // cycle — caught separately
+		best := 0
+		for _, p := range n.Parents {
+			if seen[p] {
+				continue // cycle guard
+			}
+			seen[p] = true
+			d := 1 + maxDepth(p)
+			if d > best {
+				best = d
+			}
+			delete(seen, p)
 		}
-		seen[n.Parent] = true
-		depth++
-		current = n.Parent
+		return best
 	}
+
+	return maxDepth(name)
 }
 
 // hasInheritedField returns true if any ancestor of the named prompt defines fieldName.
 func hasInheritedField(name, fieldName string, reg *registry.Registry) bool {
-	seen := map[string]bool{}
-	current := name
-	for {
-		n, ok := reg.LookupPrompt(current)
-		if !ok || n.Parent == "" {
-			return false
-		}
-		if seen[n.Parent] {
-			return false
-		}
-		seen[n.Parent] = true
-		parent, ok := reg.LookupPrompt(n.Parent)
+	n, ok := reg.LookupPrompt(name)
+	if !ok {
+		return false
+	}
+	seen := map[string]bool{name: true}
+
+	var walk func(cur string) bool
+	walk = func(cur string) bool {
+		node, ok := reg.LookupPrompt(cur)
 		if !ok {
 			return false
 		}
-		for _, f := range parent.Fields {
+		for _, f := range node.Fields {
 			if f.FieldName == fieldName {
 				return true
 			}
 		}
-		current = n.Parent
+		for _, p := range node.Parents {
+			if seen[p] {
+				continue
+			}
+			seen[p] = true
+			if walk(p) {
+				return true
+			}
+		}
+		return false
 	}
+
+	for _, p := range n.Parents {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		if walk(p) {
+			return true
+		}
+	}
+	return false
 }
 
-// allAncestorFields returns the set of field names defined by any ancestor prompt.
-func allAncestorFields(parentName string, reg *registry.Registry) map[string]bool {
+// allAncestorFields returns the set of field names defined by any ancestor reachable
+// from the given parent names. Used to detect ambiguous ':' redefinitions.
+func allAncestorFields(parentNames []string, reg *registry.Registry) map[string]bool {
 	result := map[string]bool{}
 	seen := map[string]bool{}
-	current := parentName
-	for {
-		n, ok := reg.LookupPrompt(current)
+
+	var walk func(cur string)
+	walk = func(cur string) {
+		if seen[cur] {
+			return
+		}
+		seen[cur] = true
+		n, ok := reg.LookupPrompt(cur)
 		if !ok {
-			break
+			return
 		}
 		for _, f := range n.Fields {
 			result[f.FieldName] = true
 		}
-		if n.Parent == "" || seen[n.Parent] {
-			break
+		for _, p := range n.Parents {
+			walk(p)
 		}
-		seen[n.Parent] = true
-		current = n.Parent
+	}
+
+	for _, p := range parentNames {
+		walk(p)
 	}
 	return result
 }

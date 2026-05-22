@@ -29,6 +29,15 @@ var fieldOrder = []section{
 	{fieldName: "notes", heading: "Notes", isList: false},
 }
 
+// isNullSentinel reports whether a field value is the NULL placeholder used to
+// satisfy required-field validation without adding real content to the output.
+// Matches "NULL" or "- NULL" (case-insensitive, ignoring surrounding whitespace).
+func isNullSentinel(s string) bool {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "- ")
+	return strings.EqualFold(strings.TrimSpace(s), "NULL")
+}
+
 // Render converts a ResolvedPrompt to a Markdown string using the supplied config.
 func Render(rp *ast.ResolvedPrompt, cfg *config.Config) string {
 	var sb strings.Builder
@@ -41,7 +50,7 @@ func Render(rp *ast.ResolvedPrompt, cfg *config.Config) string {
 
 	for _, sec := range fieldOrder {
 		if sec.isList {
-			items := getList(rp, sec.fieldName)
+			items := filterNulls(getList(rp, sec.fieldName))
 			if len(items) == 0 {
 				continue
 			}
@@ -51,7 +60,7 @@ func Render(rp *ast.ResolvedPrompt, cfg *config.Config) string {
 			}
 		} else {
 			val := getScalar(rp, sec.fieldName)
-			if val == "" {
+			if val == "" || isNullSentinel(val) {
 				continue
 			}
 			fmt.Fprintf(&sb, "\n## %s\n", sec.heading)
@@ -60,6 +69,17 @@ func Render(rp *ast.ResolvedPrompt, cfg *config.Config) string {
 	}
 
 	return sb.String()
+}
+
+// filterNulls removes NULL sentinel items from a list field.
+func filterNulls(items []string) []string {
+	out := items[:0:0]
+	for _, item := range items {
+		if !isNullSentinel(item) {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // writeFrontMatter writes a YAML front matter block with prompt metadata.

@@ -166,7 +166,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	cwd, _ := os.Getwd()
 	registryURL := publishRegistry
 	if registryURL == "" {
-		registryURL = resolveRegistryURL(cwd)
+		registryURL, _ = resolveRegistryURL(cwd)
 	}
 	registryURL = strings.TrimRight(registryURL, "/")
 

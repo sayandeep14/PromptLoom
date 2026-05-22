@@ -175,6 +175,11 @@ type Node struct {
 	NodeKindTag    string   // value of the `kind:` scalar field, if set
 	Todo           []string // items from the `todo:` list field
 	CompatibleWith []string // items from `compatible_with:` list field
+
+	// Tags are metadata labels declared with the inline `tags: a, b, c` syntax.
+	// They are never inherited, never rendered to Markdown, and used only for
+	// indexing, search, and RAG retrieval.
+	Tags []string
 }
 
 // ScalarFields contains field names whose value is a single string.

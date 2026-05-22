@@ -1,0 +1,16 @@
+prompt build_basic_backend inherits python-backend-flask.FlaskEngineer {
+  summary:
+    Brief description.
+
+  persona:
+    You are a...
+
+  objective:
+    Describe the task.
+
+  constraints:
+    - First constraint.
+
+  format:
+    - Output section.
+}
