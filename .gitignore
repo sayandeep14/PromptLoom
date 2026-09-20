@@ -9,3 +9,8 @@ immediate.md
 packmaker.md
 loompack/
 .env
+# Prompting / planning notes (local only)
+CLAUDE.md
+tasksnow.md
+Lumine/plan.md
+LoomTest/loom/context/
