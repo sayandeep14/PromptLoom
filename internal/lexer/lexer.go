@@ -121,7 +121,9 @@ type scanner struct {
 	fieldIndent       int
 	nestedFieldIndent int
 	tokens            []Token
-	fromBlockDepth    int // tracks open { ... } blocks inside a from() expression
+	fromBlockDepth    int  // tracks open { ... } blocks inside a from() expression
+	awaitFirst        bool // the field had no inline value; its first text line decides inFrom
+	inFrom            bool // the current field is a from() expression (only those have structural braces)
 }
 
 // Scan tokenizes src and returns the full token stream, including a terminal TokEOF.
@@ -330,9 +332,14 @@ func (s *scanner) scan() error {
 					return err
 				}
 			} else {
+				if s.awaitFirst {
+					s.inFrom = looksLikeFrom(trimmed)
+					s.awaitFirst = false
+				}
 				s.emit(Token{Type: TokTextLine, Text: trimmed, Line: lineNum, Col: indent + 1})
-				// Track opening braces inside from() expressions.
-				if strings.HasSuffix(trimmed, "{") {
+				// Track opening braces inside from() expressions only: in ordinary text a
+				// trailing "{" (a code or JSON example) must not swallow the prompt's own "}".
+				if s.inFrom && strings.HasSuffix(trimmed, "{") {
 					s.fromBlockDepth++
 				}
 			}
@@ -383,12 +390,15 @@ func (s *scanner) scanTopLine(trimmed string, lineNum int) error {
 			// "prompt Name inherits A, B, C {" — single or multiple parents
 			s.emit(Token{Type: TokKwInherits, Text: "inherits", Line: lineNum})
 			// Collect everything between "inherits" and the closing "{".
-			rawParents := strings.Join(parts[3:len(parts)-1], "")
+			rawParents := strings.Join(parts[3:len(parts)-1], " ")
 			parentNames := strings.Split(rawParents, ",")
 			for i, pn := range parentNames {
 				pn = strings.TrimSpace(pn)
 				if pn == "" {
 					return s.errorf(lineNum, "empty parent name in inherits list")
+				}
+				if strings.ContainsAny(pn, " \t") {
+					return s.errorf(lineNum, "parent names must be separated by commas, got %q (write %q)", pn, strings.Join(strings.Fields(pn), ", "))
 				}
 				if !isNamespacedIdent(pn) {
 					return s.errorf(lineNum, "expected parent prompt name, got %q", pn)
@@ -539,9 +549,12 @@ func (s *scanner) scanBodyLine(indent int, trimmed string, lineNum int) error {
 			s.emit(Token{Type: TokMinusEq, Text: "-=", Line: lineNum})
 		}
 		// Emit inline content (e.g. "from(parent[*])" or "from(parent[*]) and {").
+		s.inFrom = looksLikeFrom(inline)
+		s.awaitFirst = inline == ""
+		s.fromBlockDepth = 0
 		if inline != "" {
 			s.emit(Token{Type: TokTextLine, Text: inline, Line: lineNum, Col: indent + 1})
-			if strings.HasSuffix(inline, "{") {
+			if s.inFrom && strings.HasSuffix(inline, "{") {
 				s.fromBlockDepth++
 			}
 		}
@@ -635,4 +648,10 @@ type VarEntry struct {
 	Required bool
 	File     string
 	Line     int
+}
+
+// looksLikeFrom reports whether s starts a from() / parent[...] expression (the only field
+// values whose braces are structural).
+func looksLikeFrom(s string) bool {
+	return strings.HasPrefix(s, "from(") || strings.HasPrefix(s, "parent[")
 }

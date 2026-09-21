@@ -119,22 +119,22 @@ func (s *Server) publishDiagnostics(uri string) {
 // ---- hover ----
 
 var fieldDocs = map[string]string{
-	"summary":      "**summary** *(scalar)* — One-line description of the prompt's purpose.\nOperators: `:`  `:=`  `+=`",
-	"persona":      "**persona** *(scalar)* — Defines the AI's role and voice.\nOperators: `:`  `:=`  `+=`",
-	"context":      "**context** *(scalar)* — Background the AI should know before acting.\nOperators: `:`  `:=`  `+=`",
-	"objective":    "**objective** *(scalar)* — The goal the AI is trying to achieve.\nOperators: `:`  `:=`  `+=`",
-	"notes":        "**notes** *(scalar)* — Free-form remarks (not included in rendered output by default).\nOperators: `:`  `:=`  `+=`",
-	"instructions": "**instructions** *(list)* — Ordered steps the AI should follow.\nOperators: `:`  `:=`  `+=`  `-=`",
-	"constraints":  "**constraints** *(list)* — Hard rules the AI must not violate.\nOperators: `:`  `:=`  `+=`  `-=`",
-	"examples":     "**examples** *(list)* — Input/output examples to guide behaviour.\nOperators: `:`  `:=`  `+=`  `-=`",
-	"format":       "**format** *(list)* — Expected output structure.\nOperators: `:`  `:=`  `+=`  `-=`",
+	"summary":      "**summary** *(scalar)* — One-line description of the prompt's purpose.\nWrite it with `:=`.",
+	"persona":      "**persona** *(scalar)* — Defines the AI's role and voice.\nWrite it with `:=`.",
+	"context":      "**context** *(scalar)* — Background the AI should know before acting.\nWrite it with `:=`.",
+	"objective":    "**objective** *(scalar)* — The goal the AI is trying to achieve.\nWrite it with `:=`.",
+	"notes":        "**notes** *(scalar)* — Free-form remarks (not included in rendered output by default).\nWrite it with `:=`.",
+	"instructions": "**instructions** *(list)* — Ordered steps the AI should follow.\nWrite it with `:=`; extend an inherited list with `from(parent[*]) and { ... }`.",
+	"constraints":  "**constraints** *(list)* — Hard rules the AI must not violate.\nWrite it with `:=`; extend an inherited list with `from(parent[*]) and { ... }`.",
+	"examples":     "**examples** *(list)* — Input/output examples to guide behaviour.\nWrite it with `:=`; extend an inherited list with `from(parent[*]) and { ... }`.",
+	"format":       "**format** *(list)* — Expected output structure.\nWrite it with `:=`; extend an inherited list with `from(parent[*]) and { ... }`.",
 }
 
 var keywordDocs = map[string]string{
 	"prompt":       "Declares a prompt. Syntax: `prompt Name { ... }` or `prompt Name inherits Parent { ... }`",
 	"block":        "Declares a reusable instruction block. Syntax: `block Name { ... }`",
 	"overlay":      "Declares an overlay that can be applied at render time with `--overlay Name`.",
-	"inherits":     "Sets the parent prompt for inheritance. The child inherits all parent fields.",
+	"inherits":     "Sets the parent prompt(s), on the declaration line: `prompt Name inherits A, B { ... }`. Combine parent fields with `from(...)`.",
 	"use":          "Mixes a block's fields into this prompt. Syntax: `use BlockName`",
 	"var":          "Declares a render variable with an optional default. Syntax: `var name = \"default\"`",
 	"slot":         "Declares a required input slot that prompts interactively. Syntax: `slot name` or `slot name { secret: true }`",
@@ -153,15 +153,15 @@ func (s *Server) handleHover(id interface{}, p TextDocumentPositionParams) {
 	}
 
 	line := getLine(text, p.Position.Line)
-	word, wStart, wEnd := wordAt(line, p.Position.Character)
+	word, wStart, wEnd := wordAt(line, utf16ToByte(line, p.Position.Character))
 	if word == "" {
 		s.respond(id, nil)
 		return
 	}
 
 	wordRange := &LSPRange{
-		Start: Position{p.Position.Line, wStart},
-		End:   Position{p.Position.Line, wEnd},
+		Start: Position{p.Position.Line, byteToUTF16(line, wStart)},
+		End:   Position{p.Position.Line, byteToUTF16(line, wEnd)},
 	}
 
 	// Check if it's a known field name.
@@ -189,7 +189,7 @@ func (s *Server) handleHover(id interface{}, p TextDocumentPositionParams) {
 	if root != "" {
 		reg, _, err := loader.Load(root)
 		if err == nil {
-			if after, ok := wordAfterKeyword(trimmed, "inherits"); ok && after == word {
+			if inNamesAfterKeyword(trimmed, "inherits", word) {
 				if node, ok := reg.LookupPrompt(word); ok {
 					s.respond(id, Hover{
 						Contents: MarkupContent{
@@ -201,7 +201,7 @@ func (s *Server) handleHover(id interface{}, p TextDocumentPositionParams) {
 					return
 				}
 			}
-			if after, ok := wordAfterKeyword(trimmed, "use"); ok && after == word {
+			if inNamesAfterKeyword(trimmed, "use", word) {
 				if node, ok := reg.LookupBlock(word); ok {
 					s.respond(id, Hover{
 						Contents: MarkupContent{
@@ -232,17 +232,27 @@ func (s *Server) handleHover(id interface{}, p TextDocumentPositionParams) {
 	s.respond(id, nil)
 }
 
-func wordAfterKeyword(line, keyword string) (string, bool) {
-	prefix := keyword + " "
-	if !strings.Contains(line, prefix) {
-		return "", false
+// inNamesAfterKeyword reports whether word is one of the names listed after keyword on line:
+// `inherits A, B {` lists A and B, `use Guard` lists Guard.
+func inNamesAfterKeyword(line, keyword, word string) bool {
+	fields := strings.Fields(line)
+	for i, f := range fields {
+		if f != keyword {
+			continue
+		}
+		for _, name := range fields[i+1:] {
+			if name == "{" {
+				break
+			}
+			for _, n := range strings.Split(strings.TrimSuffix(name, "{"), ",") {
+				if n == word {
+					return true
+				}
+			}
+		}
+		return false
 	}
-	rest := line[strings.Index(line, prefix)+len(prefix):]
-	parts := strings.Fields(rest)
-	if len(parts) == 0 {
-		return "", false
-	}
-	return parts[0], true
+	return false
 }
 
 func formatNodeHover(node *ast.Node, reg *registry.Registry) string {
@@ -297,7 +307,7 @@ func (s *Server) handleDefinition(id interface{}, p TextDocumentPositionParams) 
 	}
 
 	line := getLine(text, p.Position.Line)
-	word, _, _ := wordAt(line, p.Position.Character)
+	word, _, _ := wordAt(line, utf16ToByte(line, p.Position.Character))
 	if word == "" {
 		s.respond(id, nil)
 		return
@@ -318,7 +328,7 @@ func (s *Server) handleDefinition(id interface{}, p TextDocumentPositionParams) 
 	trimmed := strings.TrimSpace(line)
 
 	// `inherits Name` → jump to prompt declaration.
-	if after, ok := wordAfterKeyword(trimmed, "inherits"); ok && after == word {
+	if inNamesAfterKeyword(trimmed, "inherits", word) {
 		if loc := nodeLocation(word, reg, true); loc != nil {
 			s.respond(id, loc)
 			return
@@ -326,7 +336,7 @@ func (s *Server) handleDefinition(id interface{}, p TextDocumentPositionParams) 
 	}
 
 	// `use Name` → jump to block declaration.
-	if after, ok := wordAfterKeyword(trimmed, "use"); ok && after == word {
+	if inNamesAfterKeyword(trimmed, "use", word) {
 		if loc := nodeLocation(word, reg, false); loc != nil {
 			s.respond(id, loc)
 			return
@@ -368,7 +378,7 @@ var fieldNames = []string{
 }
 
 var bodyKeywords = []string{
-	"inherits", "use", "var", "slot", "variant", "env", "contract", "capabilities",
+	"use", "var", "slot", "variant", "env", "contract", "capabilities", "tags",
 }
 
 func (s *Server) handleCompletion(id interface{}, p CompletionParams) {
@@ -380,10 +390,7 @@ func (s *Server) handleCompletion(id interface{}, p CompletionParams) {
 	}
 
 	line := getLine(text, p.Position.Line)
-	prefix := ""
-	if p.Position.Character <= len(line) {
-		prefix = strings.TrimLeft(line[:p.Position.Character], " \t")
-	}
+	prefix := strings.TrimLeft(line[:utf16ToByte(line, p.Position.Character)], " \t")
 
 	var items []CompletionItem
 
@@ -433,7 +440,7 @@ func (s *Server) handleCompletion(id interface{}, p CompletionParams) {
 				Label:         f,
 				Kind:          5, // Field
 				Detail:        fieldDetail(f),
-				InsertText:    f + ":\n    ",
+				InsertText:    f + " :=\n    ",
 				Documentation: fieldDocs[f],
 			})
 		}

@@ -4,6 +4,7 @@ package workspace
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,14 @@ func Scan(dir string) (*Info, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
+	}
+
+	st, err := os.Stat(abs)
+	if err != nil {
+		return nil, fmt.Errorf("cannot scan %s: %w", dir, err)
+	}
+	if !st.IsDir() {
+		return nil, fmt.Errorf("cannot scan %s: not a directory", dir)
 	}
 
 	info := &Info{Dir: abs}
@@ -173,7 +182,7 @@ func detectStack(dir string, info *Info) {
 			info.Framework = "Vue"
 		} else if fileContains(dir, "package.json", `"express"`) {
 			info.Framework = "Express"
-		} else if fileContains(dir, "package.json", `"nestjs"`) || fileContains(dir, "package.json", `"@nestjs"`) {
+		} else if fileContains(dir, "package.json", `"nestjs"`) || fileContains(dir, "package.json", `"@nestjs/`) {
 			info.Framework = "NestJS"
 		}
 		if fileContains(dir, "package.json", `"jest"`) {
@@ -231,11 +240,22 @@ func readFileMulti(dir string, candidates ...string) (string, bool) {
 	return "", false
 }
 
+// maxContextFile caps how much of a context file (CLAUDE.md, TODO.md) is read: the text ends
+// up inside generated prompts, so a multi-megabyte file must not be pulled in whole.
+const maxContextFile = 1 << 20
+
 func readFile(dir, name string) (string, bool) {
-	path := filepath.Join(dir, name)
-	data, err := os.ReadFile(path)
+	f, err := os.Open(filepath.Join(dir, name))
 	if err != nil {
 		return "", false
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxContextFile+1))
+	if err != nil {
+		return "", false
+	}
+	if len(data) > maxContextFile {
+		return string(data[:maxContextFile]) + "\n\n[truncated: file is larger than 1 MiB]\n", true
 	}
 	return string(data), true
 }

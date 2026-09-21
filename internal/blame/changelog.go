@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -81,10 +82,15 @@ func BuildChangelog(cwd, since, promptFilter string) ([]PromptChangelog, error) 
 		}
 		result = append(result, PromptChangelog{Name: node.Name, Entries: entries})
 	}
-	for name, entries := range byPrompt {
+	var gone []string
+	for name := range byPrompt {
 		if !seen[name] && (promptFilter == "" || promptFilter == name) {
-			result = append(result, PromptChangelog{Name: name, Entries: entries})
+			gone = append(gone, name)
 		}
+	}
+	sort.Strings(gone)
+	for _, name := range gone {
+		result = append(result, PromptChangelog{Name: name, Entries: byPrompt[name]})
 	}
 	return result, nil
 }
@@ -98,8 +104,12 @@ type gitCommit struct {
 }
 
 func gitLogCommits(cwd, since string) ([]gitCommit, error) {
-	args := []string{"log", "--format=%H|%an|%aI|%s"}
+	// \x1f (unit separator) cannot appear in an author name or subject, unlike "|".
+	args := []string{"log", "--format=%H%x1f%an%x1f%aI%x1f%s"}
 	if since != "" {
+		if strings.HasPrefix(since, "-") {
+			return nil, fmt.Errorf("invalid --since value %q: expected a date (YYYY-MM-DD) or a git ref", since)
+		}
 		if looksLikeDate(since) {
 			args = append(args, "--since="+since)
 		} else {
@@ -113,7 +123,11 @@ func gitLogCommits(cwd, since string) ([]gitCommit, error) {
 	cmd.Dir = cwd
 	out, err := cmd.Output()
 	if err != nil {
-		// No commits in range — treat as empty, not an error.
+		if since != "" {
+			// an unknown ref is the caller's mistake, not an empty history
+			return nil, fmt.Errorf("cannot read history since %q (not a date or a known git ref)", since)
+		}
+		// No commits yet — treat as empty, not an error.
 		return nil, nil
 	}
 	var commits []gitCommit
@@ -121,7 +135,7 @@ func gitLogCommits(cwd, since string) ([]gitCommit, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 4)
+		parts := strings.SplitN(line, "\x1f", 4)
 		if len(parts) < 4 {
 			continue
 		}
@@ -137,16 +151,18 @@ func gitLogCommits(cwd, since string) ([]gitCommit, error) {
 }
 
 func commitChangedFiles(cwd, hash string) ([]string, error) {
-	cmd := exec.Command("git", "diff-tree", "--no-commit-id", "-r", "--name-only", hash)
+	// --root: the first commit has no parent, and without it diff-tree lists nothing for it.
+	// -z: paths are NUL-separated and never quoted, so names with spaces or non-ASCII survive
+	cmd := exec.Command("git", "diff-tree", "--root", "--no-commit-id", "-r", "--name-only", "-z", hash)
 	cmd.Dir = cwd
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
 	var files []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			files = append(files, line)
+	for _, name := range strings.Split(string(out), "\x00") {
+		if name != "" {
+			files = append(files, name)
 		}
 	}
 	return files, nil
@@ -179,7 +195,12 @@ func entriesForFileDiff(relFile, absFile, before, after string, c gitCommit, reg
 		allNames[n] = true
 	}
 
-	for name := range allNames {
+	names := make([]string, 0, len(allNames))
+	for n := range allNames {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		bNode := beforeByName[name]
 		aNode := afterByName[name]
 
@@ -241,7 +262,7 @@ func diffNodes(before, after *ast.Node, c gitCommit) []ChangeEntry {
 	var entries []ChangeEntry
 
 	// Inheritance change.
-	if before.Parent != after.Parent {
+	if parentOrNone(before) != parentOrNone(after) {
 		entries = append(entries, ChangeEntry{
 			Date:    c.date,
 			Author:  c.author,
@@ -292,18 +313,26 @@ func diffNodes(before, after *ast.Node, c gitCommit) []ChangeEntry {
 			heading = "Output Format"
 		}
 
+		// A scalar field holds one text: a change is "updated", not a removed and an added line.
+		if scalarFields[field] {
+			if strings.Join(bItems, "\n") != strings.Join(aItems, "\n") {
+				entries = append(entries, ChangeEntry{Date: c.date, Author: c.author, Message: fmt.Sprintf("%s updated  (%s)", heading, c.author)})
+			}
+			continue
+		}
+
 		for _, v := range added {
 			entries = append(entries, ChangeEntry{
 				Date:    c.date,
 				Author:  c.author,
-				Message: fmt.Sprintf("%s += %q  (%s)", heading, truncate(v, 60), c.author),
+				Message: fmt.Sprintf("%s added: %q  (%s)", heading, truncate(v, 60), c.author),
 			})
 		}
 		for _, v := range removed {
 			entries = append(entries, ChangeEntry{
 				Date:    c.date,
 				Author:  c.author,
-				Message: fmt.Sprintf("%s -= %q  (%s)", heading, truncate(v, 60), c.author),
+				Message: fmt.Sprintf("%s removed: %q  (%s)", heading, truncate(v, 60), c.author),
 			})
 		}
 		// For scalar fields, if the list of values changed at all, just say "updated".
@@ -323,6 +352,8 @@ func diffNodes(before, after *ast.Node, c gitCommit) []ChangeEntry {
 	return entries
 }
 
+var scalarFields = map[string]bool{"summary": true, "persona": true, "context": true, "objective": true, "notes": true}
+
 // fieldMap returns a map of field name → list of value lines from all field operations.
 func fieldMap(node *ast.Node) map[string][]string {
 	m := map[string][]string{}
@@ -333,10 +364,14 @@ func fieldMap(node *ast.Node) map[string][]string {
 }
 
 func parentOrNone(n *ast.Node) string {
-	if n.Parent == "" {
+	parents := n.Parents
+	if len(parents) == 0 && n.Parent != "" {
+		parents = []string{n.Parent}
+	}
+	if len(parents) == 0 {
 		return "(none)"
 	}
-	return n.Parent
+	return strings.Join(parents, ", ")
 }
 
 func sliceDiff(before, after []string) (added, removed []string) {

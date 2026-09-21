@@ -140,19 +140,7 @@ func checkList(prompt, field string, items []string, thresh float64) []Issue {
 				})
 				continue
 			}
-			sim := similarity(a, b)
-			if sim >= thresh {
-				issues = append(issues, Issue{
-					Kind:       KindNearDuplicate,
-					Field:      field,
-					Prompt:     prompt,
-					ItemA:      items[i],
-					ItemB:      items[j],
-					Similarity: sim,
-				})
-				continue
-			}
-			// Contradiction: one item negates the other.
+			// Checked first: "never use X" / "use X" are opposites, not near-duplicates.
 			if isContradiction(a, b) {
 				issues = append(issues, Issue{
 					Kind:   KindContradiction,
@@ -160,6 +148,18 @@ func checkList(prompt, field string, items []string, thresh float64) []Issue {
 					Prompt: prompt,
 					ItemA:  items[i],
 					ItemB:  items[j],
+				})
+				continue
+			}
+			sim, near := nearDuplicate(a, b, thresh)
+			if near {
+				issues = append(issues, Issue{
+					Kind:       KindNearDuplicate,
+					Field:      field,
+					Prompt:     prompt,
+					ItemA:      items[i],
+					ItemB:      items[j],
+					Similarity: sim,
 				})
 			}
 		}
@@ -176,11 +176,22 @@ func deduplicate(items []string, thresh float64) ([]string, int) {
 		isDup := false
 		for _, k := range kept {
 			kn := normalise(k)
+			if norm == "" || kn == "" {
+				// nothing but punctuation ("---", "***"): only identical text is a duplicate
+				if norm == kn && strings.TrimSpace(item) == strings.TrimSpace(k) {
+					isDup = true
+					break
+				}
+				continue
+			}
 			if kn == norm {
 				isDup = true
 				break
 			}
-			if norm != "" && kn != "" && similarity(norm, kn) >= thresh {
+			if isContradiction(norm, kn) {
+				continue
+			}
+			if _, near := nearDuplicate(norm, kn, thresh); near {
 				isDup = true
 				break
 			}
@@ -205,6 +216,50 @@ func normalise(s string) string {
 		}
 	}
 	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// nearDuplicate reports whether two normalised items are close enough to be the same
+// statement. Similarity alone is not enough: "Use Python 3" and "Use Python 2" are 92% alike
+// but say different things, so items that differ in a number or in a negation are never
+// near-duplicates.
+func nearDuplicate(a, b string, thresh float64) (float64, bool) {
+	la, lb := len([]rune(a)), len([]rune(b))
+	shorter, longer := la, lb
+	if shorter > longer {
+		shorter, longer = longer, shorter
+	}
+	// Levenshtein distance is at least the length difference, so similarity cannot reach the
+	// threshold; skipping avoids an O(n*m) table for clearly different items.
+	if longer > 0 && float64(shorter)/float64(longer) < thresh {
+		return 0, false
+	}
+	sim := similarity(a, b)
+	if sim < thresh || numbersOf(a) != numbersOf(b) || negationsOf(a) != negationsOf(b) {
+		return sim, false
+	}
+	return sim, true
+}
+
+func numbersOf(s string) string {
+	var out []string
+	for _, w := range strings.Fields(s) {
+		if strings.ContainsAny(w, "0123456789") {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+var negationWords = map[string]bool{"not": true, "never": true, "no": true, "dont": true, "avoid": true, "without": true, "always": true, "only": true}
+
+func negationsOf(s string) string {
+	var out []string
+	for _, w := range strings.Fields(s) {
+		if negationWords[w] {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // similarity returns a value 0–1 using normalised Levenshtein distance.
@@ -258,7 +313,8 @@ func min3(a, b, c int) int {
 // isContradiction detects simple negation patterns.
 // E.g. "always do X" vs "never do X" / "do not X" vs "do X".
 func isContradiction(a, b string) bool {
-	negPrefixes := []string{"never ", "do not ", "don't ", "avoid ", "never use ", "not "}
+	// items are normalised first, which turns "don't" into "dont"
+	negPrefixes := []string{"never ", "do not ", "don't ", "avoid ", "dont ", "never use ", "not "}
 	for _, neg := range negPrefixes {
 		if strings.HasPrefix(a, neg) {
 			core := strings.TrimPrefix(a, neg)

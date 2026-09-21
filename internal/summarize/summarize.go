@@ -12,11 +12,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sayandeep14/PromptLoom/internal/config"
+	loomctx "github.com/sayandeep14/PromptLoom/internal/context"
 )
 
 // Result is the output of a summarize run.
@@ -147,8 +150,11 @@ func buildFileTree(root string) []fileEntry {
 			entries = append(entries, fileEntry{rel: rel + "/", isDir: true})
 			return nil
 		}
-		info, _ := d.Info()
-		isKey := keySet[strings.ToLower(d.Name())]
+		info, err := d.Info()
+		if err != nil {
+			return nil // vanished or unreadable while walking
+		}
+		isKey := keySet[strings.ToLower(d.Name())] && !loomctx.IsSensitiveName(d.Name())
 		entries = append(entries, fileEntry{
 			rel:   rel,
 			size:  info.Size(),
@@ -212,10 +218,7 @@ func buildWorkspaceContext(root string, tree []fileEntry) string {
 		if err != nil {
 			continue
 		}
-		content := string(data)
-		if len(content) > maxPerFile {
-			content = content[:maxPerFile] + "\n... [truncated]"
-		}
+		content := clip(string(data), maxPerFile)
 		fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", e.rel, content)
 		total += len(content)
 	}
@@ -253,14 +256,15 @@ func buildPathContext(paths []string, cwd string) (string, error) {
 				if total >= maxTotal {
 					return filepath.SkipAll
 				}
-				data, err := os.ReadFile(fpath)
-				if err != nil {
+				// Credentials never go to the model, and neither do binaries or links out of the tree.
+				if loomctx.IsSensitiveName(fpath) || d.Type()&fs.ModeSymlink != 0 {
 					return nil
 				}
-				content := string(data)
-				if len(content) > maxPerFile {
-					content = content[:maxPerFile] + "\n... [truncated]"
+				data, err := os.ReadFile(fpath)
+				if err != nil || bytes.IndexByte(data, 0) >= 0 {
+					return nil
 				}
+				content := clip(string(data), maxPerFile)
 				fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", rel, content)
 				total += len(content)
 				return nil
@@ -270,20 +274,32 @@ func buildPathContext(paths []string, cwd string) (string, error) {
 				sb.WriteString("\n[context limit reached — remaining files omitted]\n")
 				break
 			}
+			if loomctx.IsSensitiveName(abs) {
+				return "", fmt.Errorf("refusing to summarize %q: it looks like a credentials file and would be sent to the model provider", p)
+			}
 			data, err := os.ReadFile(abs)
 			if err != nil {
 				return "", fmt.Errorf("cannot read %q: %w", p, err)
 			}
-			content := string(data)
-			if len(content) > maxPerFile {
-				content = content[:maxPerFile] + "\n... [truncated]"
-			}
+			content := clip(string(data), maxPerFile)
 			fmt.Fprintf(&sb, "\n=== File: %s ===\n%s\n", p, content)
 			total += len(content)
 		}
 	}
 
 	return sb.String(), nil
+}
+
+// clip cuts s to at most max bytes without splitting a UTF-8 character.
+func clip(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "\n... [truncated]"
 }
 
 // ---- prompts ----
@@ -354,7 +370,14 @@ func callLLM(sysPrompt, userMsg string, cfg *config.Config, timeout time.Duratio
 	}
 	model := cfg.Testing.DefaultModel
 	if model == "" {
-		model = "gemini-2.5-flash"
+		if strings.ToLower(provider) == "anthropic" {
+			model = "claude-sonnet-4-6"
+		} else {
+			model = "gemini-2.5-flash"
+		}
+	}
+	if !modelNameRe.MatchString(model) {
+		return "", fmt.Errorf("invalid model name %q in loom.toml", model)
 	}
 	envVar := cfg.Testing.APIKeyEnv
 	if envVar == "" {
@@ -372,8 +395,10 @@ func callLLM(sysPrompt, userMsg string, cfg *config.Config, timeout time.Duratio
 	switch strings.ToLower(provider) {
 	case "anthropic":
 		return callAnthropic(model, apiKey, sysPrompt, userMsg, timeout)
-	default:
+	case "gemini":
 		return callGemini(model, apiKey, sysPrompt, userMsg, timeout)
+	default:
+		return "", fmt.Errorf("unknown provider %q (supported: gemini, anthropic)", provider)
 	}
 }
 
@@ -384,6 +409,54 @@ func writeFile(path, content string) error {
 		return err
 	}
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+var modelNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`)
+
+// Endpoints; variables so tests can point them at a fake server.
+var (
+	geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+	anthropicURL  = "https://api.anthropic.com/v1/messages"
+)
+
+const maxResponseBytes = 8 << 20
+
+// doRequest sends req and returns the body and status. Transport errors can echo the request
+// URL, so the API key is scrubbed from anything returned.
+func doRequest(req *http.Request, apiKey string) ([]byte, int, error) {
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		msg := err.Error()
+		if u, ok := err.(interface{ Unwrap() error }); ok && u.Unwrap() != nil {
+			msg = u.Unwrap().Error()
+		}
+		return nil, 0, fmt.Errorf("request to %s failed: %s", req.URL.Host, scrub(msg, apiKey))
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("reading the response from %s: %s", req.URL.Host, scrub(err.Error(), apiKey))
+	}
+	return body, resp.StatusCode, nil
+}
+
+func scrub(s, key string) string {
+	if key == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, key, "***")
+}
+
+// badBody describes an unparseable response, mentioning the HTTP status.
+func badBody(provider string, status int, body []byte) error {
+	t := strings.TrimSpace(string(body))
+	if len(t) > 200 {
+		t = clip(t, 200)
+	}
+	if t == "" {
+		t = "(empty body)"
+	}
+	return fmt.Errorf("%s returned HTTP %d with an unreadable body: %s", provider, status, t)
 }
 
 func pathSlug(paths []string) string {
@@ -398,7 +471,11 @@ func pathSlug(paths []string) string {
 		}
 		return '-'
 	}, base)
-	return strings.ToLower(base)
+	base = strings.Trim(strings.ToLower(base), "-")
+	if base == "" {
+		return "summary"
+	}
+	return base
 }
 
 // ---- Gemini client ----
@@ -434,10 +511,7 @@ type geminiResponse struct {
 }
 
 func callGemini(model, apiKey, sysPrompt, userIn string, timeout time.Duration) (string, error) {
-	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		model, apiKey,
-	)
+	url := fmt.Sprintf("%s/models/%s:generateContent", geminiBaseURL, model)
 	req := geminiRequest{
 		SystemInstruction: &geminiContent{Parts: []geminiPart{{Text: sysPrompt}}},
 		Contents: []geminiContent{
@@ -455,18 +529,15 @@ func callGemini(model, apiKey, sysPrompt, userIn string, timeout time.Duration) 
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
+	// The key travels in a header, never in the URL, so it cannot show up in errors or logs.
+	httpReq.Header.Set("x-goog-api-key", apiKey)
+	respBody, status, err := doRequest(httpReq, apiKey)
 	if err != nil {
 		return "", err
 	}
 	var gr geminiResponse
 	if err := json.Unmarshal(respBody, &gr); err != nil {
-		return "", fmt.Errorf("failed to parse Gemini response: %w", err)
+		return "", badBody("Gemini", status, respBody)
 	}
 	if gr.Error != nil {
 		return "", fmt.Errorf("Gemini API error %d: %s", gr.Error.Code, gr.Error.Message)
@@ -515,25 +586,20 @@ func callAnthropic(model, apiKey, sysPrompt, userIn string, timeout time.Duratio
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, status, err := doRequest(httpReq, apiKey)
 	if err != nil {
 		return "", err
 	}
 	var ar anthropicResponse
 	if err := json.Unmarshal(respBody, &ar); err != nil {
-		return "", fmt.Errorf("failed to parse Anthropic response: %w", err)
+		return "", badBody("Anthropic", status, respBody)
 	}
 	if ar.Error != nil {
 		return "", fmt.Errorf("Anthropic API error (%s): %s", ar.Error.Type, ar.Error.Message)

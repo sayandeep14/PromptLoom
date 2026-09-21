@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
 	"github.com/sayandeep14/PromptLoom/internal/loader"
@@ -81,7 +82,10 @@ func RunBlame(promptName, fieldFilter, since, instructionFilter, cwd string) ([]
 		}
 
 		if since != "" {
-			items = filterSince(items, since)
+			items, err = filterSince(items, since, cwd)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		if len(items) > 0 {
@@ -184,16 +188,16 @@ func attachCommit(item *FieldItem, absFile string, line int) error {
 // parseLinePorcelain parses git blame --line-porcelain output for a single line.
 func parseLinePorcelain(data []byte) (CommitInfo, error) {
 	var ci CommitInfo
+	uncommitted := false
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
-		case len(line) >= 40 && !strings.HasPrefix(line, "\t") && !strings.Contains(line[:40], " "):
+		case isHashLine(line):
 			// First line of a block: <hash> <orig> <final> [count]
-			fields := strings.Fields(line)
-			if len(fields) >= 1 && len(fields[0]) == 40 {
-				ci.Hash = fields[0][:7]
-			}
+			hash := strings.Fields(line)[0]
+			ci.Hash = hash[:7]
+			uncommitted = strings.Trim(hash, "0") == ""
 		case strings.HasPrefix(line, "author ") && ci.Author == "":
 			ci.Author = strings.TrimPrefix(line, "author ")
 		case strings.HasPrefix(line, "author-time "):
@@ -208,32 +212,35 @@ func parseLinePorcelain(data []byte) (CommitInfo, error) {
 	if ci.Hash == "" {
 		return ci, fmt.Errorf("no blame data parsed")
 	}
+	if uncommitted {
+		// all-zero hash: the line is edited but not committed yet
+		return CommitInfo{}, fmt.Errorf("line is not committed yet")
+	}
 	return ci, nil
 }
 
-func filterSince(items []FieldItem, since string) []FieldItem {
-	var cutoff time.Time
-	// Try as a date first (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
-	for _, layout := range []string{"2006-01-02", "2006-01-02T15:04:05"} {
-		if t, err := time.Parse(layout, since); err == nil {
-			cutoff = t
-			break
+// filterSince keeps the items last changed on or after since (a date or a git ref). A value
+// that is neither is an error: silently returning everything would look like a filter that
+// matched all of history.
+// isHashLine reports whether line starts a blame block: a 40-char (sha-1) or 64-char (sha-256)
+// hex object id followed by positions.
+func isHashLine(line string) bool {
+	f := strings.Fields(line)
+	if len(f) < 3 || strings.HasPrefix(line, "\t") || (len(f[0]) != 40 && len(f[0]) != 64) {
+		return false
+	}
+	for _, r := range f[0] {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return false
 		}
 	}
+	return true
+}
 
-	if cutoff.IsZero() {
-		// Treat as a git ref — resolve to a timestamp.
-		out, err := exec.Command("git", "log", "-1", "--format=%at", since).Output()
-		if err == nil {
-			ts, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
-			if ts > 0 {
-				cutoff = time.Unix(ts, 0).UTC()
-			}
-		}
-	}
-
-	if cutoff.IsZero() {
-		return items
+func filterSince(items []FieldItem, since, cwd string) ([]FieldItem, error) {
+	cutoff, err := resolveSince(since, cwd)
+	if err != nil {
+		return nil, err
 	}
 
 	var filtered []FieldItem
@@ -242,7 +249,28 @@ func filterSince(items []FieldItem, since string) []FieldItem {
 			filtered = append(filtered, it)
 		}
 	}
-	return filtered
+	return filtered, nil
+}
+
+// resolveSince turns a date (YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS) or a git ref into a time.
+func resolveSince(since, cwd string) (time.Time, error) {
+	for _, layout := range []string{"2006-01-02", "2006-01-02T15:04:05"} {
+		if t, err := time.Parse(layout, since); err == nil {
+			return t, nil
+		}
+	}
+	if strings.HasPrefix(since, "-") {
+		return time.Time{}, fmt.Errorf("invalid --since value %q: expected a date (YYYY-MM-DD) or a git ref", since)
+	}
+	cmd := exec.Command("git", "log", "-1", "--format=%at", since, "--")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err == nil {
+		if ts, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64); ts > 0 {
+			return time.Unix(ts, 0).UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid --since value %q: not a date (YYYY-MM-DD) and not a git ref in this repository", since)
 }
 
 func relativize(absPath, root string) string {
@@ -256,18 +284,23 @@ func relativize(absPath, root string) string {
 	return rel
 }
 
+// truncate shortens s to at most n characters (not bytes, so multi-byte text is never cut
+// in the middle of a character).
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
 }
 
 func capitalizeFirst(s string) string {
-	if s == "" {
+	r := []rune(s)
+	if len(r) == 0 {
 		return s
 	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }
 
 func requireGitRepo(cwd string) error {

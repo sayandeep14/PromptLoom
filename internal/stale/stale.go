@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
@@ -94,29 +95,24 @@ var versionRE = regexp.MustCompile(`\b(\d+(?:\.\d+){0,2})\b`)
 
 func checkPrompt(rp *ast.ResolvedPrompt, deps []DepVersion) []Finding {
 	var findings []Finding
-	fields := map[string]string{
-		"summary":   rp.Summary,
-		"persona":   rp.Persona,
-		"context":   rp.Context,
-		"objective": rp.Objective,
-		"notes":     rp.Notes,
-	}
-	listFields := map[string][]string{
-		"instructions": rp.Instructions,
-		"constraints":  rp.Constraints,
-		"examples":     rp.Examples,
-		"format":       rp.Format,
-	}
-
-	for field, text := range fields {
-		if text == "" {
-			continue
+	// A fixed order keeps the report (and anything diffing it) stable between runs.
+	for _, f := range []struct{ name, text string }{
+		{"summary", rp.Summary}, {"persona", rp.Persona}, {"context", rp.Context},
+		{"objective", rp.Objective}, {"notes", rp.Notes},
+	} {
+		if f.text != "" {
+			findings = append(findings, checkText(rp.Name, f.name, f.text, deps)...)
 		}
-		findings = append(findings, checkText(rp.Name, field, text, deps)...)
 	}
-	for field, items := range listFields {
-		for _, item := range items {
-			findings = append(findings, checkText(rp.Name, field, item, deps)...)
+	for _, f := range []struct {
+		name  string
+		items []string
+	}{
+		{"instructions", rp.Instructions}, {"constraints", rp.Constraints},
+		{"examples", rp.Examples}, {"format", rp.Format},
+	} {
+		for _, item := range f.items {
+			findings = append(findings, checkText(rp.Name, f.name, item, deps)...)
 		}
 	}
 	return findings
@@ -124,10 +120,12 @@ func checkPrompt(rp *ast.ResolvedPrompt, deps []DepVersion) []Finding {
 
 func checkText(prompt, field, text string, deps []DepVersion) []Finding {
 	var findings []Finding
-	textLower := strings.ToLower(text)
 	for _, dep := range deps {
-		nameLower := strings.ToLower(dep.Name)
-		if !strings.Contains(textLower, nameLower) {
+		// Ranges and tags ("*", "latest", "workspace:*") carry no version to compare with.
+		if dep.Name == "" || dep.Version == "" || dep.Version[0] < '0' || dep.Version[0] > '9' {
+			continue
+		}
+		if !mentionsName(text, dep.Name) {
 			continue
 		}
 		// Find version mentions that appear near the dep name.
@@ -151,10 +149,28 @@ func checkText(prompt, field, text string, deps []DepVersion) []Finding {
 	return findings
 }
 
-// isCompatibleVersion returns true if mention is a prefix of declared
-// (e.g. "17" is compatible with "17.0.1") so we don't over-report.
+// mentionsName reports whether text names the dependency as a whole word, so the Go
+// toolchain ("go") is not "mentioned" by "good" or "algorithm".
+func mentionsName(text, name string) bool {
+	re, err := regexp.Compile(`(?i)(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(name) + `($|[^A-Za-z0-9_])`)
+	return err == nil && re.MatchString(text)
+}
+
+// isCompatibleVersion returns true if one version is a component-wise prefix of the other
+// (e.g. "17" is compatible with "17.0.1") so we don't over-report. "3.1" is NOT
+// compatible with "3.10.2": they are different minor versions.
 func isCompatibleVersion(mention, declared string) bool {
-	return strings.HasPrefix(declared, mention) || strings.HasPrefix(mention, declared)
+	m, d := strings.Split(mention, "."), strings.Split(declared, ".")
+	n := len(m)
+	if len(d) < n {
+		n = len(d)
+	}
+	for i := 0; i < n; i++ {
+		if m[i] != d[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ---- dependency file parsers ----
@@ -171,14 +187,17 @@ func parseGoMod(data []byte) ([]DepVersion, error) {
 			}
 			continue
 		}
-		// require lines: "  github.com/foo/bar v1.2.3"
-		if strings.Contains(line, " v") {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				ver := strings.TrimPrefix(parts[1], "v")
-				name := moduleName(parts[0])
-				deps = append(deps, DepVersion{Name: name, Version: ver})
+		// require lines: "  github.com/foo/bar v1.2.3" (also "require github.com/foo/bar v1.2.3")
+		parts := strings.Fields(line)
+		if len(parts) > 0 && (parts[0] == "require" || parts[0] == "replace" || parts[0] == "exclude" || parts[0] == "retract") {
+			if parts[0] != "require" {
+				continue
 			}
+			parts = parts[1:]
+		}
+		if len(parts) >= 2 && len(parts[1]) > 1 && parts[1][0] == 'v' && parts[1][1] >= '0' && parts[1][1] <= '9' &&
+			!strings.HasPrefix(parts[0], "module") && !strings.HasPrefix(parts[0], "//") {
+			deps = append(deps, DepVersion{Name: moduleName(parts[0]), Version: strings.TrimPrefix(parts[1], "v")})
 		}
 	}
 	return deps, nil
@@ -186,7 +205,12 @@ func parseGoMod(data []byte) ([]DepVersion, error) {
 
 func moduleName(path string) string {
 	parts := strings.Split(path, "/")
-	return parts[len(parts)-1]
+	last := parts[len(parts)-1]
+	// "github.com/foo/bar/v2" is the module "bar", not "v2"
+	if len(parts) > 1 && len(last) > 1 && last[0] == 'v' && strings.Trim(last[1:], "0123456789") == "" {
+		return parts[len(parts)-2]
+	}
+	return last
 }
 
 type packageJSON struct {
@@ -200,16 +224,21 @@ func parsePackageJSON(data []byte) ([]DepVersion, error) {
 		return nil, err
 	}
 	var deps []DepVersion
-	for name, ver := range pkg.Dependencies {
-		deps = append(deps, DepVersion{Name: name, Version: cleanSemver(ver)})
-	}
-	for name, ver := range pkg.DevDependencies {
-		deps = append(deps, DepVersion{Name: name, Version: cleanSemver(ver)})
+	for _, group := range []map[string]string{pkg.Dependencies, pkg.DevDependencies} {
+		names := make([]string, 0, len(group))
+		for name := range group {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			deps = append(deps, DepVersion{Name: name, Version: cleanSemver(group[name])})
+		}
 	}
 	return deps, nil
 }
 
 func cleanSemver(v string) string {
+	v = strings.TrimSpace(v)
 	v = strings.TrimPrefix(v, "^")
 	v = strings.TrimPrefix(v, "~")
 	v = strings.TrimPrefix(v, ">=")
@@ -312,25 +341,56 @@ func extractCargoVersion(s string) string {
 
 func parsePyprojectToml(data []byte) ([]DepVersion, error) {
 	var deps []DepVersion
-	inDeps := false
+	section := ""
+	inArray := false // inside `dependencies = [ ... ]` of [project]
+	req := regexp.MustCompile(`^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*[=~><!]+\s*([0-9][^\s,;]*)`)
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "[tool.poetry.dependencies]" || line == "[project]" {
-			inDeps = true
+		if strings.HasPrefix(line, "[") && !inArray {
+			section = line
 			continue
 		}
-		if strings.HasPrefix(line, "[") {
-			inDeps = false
-			continue
-		}
-		if !inDeps || !strings.Contains(line, "=") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		name := strings.TrimSpace(parts[0])
-		ver := cleanSemver(strings.Trim(strings.TrimSpace(parts[1]), `"'`))
-		if ver != "" && name != "python" {
-			deps = append(deps, DepVersion{Name: name, Version: ver})
+		switch section {
+		case "[tool.poetry.dependencies]", "[tool.poetry.dev-dependencies]":
+			if !strings.Contains(line, "=") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			name := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			ver := ""
+			if strings.HasPrefix(val, "{") {
+				ver = extractCargoVersion(val)
+			} else {
+				ver = strings.Trim(val, `"' `)
+			}
+			ver = cleanSemver(ver)
+			if ver != "" && name != "python" {
+				deps = append(deps, DepVersion{Name: name, Version: ver})
+			}
+		case "[project]":
+			// PEP 621: only the dependency arrays hold packages; name/version/... are metadata.
+			if !inArray {
+				if !strings.HasPrefix(line, "dependencies") || !strings.Contains(line, "[") {
+					continue
+				}
+				line = line[strings.Index(line, "[")+1:]
+				inArray = true
+			}
+			// the array ends at a "]" that closes the line (not the one of an extras marker)
+			closes := strings.HasSuffix(strings.TrimSpace(line), "]")
+			if closes {
+				line = strings.TrimSuffix(strings.TrimSpace(line), "]")
+			}
+			for _, item := range strings.Split(line, ",") {
+				item = strings.Trim(strings.TrimSpace(item), `"'`)
+				if m := req.FindStringSubmatch(item); len(m) > 2 {
+					deps = append(deps, DepVersion{Name: m[1], Version: m[2]})
+				}
+			}
+			if closes {
+				inArray = false
+			}
 		}
 	}
 	return deps, nil
