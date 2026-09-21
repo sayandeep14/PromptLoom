@@ -34,7 +34,7 @@ func (r *repo) git(args ...string) string {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir
 	cmd.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull,
 		"GIT_AUTHOR_NAME=Ann Author", "GIT_AUTHOR_EMAIL=ann@example.com",
 		"GIT_COMMITTER_NAME=Ann Author", "GIT_COMMITTER_EMAIL=ann@example.com",
 		"GIT_AUTHOR_DATE="+r.date(), "GIT_COMMITTER_DATE="+r.date(),
@@ -306,7 +306,7 @@ func TestChangelogHandlesAuthorsWithSeparatorsAndDeletedPrompts(t *testing.T) {
 	r.git("add", "-A")
 	cmd := exec.Command("git", "commit", "-q", "-m", "subject | with | pipes")
 	cmd.Dir = r.dir
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull,
 		"GIT_AUTHOR_NAME=Ann | Pipe", "GIT_AUTHOR_EMAIL=a@b.c", "GIT_COMMITTER_NAME=Ann | Pipe", "GIT_COMMITTER_EMAIL=a@b.c",
 		"GIT_AUTHOR_DATE="+r.date(), "GIT_COMMITTER_DATE="+r.date())
 	if out, err := cmd.CombinedOutput(); err != nil {

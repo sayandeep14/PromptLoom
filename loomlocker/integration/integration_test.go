@@ -42,18 +42,22 @@ func build(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe"
+	}
 	for name, spec := range map[string]struct{ dir, pkg string }{
 		"loomlocker": {filepath.Join(root, "loomlocker"), "./cmd/loomlocker"},
 		"loom":       {root, "./cmd/loom"},
 	} {
-		out := filepath.Join(dir, name)
+		out := filepath.Join(dir, name+exe)
 		cmd := exec.Command("go", "build", "-o", out, spec.pkg)
 		cmd.Dir = spec.dir
 		if b, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v\n%s", name, err, b)
 		}
 	}
-	bins.locker, bins.loom = filepath.Join(dir, "loomlocker"), filepath.Join(dir, "loom")
+	bins.locker, bins.loom = filepath.Join(dir, "loomlocker"+exe), filepath.Join(dir, "loom"+exe)
 }
 
 func freePort(t *testing.T) string {
@@ -266,6 +270,9 @@ func TestNoUnauthenticatedWayToRevealSecrets(t *testing.T) {
 		}
 	}
 	// the server is only reachable on loopback
+	if runtime.GOOS == "windows" {
+		return // no netstat|grep pipeline; loopback binding is also covered by the server's own tests
+	}
 	conns, _ := exec.Command("sh", "-c", "netstat -an 2>/dev/null | grep LISTEN | grep '[.:]"+p.port+" '").Output()
 	for _, line := range strings.Split(strings.TrimSpace(string(conns)), "\n") {
 		if line != "" && !strings.Contains(line, "127.0.0.1") && !strings.Contains(line, "::1") {

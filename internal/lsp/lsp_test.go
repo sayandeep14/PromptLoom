@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -463,6 +464,9 @@ func TestWordAtEdges(t *testing.T) {
 }
 
 func TestURIConversion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the cases here are POSIX paths")
+	}
 	for _, p := range []string{"/home/me/my project/a b.loom", "/tmp/x#1/y%20z.loom", "/tmp/日本/p.loom"} {
 		uri := pathToURI(p)
 		if strings.ContainsAny(uri[len("file://"):], " #") {

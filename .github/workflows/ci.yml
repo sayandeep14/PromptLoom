@@ -45,6 +45,28 @@ jobs:
       - name: Test
         run: go test ./...
 
+  go-windows:
+    name: ${{ matrix.module }} (windows)
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [".", "loomlocker"]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      # the client-library integration tests skip themselves when Python/Java are missing
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...
+
   registry-db:
     name: registry (PostgreSQL)
     runs-on: ubuntu-latest

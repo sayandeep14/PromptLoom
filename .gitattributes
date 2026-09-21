@@ -1,0 +1,8 @@
+# Sources, fixtures and golden files must keep LF on every platform: tests compare bytes, and
+# git on Windows would otherwise check them out with CRLF.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.vsix binary
+*.lpack binary

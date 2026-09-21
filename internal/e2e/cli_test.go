@@ -5,17 +5,26 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 // buildLoom compiles the real binary once per test that needs it.
+// exeSuffix is ".exe" on Windows, where a binary without it cannot be started.
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
+
 func buildLoom(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not on PATH")
 	}
-	bin := filepath.Join(t.TempDir(), "loom")
+	bin := filepath.Join(t.TempDir(), "loom"+exeSuffix())
 	cmd := exec.Command("go", "build", "-o", bin, "../../cmd/loom")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build loom: %v\n%s", err, out)
