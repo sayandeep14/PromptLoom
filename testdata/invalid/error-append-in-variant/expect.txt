@@ -1,0 +1,3 @@
+rule: error-append-in-variant
+error: variant "strict" field "constraints": '+=' is not valid in v2
+also: this takes the PARENT's items

@@ -1,6 +1,7 @@
 package resolve_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/sayandeepgiri/promptloom/internal/resolve"
@@ -223,4 +224,64 @@ prompt P {
 		t.Fatal(err)
 	}
 	assertList(t, "constraints", rp.Constraints, []string{"be accurate", "new rule"})
+}
+
+// from() inside variant and env blocks must be evaluated, not rendered as text.
+func TestFromExpressionsInVariantAndEnv(t *testing.T) {
+	reg := buildReg(t, map[string]string{"a.loom": `
+prompt Base {
+  instructions :=
+    - base one
+    - base two
+}
+
+prompt Child inherits Base {
+  instructions :=
+    - child own
+
+  variant extended {
+    instructions :=
+      from(parent[0]) and {
+        - variant extra
+      }
+  }
+
+  env prod {
+    instructions :=
+      from(parent[0]) and {
+        - env extra
+      }
+  }
+}`})
+	rp, err := resolve.ResolveWithOptions("Child", reg, resolve.Options{Variant: "extended"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertList(t, "variant", rp.Instructions, []string{"base one", "base two", "variant extra"})
+
+	rp, err = resolve.ResolveWithOptions("Child", reg, resolve.Options{Env: "prod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertList(t, "env", rp.Instructions, []string{"base one", "base two", "env extra"})
+
+	rp, err = resolve.Resolve("Child", reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertList(t, "no option", rp.Instructions, []string{"child own"})
+}
+
+func TestFromInVariantWithoutParentsIsAnError(t *testing.T) {
+	reg := buildReg(t, map[string]string{"a.loom": `
+prompt Solo {
+  variant v {
+    instructions :=
+      from(parent[0])
+  }
+}`})
+	_, err := resolve.ResolveWithOptions("Solo", reg, resolve.Options{Variant: "v"})
+	if err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("got %v", err)
+	}
 }

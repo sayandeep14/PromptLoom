@@ -59,7 +59,8 @@ var allRules = []string{
 	"block-from-expr", "block-unknown-field", "overlay-unknown-field", "undeclared-variable",
 	// validate: warnings
 	"error-append-removed", "error-append-no-parent", "error-append-scalar", "error-append-in-block",
-	"error-remove-removed", "warn-bare-colon", "warn-tags-operator", "warn-missing-objective",
+	"error-append-in-variant", "error-append-in-env", "error-remove-removed", "warn-bare-colon",
+	"parse-extends", "from-variant-out-of-range", "warn-tags-operator", "warn-missing-objective",
 	"warn-missing-format", "warn-empty-context", "warn-deep-inheritance", "warn-redefine-inherited",
 	"warn-kind-mismatch", "warn-required-runtime-var", "warn-block-variable", "warn-overlay-variable",
 	// weave-time

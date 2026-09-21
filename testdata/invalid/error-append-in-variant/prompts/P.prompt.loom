@@ -1,0 +1,11 @@
+prompt Base {
+  constraints :=
+    - a
+}
+
+prompt Child inherits Base {
+  variant strict {
+    constraints +=
+      - b
+  }
+}

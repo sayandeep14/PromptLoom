@@ -1,0 +1,6 @@
+prompt Standalone {
+  env prod {
+    constraints +=
+      - b
+  }
+}

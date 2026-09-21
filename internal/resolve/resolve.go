@@ -33,12 +33,14 @@ func ResolveWithOptions(name string, reg *registry.Registry, opts Options) (*ast
 		return nil, err
 	}
 
+	pc := &parentContext{name: name, reg: reg}
+
 	if opts.Variant != "" {
 		variant, ok := lookupVariantFromSlice(rp.Variants, opts.Variant)
 		if !ok {
 			return nil, fmt.Errorf("variant %q not found on prompt %q", opts.Variant, name)
 		}
-		if err := applyFieldOps(rp, variant.Fields, name+"::"+variant.Name, false); err != nil {
+		if err := applyFieldOpsFrom(rp, variant.Fields, name+"::"+variant.Name, pc); err != nil {
 			return nil, err
 		}
 		rp.AppliedVariant = variant.Name
@@ -59,7 +61,7 @@ func ResolveWithOptions(name string, reg *registry.Registry, opts Options) (*ast
 		applied := false
 		for _, eb := range rp.AllEnvBlocks {
 			if strings.EqualFold(eb.Name, opts.Env) {
-				if err := applyFieldOps(rp, eb.Fields, name+"::env:"+eb.Name, false); err != nil {
+				if err := applyFieldOpsFrom(rp, eb.Fields, name+"::env:"+eb.Name, pc); err != nil {
 					return nil, err
 				}
 				applied = true
@@ -194,6 +196,62 @@ func applyBlocks(rp *ast.ResolvedPrompt, node *ast.Node, reg *registry.Registry,
 		}
 		if err := applyNodeFields(rp, block, blockName, true); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// parentContext lazily resolves the declared parents of the prompt being woven, so
+// that from() expressions inside variant and env blocks can be evaluated against
+// them (exactly like the prompt's own fields).
+type parentContext struct {
+	name    string
+	reg     *registry.Registry
+	done    bool
+	parents []*ast.ResolvedPrompt
+	names   []string
+	err     error
+}
+
+func (pc *parentContext) get() ([]*ast.ResolvedPrompt, []string, error) {
+	if pc.done {
+		return pc.parents, pc.names, pc.err
+	}
+	pc.done = true
+	node, ns, ok := pc.reg.LookupPromptFull(pc.name, "")
+	if !ok {
+		pc.err = fmt.Errorf("prompt %q not found", pc.name)
+		return nil, nil, pc.err
+	}
+	pc.names = node.Parents
+	for _, ref := range node.Parents {
+		pr, err := resolveNode(ref, pc.reg, ns, make(map[string]bool))
+		if err != nil {
+			pc.err = fmt.Errorf("resolving parent %q of %q: %w", ref, pc.name, err)
+			return nil, nil, pc.err
+		}
+		pc.parents = append(pc.parents, pr)
+	}
+	return pc.parents, pc.names, nil
+}
+
+// applyFieldOpsFrom applies variant / env field operations, evaluating from()
+// expressions against the prompt's parents. Without this, the text of a from()
+// expression would be rendered into the prompt as literal list items.
+func applyFieldOpsFrom(rp *ast.ResolvedPrompt, fields []ast.FieldOperation, sourceName string, pc *parentContext) error {
+	for _, fo := range fields {
+		if fo.FromExpr == nil {
+			if err := applyField(rp, fo, sourceName, false); err != nil {
+				return err
+			}
+			continue
+		}
+		parents, names, err := pc.get()
+		if err != nil {
+			return err
+		}
+		if err := applyFromExpr(rp, fo, sourceName, parents, names); err != nil {
+			return fmt.Errorf("%s field %q: %w", sourceName, fo.FieldName, err)
 		}
 	}
 	return nil

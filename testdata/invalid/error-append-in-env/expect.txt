@@ -1,0 +1,3 @@
+rule: error-append-in-env
+error: env "prod" field "constraints": '+=' is not valid in v2
+also: Write the complete list for this env with ':='

@@ -1,0 +1,6 @@
+prompt Standalone {
+  variant v {
+    instructions :=
+      from(parent[0])
+  }
+}

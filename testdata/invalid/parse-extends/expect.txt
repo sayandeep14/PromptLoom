@@ -1,0 +1,3 @@
+rule: parse-extends
+load-error: 'extends' is not valid — use 'inherits'
+also: prompt B inherits A {

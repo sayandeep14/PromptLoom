@@ -1,0 +1,24 @@
+prompt Base {
+  instructions :=
+    - base one
+    - base two
+}
+
+prompt Child inherits Base {
+  instructions :=
+    - child own
+
+  variant extended {
+    instructions :=
+      from(parent[0]) and {
+        - variant extra
+      }
+  }
+
+  env prod {
+    instructions :=
+      from(parent[0]) and {
+        - env extra
+      }
+  }
+}

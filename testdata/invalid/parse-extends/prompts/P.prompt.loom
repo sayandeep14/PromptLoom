@@ -1,0 +1,9 @@
+prompt A {
+  persona :=
+    a.
+}
+
+prompt B extends A {
+  persona :=
+    b.
+}

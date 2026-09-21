@@ -384,6 +384,8 @@ func (s *scanner) scanTopLine(trimmed string, lineNum int) error {
 				}
 				s.emit(Token{Type: TokIdent, Text: pn, Line: lineNum})
 			}
+		} else if parts[2] == "extends" {
+			return s.errorf(lineNum, "'extends' is not valid — use 'inherits': %q", strings.Replace(trimmed, "extends", "inherits", 1))
 		} else {
 			return s.errorf(lineNum, "invalid prompt declaration: %q", trimmed)
 		}

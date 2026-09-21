@@ -1,0 +1,2 @@
+rule: from-variant-out-of-range
+error: parent[0] is out of range

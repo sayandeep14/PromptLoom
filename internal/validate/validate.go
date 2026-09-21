@@ -174,7 +174,15 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 	}
 	diags = append(diags, checkLegacyOperators("prompt", n.Name, n.Fields, len(n.Parents), inherited)...)
 
-	// Static validation of from() expressions.
+	// Variant and env blocks obey the same operator rules as the prompt body.
+	for _, v := range n.Variants {
+		diags = append(diags, checkLegacyOperators("variant", v.Name, v.Fields, len(n.Parents), nil)...)
+	}
+	for _, e := range n.EnvBlocks {
+		diags = append(diags, checkLegacyOperators("env", e.Name, e.Fields, len(n.Parents), nil)...)
+	}
+
+	// Static validation of from() expressions (prompt body, variants and env blocks).
 	diags = append(diags, checkFromExpressions(n)...)
 
 	// Required fields (configurable).
@@ -286,10 +294,21 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 // checkFromExpressions statically validates all from() expressions in a prompt's fields.
 // Checks: scalar type errors, out-of-bounds parent indices, named refs not in parents list.
 func checkFromExpressions(n *ast.Node) []Diagnostic {
+	all := append([]ast.FieldOperation(nil), n.Fields...)
+	for _, v := range n.Variants {
+		all = append(all, v.Fields...)
+	}
+	for _, e := range n.EnvBlocks {
+		all = append(all, e.Fields...)
+	}
+	return checkFromFields(n, all)
+}
+
+func checkFromFields(n *ast.Node, fields []ast.FieldOperation) []Diagnostic {
 	var diags []Diagnostic
 	parentCount := len(n.Parents)
 
-	for _, f := range n.Fields {
+	for _, f := range fields {
 		if f.FromExpr == nil {
 			continue
 		}
@@ -493,6 +512,17 @@ func checkLegacyOperators(kind, name string, fields []ast.FieldOperation, parent
 
 func appendMessage(kind, name, field string, isScalar bool, parents int) string {
 	head := fmt.Sprintf("%s %q field %q: '+=' is not valid in v2 (the only operator is ':=').", kind, name, field)
+	if kind == "variant" || kind == "env" {
+		switch {
+		case isScalar:
+			return head + "\n  A scalar field cannot be appended to; replace its value with ':=' and write the full text."
+		case parents == 0:
+			return head + fmt.Sprintf("\n  Write the complete list for this %s with ':=':\n    %s :=\n      - your item", kind, field)
+		default:
+			return head + fmt.Sprintf("\n  Write the complete list with ':=', or start from the parent's list "+
+				"(note: this takes the PARENT's items, not this prompt's own):\n    %s :=\n      from(parent[0]) and {\n        - your item\n      }", field)
+		}
+	}
 	switch {
 	case kind != "prompt":
 		if isScalar {
