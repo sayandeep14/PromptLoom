@@ -1,7 +1,0 @@
-# .export.loom — declare which prompts to export
-# Syntax:
-#   export `package`
-#   export `package.subpackage` match `*-final.prompt.loom`
-#   export `package` except match `*-temp.prompt.loom`
-
-export `prompts`

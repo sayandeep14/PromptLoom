@@ -8,6 +8,7 @@ Inheritance · Composition · Validation · Rendering · Testing · Packaging
 
 `loom` — a developer-first CLI for writing, resolving, and shipping AI prompts.
 
+![License](https://img.shields.io/badge/license-MIT-green)
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
 ![CLI](https://img.shields.io/badge/CLI-cobra-blueviolet)
 ![Editor](https://img.shields.io/badge/VS%20Code-Lumine-007ACC?logo=visualstudiocode&logoColor=white)
@@ -112,7 +113,7 @@ export PATH="$PATH:$HOME/go/bin"
 Or just build in place:
 
 ```bash
-go build -o loom ./cmd/loom
+make build        # binary in ./bin/loom, version stamped from git
 ```
 
 ### Your first prompt in 60 seconds
@@ -583,8 +584,6 @@ cp .env.example .env        # DATABASE_URL, PORT, UPLOAD_SECRET, CORS_ORIGINS
 go run .
 ```
 
-More detail: [`docs/PACKMAKER_DESIGN.md`](docs/PACKMAKER_DESIGN.md).
-
 ---
 
 ## 10. LoomLocker — Session-Scoped Secret Protection
@@ -723,8 +722,8 @@ PromptLoom/
 │   └── loomj/                 # Java client
 ├── Lumine/                    # VS Code extension (TypeScript)
 ├── examples/                  # Sample packs
-├── docs/                      # Language, command, and design docs
-└── specs/                     # Versioned product specs (v1 – v6)
+├── docs/                      # Language and command reference
+└── TRACKER.md                 # Work tracker: roadmap, tickets, dependencies
 ```
 
 ---
@@ -755,7 +754,7 @@ PromptLoom/
 ## 14. Development
 
 ```bash
-go build ./cmd/loom          # build the CLI
+make build                   # build the CLI into ./bin/loom
 go test ./...                # run all tests
 go test ./internal/parser/...  # a single package
 go vet ./...                 # static checks
@@ -779,34 +778,22 @@ Packages with unit tests include `parser`, `resolve` (including multi-parent), `
 |---|---|
 | [`docs/LOOM_LANGUAGE.md`](docs/LOOM_LANGUAGE.md) | Complete DSL reference — fields, inheritance, `from()`, packs, contracts |
 | [`docs/LOOM_COMMAND.md`](docs/LOOM_COMMAND.md) | Every CLI command with flags and examples |
-| [`docs/TOOL_REFERENCE.md`](docs/TOOL_REFERENCE.md) | Milestone-by-milestone implementation reference |
-| [`docs/PACKMAKER_DESIGN.md`](docs/PACKMAKER_DESIGN.md) | Pack v2 technical design |
 | [`docs/neovim-lsp.md`](docs/neovim-lsp.md) | Neovim LSP configuration |
 | [`loomlocker/DESIGN.md`](loomlocker/DESIGN.md) | LoomLocker architecture, crypto, and HTTP API |
 | [`Lumine/README.md`](Lumine/README.md) | VS Code extension features |
-| [`specs/`](specs/) | Product specs v1 – v6 |
+| [`TRACKER.md`](TRACKER.md) | What is done, what is next, and what depends on what |
 
 ---
 
 ## 16. Roadmap
 
-Current focus (v4.x): registry-backed packs, LoomLocker, and a more robust Lumine.
-
-Planned:
-
-- **Agentic mode** — run, refine, and decide loops built on top of resolved prompts
-- **`.lmscr`** loom scripts
-- Richer `graph` output per prompt
-- Selective exports per pack, hardened secret hashing
-- Directory navigation inside the REPL
-
-See [`promptloom_future_roadmap_spec.md`](promptloom_future_roadmap_spec.md) for the long-form vision.
+The live roadmap, with tickets and dependencies, is in [`TRACKER.md`](TRACKER.md). Headline items: registry hardening, a full test net, Lumine v2 support, a first tagged release, then `impact` / `sync` / `eval` and an agentic run mode.
 
 ---
 
 ## 17. License
 
-The Lumine extension is released under the **MIT License** (see [`Lumine/LICENSE`](Lumine/LICENSE)). Add a top-level `LICENSE` file to make the license of the rest of the repository explicit.
+Released under the **MIT License** — see [`LICENSE`](LICENSE).
 
 ---
 

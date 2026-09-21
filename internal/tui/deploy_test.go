@@ -32,19 +32,21 @@ prompt = "SecurityReviewer"
 format = "copilot"
 dest = ".github/copilot-instructions.md"
 `)
-	writeFile(t, filepath.Join(dir, "prompts", "base.prompt"), `prompt BaseAssistant {
-  objective:
+	writeFile(t, filepath.Join(dir, "prompts", "base.prompt.loom"), `prompt BaseAssistant {
+  objective :=
     Help the user.
-  format:
+  format :=
     - Summary
 }`)
-	writeFile(t, filepath.Join(dir, "prompts", "code.prompt"), `prompt CodeAssistant inherits BaseAssistant {
-  constraints:
+	writeFile(t, filepath.Join(dir, "prompts", "code.prompt.loom"), `prompt CodeAssistant inherits BaseAssistant {
+  constraints :=
     - Keep code maintainable.
 }`)
-	writeFile(t, filepath.Join(dir, "prompts", "security.prompt"), `prompt SecurityReviewer inherits CodeAssistant {
-  constraints +=
-    - Check for hardcoded secrets.
+	writeFile(t, filepath.Join(dir, "prompts", "security.prompt.loom"), `prompt SecurityReviewer inherits CodeAssistant {
+  constraints :=
+    from(parent[0]) and {
+      - Check for hardcoded secrets.
+    }
 }`)
 
 	out, err := RunDeploy(DeployOptions{}, dir)
@@ -86,14 +88,14 @@ prompt = "CodeAssistant"
 format = "copilot"
 dest = ".github/copilot-instructions.md"
 `)
-	writeFile(t, filepath.Join(dir, "prompts", "base.prompt"), `prompt BaseAssistant {
-  objective:
+	writeFile(t, filepath.Join(dir, "prompts", "base.prompt.loom"), `prompt BaseAssistant {
+  objective :=
     Help the user.
-  format:
+  format :=
     - Summary
 }`)
-	writeFile(t, filepath.Join(dir, "prompts", "code.prompt"), `prompt CodeAssistant inherits BaseAssistant {
-  constraints:
+	writeFile(t, filepath.Join(dir, "prompts", "code.prompt.loom"), `prompt CodeAssistant inherits BaseAssistant {
+  constraints :=
     - Keep code maintainable.
 }`)
 	writeFile(t, filepath.Join(dir, ".github", "copilot-instructions.md"), "# Old\n")

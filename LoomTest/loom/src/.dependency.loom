@@ -1,5 +1,0 @@
-# .dependency.loom — prompt-pack dependencies (like requirements.txt)
-# Format:  pack-slug==version   or   pack-slug>=min-version
-# Example:
-#   go-backend==1.0.0
-#   python-data-science>=0.3.0

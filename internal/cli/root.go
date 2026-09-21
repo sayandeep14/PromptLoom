@@ -8,7 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.1.0"
+// version is overridden at build time via -ldflags "-X <module>/internal/cli.version=vX.Y.Z".
+var version = "4.2.0"
 
 var rootCmd = &cobra.Command{
 	Use:     "loom",

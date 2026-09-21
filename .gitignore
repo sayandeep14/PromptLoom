@@ -14,3 +14,16 @@ CLAUDE.md
 tasksnow.md
 Lumine/plan.md
 LoomTest/loom/context/
+
+# Build output / OS / IDE
+bin/
+loom
+.DS_Store
+**/.DS_Store
+libs/loomj/target/
+LoomTest/
+*.vsix
+
+# Superseded docs (kept locally only; see TRACKER.md)
+docs/TOOL_REFERENCE.md
+docs/PACKMAKER_DESIGN.md
