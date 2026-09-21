@@ -1,6 +1,6 @@
 # Lumine — PromptLoom DSL for VS Code
 
-Full IDE support for the [Loom](https://github.com/sayandeepgiri/loom) prompt-engineering DSL — the tool that treats AI prompts as source code.
+Full IDE support for the [Loom](https://github.com/sayandeep14/PromptLoom) prompt-engineering DSL — the tool that treats AI prompts as source code.
 
 ---
 
@@ -132,10 +132,26 @@ Distinct icons in the File Explorer for each Loom file type (requires activating
 
 ---
 
+## Installation
+
+**From a downloaded `.vsix`** (no Marketplace account needed):
+
+1. Download `lumine-latest.vsix` from the [latest release](https://github.com/sayandeep14/PromptLoom/releases/latest) (or `lumine-<version>.vsix` for a specific version).
+2. Install it, either way:
+   - **VS Code UI:** open the Extensions view (`Ctrl/Cmd+Shift+X`) → the `…` menu at the top → **Install from VSIX…** → pick the file.
+   - **Terminal:** `code --install-extension lumine-latest.vsix`
+3. Reload the window. Open any `.prompt.loom`, `.block.loom` or `.overlay.loom` file.
+
+To update, install the newer `.vsix` the same way (it replaces the old one). To remove it: Extensions view → Lumine → **Uninstall**, or `code --uninstall-extension shreekalpo.lumine`.
+
+**Build it yourself:** `npm install && npx vsce package --no-dependencies` in this folder produces the `.vsix`.
+
+---
+
 ## Requirements
 
 - VS Code 1.85 or later
-- [Loom CLI](https://github.com/sayandeepgiri/loom) installed and on `PATH` for CLI commands (the language server features work without it)
+- [Loom CLI](https://github.com/sayandeep14/PromptLoom) installed and on `PATH` for CLI commands (the language server features work without it)
 
 ---
 

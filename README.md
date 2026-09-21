@@ -104,8 +104,8 @@ You write small, focused `.loom` files. PromptLoom parses, validates, resolves, 
 ### Install
 
 ```bash
-git clone https://github.com/sayandeepgiri/promptloom.git
-cd promptloom
+git clone https://github.com/sayandeep14/PromptLoom.git
+cd PromptLoom
 go install ./cmd/loom          # places `loom` in ~/go/bin
 export PATH="$PATH:$HOME/go/bin"
 ```
@@ -812,6 +812,6 @@ Released under the **MIT License** — see [`LICENSE`](LICENSE).
 
 <div align="center">
 
-Built by [Sayandeep Giri](https://github.com/sayandeepgiri) · *Write prompts once. Weave them everywhere.*
+Built by [Sayandeep Giri](https://github.com/sayandeep14) · *Write prompts once. Weave them everywhere.*
 
 </div>

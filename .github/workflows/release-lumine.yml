@@ -4,7 +4,10 @@
 #   2. merge to main, then:   git tag lumine-vX.Y.Z && git push origin lumine-vX.Y.Z
 #
 # The workflow re-runs the tests, checks the tag matches the version, builds the VSIX and
-# attaches it to a GitHub Release. It publishes to the stores only if the matching secret exists:
+# attaches it to a GitHub Release — that alone is enough for people to download and install it
+# manually. Two files are attached: lumine-<version>.vsix and lumine-latest.vsix (a fixed name,
+# so a link like  .../releases/latest/download/lumine-latest.vsix  never has to change).
+# It publishes to the extension stores only if the matching secret exists (optional):
 #   VSCE_PAT  - Azure DevOps personal access token with the "Marketplace (Manage)" scope
 #               (publisher must exist: https://marketplace.visualstudio.com/manage)
 #   OVSX_PAT  - Open VSX token (https://open-vsx.org/user-settings/tokens; the namespace
@@ -55,6 +58,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           npx vsce package --no-dependencies -o "lumine-${VERSION}.vsix"
+          cp "lumine-${VERSION}.vsix" lumine-latest.vsix
           echo "file=Lumine/lumine-${VERSION}.vsix" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -67,8 +71,13 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.vsix.outputs.file }}
+          files: |
+            ${{ steps.vsix.outputs.file }}
+            Lumine/lumine-latest.vsix
           name: Lumine ${{ steps.vsix.outputs.version }}
+          body: |
+            Install: download `lumine-latest.vsix`, then in VS Code run **Extensions → … → Install from VSIX…**
+            or `code --install-extension lumine-latest.vsix`. See the [changelog](https://github.com/${{ github.repository }}/blob/main/Lumine/CHANGELOG.md).
           generate_release_notes: true
 
       - name: Publish to the VS Code Marketplace
@@ -81,4 +90,4 @@ jobs:
 
       - name: Note skipped publishing
         if: github.ref_type == 'tag' && (env.VSCE_PAT == '' || env.OVSX_PAT == '')
-        run: echo "::notice::Store publishing skipped for any store without its token secret (VSCE_PAT / OVSX_PAT). The VSIX is attached to the GitHub release."
+        run: echo "::notice::Store publishing skipped (no VSCE_PAT / OVSX_PAT secret). The VSIX is attached to the GitHub release for manual install."

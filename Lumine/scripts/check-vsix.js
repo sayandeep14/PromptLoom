@@ -14,8 +14,8 @@ for (const key of ['name', 'displayName', 'description', 'version', 'publisher',
   if (!pkg[key]) problems.push(`package.json is missing "${key}"`);
 }
 if (pkg.icon && !fs.existsSync(path.join(root, pkg.icon))) problems.push(`icon file ${pkg.icon} does not exist`);
-if (pkg.repository && !String(pkg.repository.url || pkg.repository).includes('promptloom')) {
-  problems.push('repository does not point at the promptloom monorepo');
+if (pkg.repository && !String(pkg.repository.url || pkg.repository).toLowerCase().includes('promptloom')) {
+  problems.push('repository does not point at the PromptLoom monorepo');
 }
 
 // 2. the changelog documents this version

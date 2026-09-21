@@ -28,13 +28,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/sayandeepgiri/promptloom.git",
+    "url": "https://github.com/sayandeep14/PromptLoom.git",
     "directory": "Lumine"
   },
   "bugs": {
-    "url": "https://github.com/sayandeepgiri/promptloom/issues"
+    "url": "https://github.com/sayandeep14/PromptLoom/issues"
   },
-  "homepage": "https://github.com/sayandeepgiri/promptloom/tree/main/Lumine#readme",
+  "homepage": "https://github.com/sayandeep14/PromptLoom/tree/main/Lumine#readme",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:loom",
