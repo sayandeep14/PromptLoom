@@ -204,6 +204,15 @@ Only start after E1 and E4 are done.
 | 2026-09-21 | **Registry hosting: self-host first.** The hard-coded `registry.promptloom.dev` default is removed. A hosted default can be added later by setting one constant once a registry exists (revisit under PL-105/PL-303) |
 | 2026-09-21 | `docs/TOOL_REFERENCE.md` and `docs/PACKMAKER_DESIGN.md` removed from git as stale/contradictory; `docs/LOOM_COMMAND.md` and `docs/LOOM_LANGUAGE.md` are canonical |
 
+## Open decisions (revisit these)
+
+Deliberately postponed by the owner on 2026-09-22; nothing else is blocked by them except the uploads.
+
+| # | Decision | Options and what to weigh | Blocks |
+|---|---|---|---|
+| D1 | **Maven Central `groupId` for `loomj`** | `dev.promptloom` (current in `pom.xml`, Java package names and README) needs proof that you own the domain `promptloom.dev` (DNS TXT record). `io.github.sayandeep14` needs no domain, verified through a temporary GitHub repo, but means renaming the `<groupId>`, the Java packages and README **before the first release**, since coordinates cannot change after publishing | Publishing `loomj` (PL-605 upload step) |
+| D2 | **Publishing accounts for the client libraries** | PyPI: create the project + a *pending trusted publisher* (owner `sayandeep14`, repo `PromptLoom`, workflow `release-libs.yml`, environment `pypi`). Maven Central: Central Portal account, user token, GPG key. Exact steps: `libs/PUBLISHING.md`. Until then `release-libs.yml` can be run manually and publishes nothing | Uploading `bloompy` / `loomj` (everything else is built and verified in CI) |
+
 ## Known risks
 
 - No public registry exists; every team must self-host one (PL-105 makes that a single command). Revisit if adoption needs a shared public one.
