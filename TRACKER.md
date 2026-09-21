@@ -28,7 +28,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
 | **E5** Agentic Mode | run / refine / decide / quest, `.lmscr` | 0 / 5 |
-| **E6** LoomLocker Hardening | Tests, Windows, libraries verified end-to-end | 0 / 5 |
+| **E6** LoomLocker Hardening | Tests, Windows, libraries verified end-to-end | 4 / 5 |
 | **E7** Later (V4 remainder, V5, V6) | RAG, dashboard, governance, team server | 0 / 6 |
 
 ### Dependency map
@@ -112,7 +112,7 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-302 | Add missing commands to `LOOM_COMMAND.md` (`install` dependency behaviour, `execute`, any added since) and remove references to removed ones | TODO | P1 | S | PL-301 |
 | PL-303 | GoReleaser (or equivalent): tagged release builds for macOS/Linux/Windows, checksums, GitHub Release notes | TODO | P0 | M | PL-004, PL-305 |
 | PL-304 | Homebrew tap and Scoop manifest; `go install` instructions verified | TODO | P2 | M | PL-303 |
-| PL-305 | Windows support: replace `syscall.Stdin` with `os.Stdin.Fd()` in `internal/cli/execute.go` and `loomlocker/cli/root.go`; add a Windows job to CI | TODO | P1 | M | PL-004 |
+| PL-305 | Windows/portability. `syscall.Stdin` replaced by `os.Stdin.Fd()`; CI now cross-builds `loom`, `loomlocker` and the registry for linux/darwin/windows × amd64/arm64 (all 6 verified). **Remaining:** run the *tests* on a Windows runner (the e2e/integration tests assume a POSIX shell and a binary without `.exe`) | IN PROGRESS | P1 | M | PL-004 |
 | PL-306 | Shell completions (`loom completion bash\|zsh\|fish\|powershell`) and `loom doctor` self-check of the install | TODO | P2 | S | — |
 
 ---
@@ -149,10 +149,10 @@ The stated next phase after v4.2.0. Needs a provider layer and a stable core fir
 
 | ID | Ticket | Status | Pri | Size | Depends |
 |---|---|---|---|---|---|
-| PL-601 | Tests for `crypto` (bcrypt, Argon2id, AES-GCM round trip), `locker/files` (env + YAML lock/unlock fidelity), `server` (auth, auto-relock timer) | TODO | P0 | L | PL-004 |
-| PL-602 | Bind server to `127.0.0.1` only; confirm no unauthenticated unlock path; document threat model | TODO | P0 | S | PL-601 |
-| PL-603 | Integration test: `loomlocker start` + `loom execute --unlock` + each client library (bloompy, gloom, loomj) | TODO | P1 | L | PL-601 |
-| PL-604 | Crash safety: atomic file writes, lock journal so a crash while locked is recoverable | TODO | P1 | M | PL-601 |
+| PL-601 | **LoomLocker tests.** crypto (incl. flipping every ciphertext byte), config, locker file handling, journal, server, limiter, client — plus `loomlocker/integration` driving the real binaries. Found + fixed while writing them: a failed lock stranded real values (state said "unlocked" so unlock did nothing); `export`/quotes were lost on restore; duplicate keys collided; YAML round trip was lossy; `Start()` reported success when the port was taken; auto re-lock failures were swallowed | DONE | P0 | L | PL-004 |
+| PL-602 | **LoomLocker network hardening + threat model.** Binds `127.0.0.1` only (was all interfaces); Host check (DNS rebinding); requests with an `Origin` are refused (browsers); JSON-only bodies with a size cap; attempt limiter (5 free, then 1 s doubling to 5 min, also refuses the correct password during the wait, covers unlock and stop); `lockhost` must be loopback (client and server) so the password can never be sent off-machine; `stop` refuses to stop if it cannot restore. Every protection mutation-checked. Threat model in `loomlocker/DESIGN.md` | DONE | P0 | S | PL-601 |
+| PL-603 | **Integration tests.** Real `loomlocker` + `loom` binaries: lock → `execute --unlock` → auto re-lock → stop; kill -9 → `recover`; every endpoint probed without a password. Python (`bloompy`), Go (`gloom`) and Java (`loomj`) libraries run against a live server. Found + fixed: `bloompy` documented `Safe.silent()` but did not have it; added Python unit tests | DONE | P1 | L | PL-601 |
+| PL-604 | **Crash safety.** `recoverable: true` was silently ignored (the key was computed then discarded). Now: the mapping is written encrypted (AES-256-GCM, Argon2id key) to `.loom.secret.lock` *before* any file is touched; `loomlocker recover` restores after a crash/kill -9; start refuses while a journal is waiting; writes are atomic with rollback; unlock deletes the journal | DONE | P1 | M | PL-601 |
 | PL-605 | Add JSON secret paths (`.json:{key}`), a `loomlocker` README, publish libraries (PyPI, Maven Central) | TODO | P2 | L | PL-603 |
 
 ---
@@ -194,6 +194,7 @@ Only start after E1 and E4 are done.
 | 2026-09-21 | **Block/overlay list `:=` composes** (PL-111): chosen because 8 shipped prompts use 2–3 blocks that each set `constraints :=` and were losing all but the last block's rules; `format` excepted (single output shape). Reversible: one condition in `resolve.applyList` + regenerate goldens |
 | 2026-09-21 | **v2-only syntax** (PL-108): `+=`/`-=` are errors, bare `:` a warning. Chosen because the user's own pack spec says `+=` is not a valid operator and the design doc lists `:=` as the only one; enforcement waited until the tool's own generators stopped emitting v1 syntax, which is now tested. A bare `:` stays a warning (harmless, same meaning as `:=` for prompts) |
 | 2026-09-21 | **Lumine formatter is whitespace-only** (PL-201): the tree-rebuilding formatter deleted comments, `env` blocks and extra parents. `loom fmt` had the same flaw and was fixed differently (PL-116): it keeps its canonical ordering and `from()` simplification, but carries comments with their elements and verifies its own output. The two formatters therefore differ on purpose — Lumine never reorders. Quick fixes are offered only where the rewrite preserves meaning |
+| 2026-09-21 | **LoomLocker restores byte-exactly and fails safe** (PL-601/602/604): mapping is `text written → exact original`, files are edited as text (not re-serialised), every change is all-or-nothing. YAML values must be single-line (documented, refused otherwise). Recoverable mode is opt-in because it keeps an encrypted copy of the secrets on disk while locked |
 | 2026-09-21 | **Registry hosting: self-host first.** The hard-coded `registry.promptloom.dev` default is removed. A hosted default can be added later by setting one constant once a registry exists (revisit under PL-105/PL-303) |
 | 2026-09-21 | `docs/TOOL_REFERENCE.md` and `docs/PACKMAKER_DESIGN.md` removed from git as stale/contradictory; `docs/LOOM_COMMAND.md` and `docs/LOOM_LANGUAGE.md` are canonical |
 

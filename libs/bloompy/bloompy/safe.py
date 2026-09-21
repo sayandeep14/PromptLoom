@@ -37,8 +37,18 @@ class Safe:
         self._cfg = config or LockerConfig.from_env()
         self._client = client or LoomLockerClient(self._cfg)
         self._unlocked = False
+        self._silent = False
 
     # ── Fluent API ────────────────────────────────────────────────────────────
+
+    def silent(self) -> "Safe":
+        """Suppress all warnings from this Safe (debug logging is unaffected)."""
+        self._silent = True
+        return self
+
+    def _warn(self, message: str, *args) -> None:
+        if not self._silent:
+            logger.warning(message, *args)
 
     def unlock(self, password: str | None = None) -> "Safe":
         """Unlock secrets if loomlocker is running and they are locked.
@@ -59,7 +69,7 @@ class Safe:
 
         pwd = password or os.getenv("LOOM_SESSION_PASSWORD", "")
         if not pwd:
-            logger.warning(
+            self._warn(
                 "bloompy: secrets are locked but no password provided. "
                 "Set LOOM_SESSION_PASSWORD or pass password= to unlock()."
             )
@@ -70,7 +80,7 @@ class Safe:
                          self._cfg.unlock_duration_seconds)
             self._unlocked = True
         else:
-            logger.warning("bloompy: unlock failed — check password")
+            self._warn("bloompy: unlock failed — check password")
 
         return self
 

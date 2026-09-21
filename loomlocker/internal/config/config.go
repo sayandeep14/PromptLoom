@@ -3,8 +3,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 const Filename = ".loom.config"
@@ -44,6 +46,28 @@ func (c *LockerConfig) applyDefaults() {
 	}
 }
 
+// Validate rejects settings that would expose the password or the unlock API:
+// the locker is a local service, so lockhost must be a loopback address (a remote
+// host would receive the session password in clear text) and the port must be numeric.
+func (c *LockerConfig) Validate() error {
+	u, err := url.Parse(c.LockHost)
+	if err != nil || u.Scheme != "http" || u.Host == "" {
+		return fmt.Errorf("loomlocker.lockhost %q must look like http://localhost", c.LockHost)
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+	default:
+		return fmt.Errorf("loomlocker.lockhost %q is not a loopback address: the session password would be sent over the network. Use http://localhost", c.LockHost)
+	}
+	if n, err := strconv.Atoi(c.Port); err != nil || n < 0 || n > 65535 {
+		return fmt.Errorf("loomlocker.port %q is not a valid port number", c.Port)
+	}
+	if c.UnlockDurationSeconds < 0 {
+		return fmt.Errorf("loomlocker.unlock_duration_seconds must not be negative")
+	}
+	return nil
+}
+
 // BaseURL returns the full base URL for the loomlocker HTTP server.
 func (c *LockerConfig) BaseURL() string {
 	return fmt.Sprintf("%s:%s", c.LockHost, c.Port)
@@ -64,6 +88,9 @@ func Load(dir string) (*Config, string, error) {
 		return nil, "", fmt.Errorf("parse %s: %w", path, err)
 	}
 	cfg.Locker.applyDefaults()
+	if err := cfg.Locker.Validate(); err != nil {
+		return nil, "", fmt.Errorf("%s: %w", path, err)
+	}
 	if cfg.Custom == nil {
 		cfg.Custom = map[string]string{}
 	}

@@ -22,6 +22,14 @@ jobs:
         with:
           go-version: "1.25"
           cache-dependency-path: ${{ matrix.module }}/go.sum
+      # loomlocker's integration test also exercises the Python and Java client libraries
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
       - name: Build
         run: go build ./...
       - name: Vet
@@ -80,6 +88,47 @@ jobs:
         if: failure()
         run: docker compose logs
       - run: docker compose down -v
+
+  cross-build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {goos: linux, goarch: amd64}
+          - {goos: linux, goarch: arm64}
+          - {goos: darwin, goarch: amd64}
+          - {goos: darwin, goarch: arm64}
+          - {goos: windows, goarch: amd64}
+          - {goos: windows, goarch: arm64}
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: loom
+        run: go build -o /dev/null ./cmd/loom
+      - name: loomlocker
+        working-directory: loomlocker
+        run: go build -o /dev/null ./cmd/loomlocker
+      - name: registry server
+        working-directory: server
+        run: go build -o /dev/null .
+
+  python-client:
+    name: bloompy (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s libs/bloompy/tests -v
 
   lumine:
     name: Lumine extension

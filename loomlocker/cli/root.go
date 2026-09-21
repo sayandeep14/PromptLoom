@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"syscall"
 
 	"golang.org/x/term"
 )
@@ -15,7 +14,7 @@ var version = "4.2.0"
 // Falls back to plain read if stdin is not a terminal.
 func ReadPassword(label string) (string, error) {
 	fmt.Fprintf(os.Stderr, "%s: ", label)
-	fd := int(syscall.Stdin)
+	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
 		b, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr) // newline after masked input

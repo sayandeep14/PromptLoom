@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -76,4 +77,18 @@ func (c *Client) Lock() error {
 	}
 	resp.Body.Close()
 	return nil
+}
+
+// CheckLoopback returns an error unless rawURL is an http URL for a loopback host.
+// LoomLocker is a local service: sending its password to any other host would expose it.
+func CheckLoopback(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "http" || u.Host == "" {
+		return fmt.Errorf("loomlocker.lockhost %q must look like http://localhost", rawURL)
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return nil
+	}
+	return fmt.Errorf("loomlocker.lockhost %q is not a loopback address: refusing to send the session password over the network. Use http://localhost", rawURL)
 }

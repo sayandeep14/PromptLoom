@@ -7,7 +7,7 @@ import "time"
 type State struct {
 	Locked   bool
 	LockedAt time.Time
-	// Mapping: file path → key → original value
+	// Mapping: absolute file path → locked text (as written into the file) → original text
 	Mapping map[string]map[string]string
 }
 
@@ -16,6 +16,19 @@ func NewState() *State {
 	return &State{
 		Mapping: make(map[string]map[string]string),
 	}
+}
+
+// CopyMapping returns a deep copy of the mapping.
+func (s *State) CopyMapping() map[string]map[string]string {
+	out := make(map[string]map[string]string, len(s.Mapping))
+	for f, m := range s.Mapping {
+		c := make(map[string]string, len(m))
+		for k, v := range m {
+			c[k] = v
+		}
+		out[f] = c
+	}
+	return out
 }
 
 // RecordOriginal stores the original value before it is replaced with a token.

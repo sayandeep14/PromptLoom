@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/sayandeepgiri/promptloom/internal/lockerclient"
 	"github.com/sayandeepgiri/promptloom/internal/tui"
@@ -64,6 +63,9 @@ func runExecute(cmd *cobra.Command, args []string) error {
 
 	// Handle --unlock: talk to loomlocker if running and locked.
 	if executeUnlock {
+		if err := lockerclient.CheckLoopback(cfg.Locker.LockHost); err != nil {
+			return err
+		}
 		lockerURL := cfg.Locker.LockHost + ":" + cfg.Locker.Port
 		client := lockerclient.New(lockerURL)
 		if client.IsRunning() {
@@ -120,7 +122,7 @@ func runShell(shellCmd string) error {
 // Falls back to plain read if stdin is not a terminal.
 func readMaskedPassword(label string) (string, error) {
 	fmt.Fprintf(os.Stderr, "%s: ", label)
-	fd := int(syscall.Stdin)
+	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
 		b, err := term.ReadPassword(fd)
 		if err != nil {
