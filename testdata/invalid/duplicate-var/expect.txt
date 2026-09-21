@@ -1,0 +1,3 @@
+rule: duplicate-var
+error: declares "language" more than once
+warning: requires runtime values for: language

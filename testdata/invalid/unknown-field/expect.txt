@@ -1,0 +1,2 @@
+rule: unknown-field
+error: uses unknown field "tone"

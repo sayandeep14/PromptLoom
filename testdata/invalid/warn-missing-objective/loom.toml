@@ -1,0 +1,11 @@
+[project]
+name = "f"
+version = "0"
+[paths]
+prompts = "prompts"
+blocks = "blocks"
+overlays = "overlays"
+out = "dist"
+[validation]
+require_objective = true
+require_format = false

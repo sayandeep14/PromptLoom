@@ -1,0 +1,16 @@
+[project]
+name = "strict"
+version = "0.0.0"
+
+[paths]
+prompts = "prompts"
+blocks = "blocks"
+overlays = "overlays"
+out = "dist"
+
+[validation]
+require_objective = true
+require_format = true
+warn_on_empty_context = true
+warn_on_deep_inheritance = true
+max_inheritance_depth = 3

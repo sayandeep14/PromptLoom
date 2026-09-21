@@ -1,0 +1,2 @@
+defaults: RepoReviewer --set repo_name=payments
+overridden: RepoReviewer --set repo_name=billing --set language=Rust --set level=staff

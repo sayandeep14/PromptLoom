@@ -1,0 +1,2 @@
+rule: warn-remove-deprecated
+warning: '-=' is deprecated in v2

@@ -1,0 +1,19 @@
+block Polite {
+  constraints :=
+    - Always be polite.
+}
+
+overlay Short {
+  constraints :=
+    - Keep it short.
+}
+
+prompt Concierge {
+  use Polite
+
+  persona :=
+    You are a hotel concierge.
+
+  objective :=
+    Help guests plan their stay.
+}

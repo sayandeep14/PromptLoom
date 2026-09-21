@@ -1,0 +1,6 @@
+prompt P {
+  use GoConvenions
+
+  persona :=
+    x.
+}

@@ -1,0 +1,10 @@
+prompt A {
+  instructions :=
+    - a0
+    - a1
+}
+
+prompt C inherits A {
+  instructions :=
+    parent[0].instructions[5]
+}

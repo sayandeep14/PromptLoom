@@ -1,0 +1,2 @@
+rule: warn-overlay-variable
+warning: overlay "O" uses {{ style }}

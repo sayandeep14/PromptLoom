@@ -1,0 +1,4 @@
+prompt P {
+  persona :=
+    You work on {{ project }}.
+}

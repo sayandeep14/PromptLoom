@@ -1,0 +1,10 @@
+prompt Assistant {
+  use Safety
+  use Style
+
+  persona :=
+    You are a careful assistant.
+
+  objective :=
+    Help the user safely.
+}

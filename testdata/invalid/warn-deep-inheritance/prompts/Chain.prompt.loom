@@ -1,0 +1,24 @@
+prompt L0 {
+  persona :=
+    level 0.
+}
+
+prompt L1 inherits L0 {
+  persona :=
+    level 1.
+}
+
+prompt L2 inherits L1 {
+  persona :=
+    level 2.
+}
+
+prompt L3 inherits L2 {
+  persona :=
+    level 3.
+}
+
+prompt L4 inherits L3 {
+  persona :=
+    level 4.
+}

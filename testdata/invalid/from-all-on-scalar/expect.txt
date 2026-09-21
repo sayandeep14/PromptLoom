@@ -1,0 +1,2 @@
+rule: from-all-on-scalar
+error: from(parent[*]) cannot be used on scalar fields

@@ -1,0 +1,2 @@
+rule: weave-unknown-variant
+weave-error: variant "missing" not found on prompt "P"

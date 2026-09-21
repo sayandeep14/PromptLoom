@@ -1,0 +1,2 @@
+rule: warn-kind-mismatch
+warning: kind mismatch may indicate a misapplied block

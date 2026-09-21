@@ -1,0 +1,4 @@
+prompt L3 inherits L2 {
+  persona :=
+    Level 3 persona.
+}

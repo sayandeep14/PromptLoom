@@ -1,0 +1,2 @@
+rule: duplicate-block
+load-error: duplicate block name "Same"

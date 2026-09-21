@@ -1,0 +1,9 @@
+prompt Base {
+  summary :=
+    Base summary.
+}
+
+prompt P inherits Base {
+  summary -=
+    Base summary.
+}

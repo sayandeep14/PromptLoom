@@ -1,0 +1,2 @@
+rule: warn-block-variable
+warning: block "B" uses {{ style }}

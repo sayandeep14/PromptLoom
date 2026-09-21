@@ -1,0 +1,3 @@
+prompt Unterminated {
+  persona :=
+    The closing brace is missing.

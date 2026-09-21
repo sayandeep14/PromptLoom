@@ -1,0 +1,14 @@
+prompt P {
+  persona :=
+    x.
+
+  variant strict {
+    constraints :=
+      - a
+  }
+
+  env prod {
+    constraints :=
+      - b
+  }
+}

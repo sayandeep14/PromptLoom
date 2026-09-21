@@ -1,0 +1,13 @@
+prompt Helper {
+  persona :=
+    You are a helper.
+
+  objective :=
+    Answer questions.
+
+  constraints :=
+    - Be accurate.
+
+  format :=
+    - Answer
+}

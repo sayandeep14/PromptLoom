@@ -1,0 +1,2 @@
+rule: parse-bad-from-expr
+load-error: in from() expression

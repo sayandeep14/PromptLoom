@@ -1,0 +1,2 @@
+rule: parse-bad-body-token
+load-error: unexpected token in body

@@ -1,0 +1,2 @@
+rule: from-unknown-field
+error: from() references unknown field "bogus"

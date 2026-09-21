@@ -1,0 +1,4 @@
+overlay Terse {
+  constraints :=
+    - Keep answers under 100 words.
+}

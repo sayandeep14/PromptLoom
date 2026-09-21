@@ -1,0 +1,2 @@
+rule: duplicate-variant
+error: declares variant "strict" more than once

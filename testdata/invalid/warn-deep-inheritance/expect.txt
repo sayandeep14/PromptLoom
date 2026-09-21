@@ -1,0 +1,2 @@
+rule: warn-deep-inheritance
+warning: prompt "L4" has inheritance depth 4 (max 3)

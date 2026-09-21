@@ -1,0 +1,2 @@
+rule: weave-from-index-out-of-range
+weave-error: out of range

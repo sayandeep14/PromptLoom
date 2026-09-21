@@ -1,0 +1,2 @@
+rule: duplicate-prompt
+load-error: duplicate prompt name "Ok"

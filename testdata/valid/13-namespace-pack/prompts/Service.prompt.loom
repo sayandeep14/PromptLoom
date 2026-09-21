@@ -1,0 +1,11 @@
+prompt ServiceEngineer inherits go-kit.BaseGo {
+  use go-kit.GoRules
+
+  objective :=
+    Build a small HTTP service.
+
+  instructions :=
+    from(parent[0]) and {
+      - Add a health endpoint.
+    }
+}

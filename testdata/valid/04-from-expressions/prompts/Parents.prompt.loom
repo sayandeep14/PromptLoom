@@ -1,0 +1,20 @@
+prompt Alpha {
+  persona :=
+    Alpha persona.
+
+  instructions :=
+    - a0
+    - a1
+    - a2
+}
+
+prompt Beta {
+  persona :=
+    Beta persona.
+
+  instructions :=
+    - b0
+    - b1
+    - b2
+    - b3
+}

@@ -1,0 +1,2 @@
+rule: undeclared-variable
+error: references undeclared variable "project"

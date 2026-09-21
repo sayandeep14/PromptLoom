@@ -1,0 +1,10 @@
+prompt FullStack inherits Backend, Frontend {
+  persona :=
+    from(parent[0])
+
+  instructions :=
+    from(parent[*]) and {
+      - Trace requests end to end.
+      - Check accessibility.
+    }
+}

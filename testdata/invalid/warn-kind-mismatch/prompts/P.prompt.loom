@@ -1,0 +1,9 @@
+prompt P {
+  use SecurityRules
+
+  kind :=
+    docs
+
+  persona :=
+    x.
+}

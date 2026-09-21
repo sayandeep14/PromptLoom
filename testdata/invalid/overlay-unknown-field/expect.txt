@@ -1,0 +1,2 @@
+rule: overlay-unknown-field
+error: overlay "O" uses unknown field "tone"

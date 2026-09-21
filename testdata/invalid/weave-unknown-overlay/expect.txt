@@ -1,0 +1,2 @@
+rule: weave-unknown-overlay
+weave-error: overlay "Nope" not found

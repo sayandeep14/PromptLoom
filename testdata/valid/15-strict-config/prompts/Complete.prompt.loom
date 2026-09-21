@@ -1,0 +1,13 @@
+prompt Complete {
+  persona :=
+    You are thorough.
+
+  context :=
+    You help with documentation.
+
+  objective :=
+    Write clear documentation.
+
+  format :=
+    - Draft
+}

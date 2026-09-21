@@ -1,0 +1,2 @@
+rule: warn-missing-format
+warning: has no output format field

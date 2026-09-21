@@ -1,0 +1,2 @@
+rule: block-from-expr
+error: from() expressions are not valid in blocks

@@ -1,0 +1,2 @@
+rule: parse-bad-var
+load-error: invalid var declaration

@@ -34,6 +34,17 @@ func (p *parser) peek() lexer.Token {
 	return lexer.Token{Type: lexer.TokEOF}
 }
 
+// lastLine returns the line of the most recently consumed token (1 if none),
+// used to point end-of-file errors at where the input stopped.
+func (p *parser) lastLine() int {
+	for i := p.pos - 1; i >= 0; i-- {
+		if i < len(p.tokens) && p.tokens[i].Line > 0 {
+			return p.tokens[i].Line
+		}
+	}
+	return 1
+}
+
 func (p *parser) next() lexer.Token {
 	t := p.peek()
 	if p.pos < len(p.tokens) {
@@ -215,7 +226,8 @@ func (p *parser) parseBody(node *ast.Node) error {
 			node.Fields = append(node.Fields, *fieldOp)
 
 		case lexer.TokEOF:
-			return fmt.Errorf("%s: unexpected end of file inside body of %q", p.filename, node.Name)
+			return fmt.Errorf("%s:%d: unexpected end of file inside body of %q (declared at line %d) — add the missing closing '}'",
+				p.filename, p.lastLine(), node.Name, node.Pos.Line)
 
 		default:
 			t := p.peek()
@@ -424,7 +436,8 @@ func (p *parser) parseNestedFieldOps(kind string) ([]ast.FieldOperation, error) 
 			}
 			fields = append(fields, *field)
 		case lexer.TokEOF:
-			return nil, fmt.Errorf("%s: unexpected end of file inside %s block", p.filename, kind)
+			return nil, fmt.Errorf("%s:%d: unexpected end of file inside %s block — add the missing closing '}'",
+				p.filename, p.lastLine(), kind)
 		default:
 			t := p.peek()
 			return nil, fmt.Errorf("%s:%d: unexpected token inside %s block: %q", p.filename, t.Line, kind, t.Text)

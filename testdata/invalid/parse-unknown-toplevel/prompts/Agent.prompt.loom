@@ -1,0 +1,4 @@
+agent Helper {
+  persona :=
+    Not a valid declaration keyword.
+}

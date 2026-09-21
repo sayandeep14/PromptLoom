@@ -1,0 +1,6 @@
+prompt P {
+  tags := a, b
+
+  persona :=
+    x.
+}

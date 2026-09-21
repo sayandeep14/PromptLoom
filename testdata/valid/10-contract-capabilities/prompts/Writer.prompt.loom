@@ -1,0 +1,27 @@
+prompt SummaryWriter {
+  persona :=
+    You write summaries.
+
+  objective :=
+    Produce a structured summary of the provided document.
+
+  format :=
+    - Summary
+    - Key Points
+    - Action Items
+
+  contract {
+    required_sections:
+      - Summary
+      - Key Points
+    must_not_include:
+      - "As an AI"
+  }
+
+  capabilities {
+    allowed:
+      - read_documents
+    forbidden:
+      - delete_files
+  }
+}

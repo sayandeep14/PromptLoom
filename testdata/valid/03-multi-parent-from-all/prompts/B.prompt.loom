@@ -1,0 +1,8 @@
+prompt Frontend {
+  persona :=
+    You review frontend code.
+
+  instructions :=
+    - Check input validation.
+    - Check accessibility.
+}

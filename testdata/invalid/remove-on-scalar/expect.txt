@@ -1,0 +1,2 @@
+rule: remove-on-scalar
+error: operator '-=' is not supported on scalar field "summary"

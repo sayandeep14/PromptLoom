@@ -1,0 +1,3 @@
+rule: unknown-parent
+error: inherits unknown prompt "BaseEngeneer"
+also: Did you mean "BaseEngineer"?

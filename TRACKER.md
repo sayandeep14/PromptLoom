@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–105 done; next PL-106)
+**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–106 done; next PL-111 decision, then PL-107)
 
 ---
 
@@ -23,7 +23,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | Epic | Goal | Progress |
 |---|---|---|
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
-| **E1** Trust & Safety | Secure registry, tested core, working install path | 5 / 10 |
+| **E1** Trust & Safety | Secure registry, tested core, working install path | 6 / 12 |
 | **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 0 / 5 |
 | **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
@@ -74,9 +74,11 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-103 | Registry tests: handlers behind a `Store` interface (fake store), Postgres integration tests (schema, upsert/replace, atomicity, uniqueness, cascade), CI job with a Postgres service. Found + fixed: nil `tags` violated NOT NULL; file order was locale-dependent | DONE | P0 | M | PL-101 |
 | PL-104 | **Registry hosting decision: self-host first.** No built-in default URL; `loom install`/`publish` explain how to configure one; `[registry] url` in `loom.toml` now works; URL validated; upload secret never sent over plain HTTP to a remote host | DONE | P0 | S | — |
 | PL-105 | Registry Docker deployment: multi-stage distroless image (20 MB, non-root, read-only), `docker-compose.yml` (server + Postgres, DB not published), self-applying idempotent schema (`AUTO_MIGRATE`, advisory-locked), `healthcheck` subcommand, CI smoke job, `server/README.md` (TLS, backup/restore, upgrade) | DONE | P0 | M | PL-102, PL-104 |
-| PL-106 | End-to-end tests over `testdata/valid` and `testdata/invalid` (currently empty): every validation rule has a passing and a failing fixture | TODO | P0 | L | PL-004 |
+| PL-106 | End-to-end fixture tests: 16 valid + 45 invalid projects in `testdata/` run through loader → validate → resolve → render, with golden outputs, exact two-way diagnostic matching, positions required, invariants (dedup, determinism), a rule-coverage guard, and built-binary CLI tests (see `testdata/README.txt`). Mutation-checked. Found + fixed: unterminated-body parse errors had no line number | DONE | P0 | L | PL-004 |
 | PL-107 | Unit tests for `loader`, `lock`, `installer` (conflict + lock paths), `deps` edge cases, `contract`, `audit`, `doctor` | TODO | P1 | L | PL-106 |
-| PL-108 | Migration path for old syntax: friendly, specific error when a file uses `+=`, `-=`, bare `:` or `extends`, pointing at the `:=` / `from()` fix (a `loom migrate` command was dropped as a design decision — re-open only if needed) | TODO | P1 | M | PL-106 |
+| PL-108 | Migration path for old syntax: friendly, specific error when a file uses `+=`, `-=`, bare `:` or `extends`, pointing at the `:=` / `from()` fix (a `loom migrate` command was dropped as a design decision — re-open only if needed). **Note:** today the parser still *accepts* `:`, `+=`, `-=` with warnings, contrary to the docs; decide warn vs. error first (pinned by `warn-*` fixtures) | TODO | P1 | M | PL-106 |
+| PL-111 | **Decide `:=` semantics for list fields in blocks and overlays.** Today `:=` there *replaces* earlier content, so two blocks (or a block after a parent, or an overlay) silently drop each other's constraints; the legacy `:` appended. Options: blocks compose (append) and overlays choose per field, or add an explicit append form. Pinned by goldens in `05-blocks`, `06-overlays`, `12-mixed-file` (regenerate with `-update` after deciding) | TODO | P0 | M | PL-106 |
+| PL-112 | Bare `slot name` (no `{ }`) is rejected by the lexer although the LSP hover text documents it as valid; either accept it (required by default) or fix the docs/hover | TODO | P2 | S | PL-106 |
 | PL-109 | Run `gofmt -w` across the ~26 unformatted files and add a `gofmt -l` check to CI | TODO | P2 | S | PL-004 |
 | PL-110 | Registry follow-ups: TLS/HSTS guidance, per-pack ownership (today one shared secret can overwrite any pack), constant-time-safe secret rotation, request logging | TODO | P1 | M | PL-103 |
 
@@ -168,7 +170,7 @@ Only start after E1 and E4 are done.
 
 1. ~~PL-101 → PL-102 → PL-103, PL-104~~ — registry secured, tested, hosting decided (done).
 2. ~~PL-105~~ — Docker one-command registry (done).
-3. **PL-106 → PL-107 → PL-108** — test net, then friendly old-syntax errors.
+3. ~~PL-106~~ (done) → **PL-111** (decide block/overlay `:=` semantics) → **PL-107** (unit tests) → **PL-108** (old-syntax policy).
 4. **PL-201 → PL-203** — bring Lumine in line with the language.
 5. **PL-303 + PL-305** — first tagged release.
 6. **E4** (`graph` / `impact` / `sync` first, `eval` last), then **E5**.
@@ -183,11 +185,13 @@ Only start after E1 and E4 are done.
 | 2026-05 | `loom migrate` cancelled — new packs use v2 from the start; old examples live in `examples/legacy/` |
 | 2026-09-21 | One tracker file (this one) replaces the scattered planning notes; language and command docs remain in `docs/` |
 | 2026-09-21 | Registry write endpoints fail closed (503) without `UPLOAD_SECRET`; the local dev secret must now be ≥16 chars |
+| 2026-09-21 | Fixture tests pin *current* behaviour, including the questionable parts (legacy operators only warn; `:=` in blocks replaces). Changing either is deliberate: update the fixtures in the same commit (PL-108, PL-111) |
 | 2026-09-21 | **Registry hosting: self-host first.** The hard-coded `registry.promptloom.dev` default is removed. A hosted default can be added later by setting one constant once a registry exists (revisit under PL-105/PL-303) |
 | 2026-09-21 | `docs/TOOL_REFERENCE.md` and `docs/PACKMAKER_DESIGN.md` removed from git as stale/contradictory; `docs/LOOM_COMMAND.md` and `docs/LOOM_LANGUAGE.md` are canonical |
 
 ## Known risks
 
 - No public registry exists; every team must self-host one (PL-105 makes that a single command). Revisit if adoption needs a shared public one.
-- Core packages are mostly untested (PL-106, PL-107); refactors are risky until they are.
+- The pipeline now has an end-to-end net (PL-106), but many packages (`loader`, `lock`, `lsp`, `testrunner`, …) still lack unit tests (PL-107).
+- Two language-semantics questions are open and pinned by fixtures: block/overlay `:=` (PL-111) and legacy operators (PL-108).
 - Lumine and the Go parser can drift apart (PL-203 addresses this with shared fixtures).

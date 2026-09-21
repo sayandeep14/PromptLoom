@@ -1,0 +1,2 @@
+rule: from-range-out-of-range
+error: parent[0..3] is out of range

@@ -1,0 +1,2 @@
+rule: warn-missing-objective
+warning: has no objective field

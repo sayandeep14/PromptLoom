@@ -1,0 +1,3 @@
+rule: parse-unterminated
+load-error: unexpected end of file inside body of "Unterminated"
+also: add the missing closing

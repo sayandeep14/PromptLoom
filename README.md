@@ -764,10 +764,11 @@ PromptLoom/
 make build                   # build the CLI into ./bin/loom
 go test ./...                # run all tests
 go test ./internal/parser/...  # a single package
+go test ./internal/e2e -update # regenerate golden files after an intentional output change
 go vet ./...                 # static checks
 ```
 
-Packages with unit tests include `parser`, `resolve` (including multi-parent), `validate`, `render`, `format`, `graph`, `deps`, `installer`, `sourcemap`, and `tui`.
+Packages with unit tests include `parser`, `resolve` (including multi-parent), `validate`, `render`, `format`, `graph`, `deps`, `installer`, `sourcemap`, and `tui`. `internal/e2e` runs the whole pipeline (and the built binary) over the fixture projects in `testdata/` — see [`testdata/README.txt`](testdata/README.txt).
 
 ### Registry integration tests
 

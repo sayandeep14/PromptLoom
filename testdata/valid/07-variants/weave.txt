@@ -1,0 +1,3 @@
+base: CodeAssistant
+strict: CodeAssistant --variant strict
+exploratory: CodeAssistant --variant exploratory

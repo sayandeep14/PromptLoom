@@ -1,0 +1,6 @@
+prompt Stray {
+  persona :=
+    Fine.
+
+  hello there
+}

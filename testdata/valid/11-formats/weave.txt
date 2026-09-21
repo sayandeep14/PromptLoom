@@ -1,0 +1,7 @@
+reviewer.md: Reviewer
+reviewer.plain.txt: Reviewer --format plain
+reviewer.cursor.mdc: Reviewer --format cursor-rule
+reviewer.copilot.md: Reviewer --format copilot
+reviewer.claude-code.md: Reviewer --format claude-code
+reviewer.anthropic.json: Reviewer --format json-anthropic
+reviewer.openai.json: Reviewer --format json-openai

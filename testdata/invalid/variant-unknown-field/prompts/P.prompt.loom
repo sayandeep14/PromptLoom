@@ -1,0 +1,9 @@
+prompt P {
+  persona :=
+    x.
+
+  variant strict {
+    tone :=
+      - stern
+  }
+}

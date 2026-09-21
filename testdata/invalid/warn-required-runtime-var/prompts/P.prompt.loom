@@ -1,0 +1,6 @@
+prompt P {
+  slot repo { required: true }
+
+  persona :=
+    You review {{ repo }}.
+}

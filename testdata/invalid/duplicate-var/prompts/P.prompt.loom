@@ -1,0 +1,7 @@
+prompt P {
+  var language = "Go"
+  slot language { required: true }
+
+  persona :=
+    {{ language }}
+}

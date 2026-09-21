@@ -1,0 +1,4 @@
+rule: inheritance-cycle
+error: inheritance cycle detected: A -> B -> C -> A
+error: inheritance cycle detected: B -> C -> A -> B
+error: inheritance cycle detected: C -> A -> B -> C

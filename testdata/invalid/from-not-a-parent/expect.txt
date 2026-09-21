@@ -1,0 +1,2 @@
+rule: from-not-a-parent
+error: which is not a declared parent

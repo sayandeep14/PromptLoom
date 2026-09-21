@@ -1,0 +1,2 @@
+rule: parse-missing-brace
+load-error: expected '{' at end of prompt declaration

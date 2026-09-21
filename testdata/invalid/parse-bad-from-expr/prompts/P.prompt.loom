@@ -1,0 +1,9 @@
+prompt Parent1 {
+  instructions :=
+    - one
+}
+
+prompt Child inherits Parent1 {
+  instructions :=
+    from(parent[x])
+}

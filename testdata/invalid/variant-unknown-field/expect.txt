@@ -1,0 +1,2 @@
+rule: variant-unknown-field
+error: variant "strict" uses unknown field "tone"

@@ -1,0 +1,2 @@
+rule: warn-redefine-inherited
+warning: redefines inherited field "persona" with ':' instead of ':='

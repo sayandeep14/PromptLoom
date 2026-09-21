@@ -1,0 +1,6 @@
+prompt V {
+  var = "no name"
+
+  persona :=
+    x
+}

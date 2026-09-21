@@ -1,0 +1,3 @@
+prompt Broken
+  persona :=
+    You forgot the opening brace.

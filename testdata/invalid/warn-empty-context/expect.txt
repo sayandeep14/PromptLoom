@@ -1,0 +1,2 @@
+rule: warn-empty-context
+warning: has an empty context field

@@ -1,0 +1,2 @@
+rule: weave-unknown-prompt
+weave-error: Missing

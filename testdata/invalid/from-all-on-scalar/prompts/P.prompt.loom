@@ -1,0 +1,14 @@
+prompt A {
+  persona :=
+    a.
+}
+
+prompt B {
+  persona :=
+    b.
+}
+
+prompt C inherits A, B {
+  persona :=
+    from(parent[*])
+}

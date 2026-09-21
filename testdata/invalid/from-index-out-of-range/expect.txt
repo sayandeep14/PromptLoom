@@ -1,0 +1,2 @@
+rule: from-index-out-of-range
+error: parent[1] is out of range

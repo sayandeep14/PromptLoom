@@ -1,0 +1,2 @@
+rule: weave-unknown-env
+weave-error: env "staging" not declared on prompt "P"

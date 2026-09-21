@@ -1,0 +1,2 @@
+rule: parse-unknown-toplevel
+load-error: unexpected token at top level

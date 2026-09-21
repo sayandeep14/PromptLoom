@@ -1,0 +1,9 @@
+prompt BaseEngineer {
+  persona :=
+    base.
+}
+
+prompt Child inherits BaseEngeneer {
+  persona :=
+    child.
+}

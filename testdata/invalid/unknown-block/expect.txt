@@ -1,0 +1,2 @@
+rule: unknown-block
+error: uses unknown block "GoConvenions"

@@ -1,0 +1,9 @@
+prompt A {
+  instructions :=
+    - a
+}
+
+prompt C inherits A {
+  instructions :=
+    from(parent[1])
+}

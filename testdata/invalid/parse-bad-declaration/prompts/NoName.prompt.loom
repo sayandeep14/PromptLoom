@@ -1,0 +1,4 @@
+prompt {
+  persona :=
+    The prompt has no name.
+}

@@ -1,0 +1,2 @@
+rule: parse-keyword-in-block
+load-error: 'use' is only valid inside prompts

@@ -1,0 +1,6 @@
+prompt P {
+  persona :=
+    x.
+
+  context :=
+}

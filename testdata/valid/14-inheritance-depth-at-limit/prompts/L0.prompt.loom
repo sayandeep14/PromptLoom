@@ -1,0 +1,4 @@
+prompt L0 {
+  persona :=
+    Level 0 persona.
+}
