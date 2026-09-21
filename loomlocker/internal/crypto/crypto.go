@@ -18,8 +18,8 @@ const (
 	argon2Parallelism = 2
 	argon2KeyLen      = 32
 
-	saltLen  = 16
-	nonceLen = 12
+	saltLen    = 16
+	nonceLen   = 12
 	bcryptCost = 12
 )
 

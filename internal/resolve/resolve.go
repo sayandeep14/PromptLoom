@@ -574,7 +574,6 @@ func lookupVariantFromSlice(variants []ast.VariantBlock, ref string) (*ast.Varia
 	return nil, false
 }
 
-
 func lookupOverlay(reg *registry.Registry, ref string) (*ast.Node, bool) {
 	if overlay, ok := reg.LookupOverlay(ref); ok {
 		return overlay, true
@@ -869,7 +868,6 @@ func setList(rp *ast.ResolvedPrompt, name string, val []string) {
 		rp.CompatibleWith = val
 	}
 }
-
 
 func toKebab(s string) string {
 	var b strings.Builder

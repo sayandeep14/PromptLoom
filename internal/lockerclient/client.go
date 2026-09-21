@@ -61,7 +61,9 @@ func (c *Client) Unlock(password string) error {
 		return fmt.Errorf("invalid password")
 	}
 	if resp.StatusCode != http.StatusOK {
-		var e struct{ Error string `json:"error"` }
+		var e struct {
+			Error string `json:"error"`
+		}
 		_ = json.NewDecoder(resp.Body).Decode(&e)
 		return fmt.Errorf("unlock failed: %s", e.Error)
 	}

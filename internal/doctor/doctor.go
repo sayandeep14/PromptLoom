@@ -137,9 +137,9 @@ func structuralChecks(node *ast.Node, rp *ast.ResolvedPrompt, reg *registry.Regi
 	if cfg.Validation.RequireContract {
 		if node.Contract == nil {
 			checks = append(checks, StructuralResult{
-				Label:   "Contract declared",
-				IsWarn:  true,
-				Detail:  "add a contract block (run: loom contract --help)",
+				Label:  "Contract declared",
+				IsWarn: true,
+				Detail: "add a contract block (run: loom contract --help)",
 			})
 		} else {
 			checks = append(checks, StructuralResult{Label: "Contract declared", Pass: true})

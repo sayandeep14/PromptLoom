@@ -85,7 +85,7 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-115 | `loom fmt --migrate`: mechanically rewrite v1 syntax (`field:` → `:=`, `+=` in child prompts → `from(parent[…]) and { … }`, `+=` in blocks → `:=`), leaving `-=`/scalar `+=` for manual fix. The one-off converter used for the generators is a starting point. Also the basis for an LSP quick-fix (PL-201) | TODO | P1 | M | PL-108 |
 | PL-114 | Unit tests for the remaining untested packages (`lsp`, `testrunner`, `mcp`, `blame`, `minimize`, `stale`, `starter`, `summarize`, `semantic`, `tokens`, `journal`) and CLI-level tests for commands beyond inspect/weave | TODO | P1 | L | PL-107 |
 | PL-112 | Bare `slot name` (no `{ }`) is rejected by the lexer although the LSP hover text documents it as valid; either accept it (required by default) or fix the docs/hover | TODO | P2 | S | PL-106 |
-| PL-109 | Run `gofmt -w` across the ~26 unformatted files and add a `gofmt -l` check to CI | TODO | P2 | S | PL-004 |
+| PL-109 | `gofmt -w` across the 27 unformatted files (whitespace only; all tests unchanged) and a `gofmt -l` gate in CI for every Go module, plus `make fmt` / `make fmt-check` | DONE | P2 | S | PL-004 |
 | PL-110 | Registry follow-ups: TLS/HSTS guidance, per-pack ownership (today one shared secret can overwrite any pack), constant-time-safe secret rotation, request logging | TODO | P1 | M | PL-103 |
 
 **Exit criteria for E1:** `go test ./...` covers the parser→render path and every validation rule; registry refuses unauthenticated writes; `loom install` works against a documented registry.

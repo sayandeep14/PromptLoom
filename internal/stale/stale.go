@@ -95,17 +95,17 @@ var versionRE = regexp.MustCompile(`\b(\d+(?:\.\d+){0,2})\b`)
 func checkPrompt(rp *ast.ResolvedPrompt, deps []DepVersion) []Finding {
 	var findings []Finding
 	fields := map[string]string{
-		"summary":      rp.Summary,
-		"persona":      rp.Persona,
-		"context":      rp.Context,
-		"objective":    rp.Objective,
-		"notes":        rp.Notes,
+		"summary":   rp.Summary,
+		"persona":   rp.Persona,
+		"context":   rp.Context,
+		"objective": rp.Objective,
+		"notes":     rp.Notes,
 	}
 	listFields := map[string][]string{
-		"instructions":   rp.Instructions,
-		"constraints":    rp.Constraints,
-		"examples":       rp.Examples,
-		"format":         rp.Format,
+		"instructions": rp.Instructions,
+		"constraints":  rp.Constraints,
+		"examples":     rp.Examples,
+		"format":       rp.Format,
 	}
 
 	for field, text := range fields {

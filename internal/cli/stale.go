@@ -3,10 +3,10 @@ package cli
 import (
 	"fmt"
 
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	istale "github.com/sayandeepgiri/promptloom/internal/stale"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
 	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeepgiri/promptloom/internal/loader"
+	"github.com/sayandeepgiri/promptloom/internal/resolve"
+	istale "github.com/sayandeepgiri/promptloom/internal/stale"
 	"github.com/sayandeepgiri/promptloom/internal/tui"
 	"github.com/spf13/cobra"
 )

@@ -154,11 +154,11 @@ type CapabilitiesBlock struct {
 
 // Node is a parsed prompt or block declaration.
 type Node struct {
-	Kind    NodeKind
-	Name    string
+	Kind NodeKind
+	Name string
 	// Parent holds the first (or only) parent name for backward compatibility.
 	// For single-parent prompts it equals Parents[0]; for base prompts it is "".
-	Parent  string
+	Parent string
 	// Parents holds all declared parent names in order (v2 multiple inheritance).
 	// len==0 for base prompts, len==1 for single-parent, len>1 for multi-parent.
 	Parents      []string

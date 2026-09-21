@@ -46,10 +46,10 @@ type Validation struct {
 }
 
 type Testing struct {
-	Provider    string `toml:"provider"`     // "gemini" or "anthropic"
-	APIKeyEnv   string `toml:"api_key_env"`
+	Provider     string `toml:"provider"` // "gemini" or "anthropic"
+	APIKeyEnv    string `toml:"api_key_env"`
 	DefaultModel string `toml:"default_model"`
-	TimeoutSec  int    `toml:"timeout_sec"`
+	TimeoutSec   int    `toml:"timeout_sec"`
 }
 
 type Registry struct {

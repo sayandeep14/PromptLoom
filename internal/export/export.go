@@ -36,10 +36,11 @@ type Rule struct {
 // Lines starting with '#' or blank lines are ignored.
 //
 // Supported syntax (backtick-delimited tokens):
-//   export `pkg`
-//   export `pkg` match `glob`
-//   export `pkg` except match `glob`
-//   export `pkg` match `glob` except `specific-file.loom`
+//
+//	export `pkg`
+//	export `pkg` match `glob`
+//	export `pkg` except match `glob`
+//	export `pkg` match `glob` except `specific-file.loom`
 func ParseFile(path string) ([]Rule, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -189,9 +190,9 @@ func isLoomFile(name string) bool {
 func WriteDefault(path string) error {
 	content := `# .export.loom — declare which prompts to export
 # Syntax:
-#   export `+"`"+`package`+"`"+`
-#   export `+"`"+`package.subpackage`+"`"+` match `+"`"+`*-final.prompt.loom`+"`"+`
-#   export `+"`"+`package`+"`"+` except match `+"`"+`*-temp.prompt.loom`+"`"+`
+#   export ` + "`" + `package` + "`" + `
+#   export ` + "`" + `package.subpackage` + "`" + ` match ` + "`" + `*-final.prompt.loom` + "`" + `
+#   export ` + "`" + `package` + "`" + ` except match ` + "`" + `*-temp.prompt.loom` + "`" + `
 
 export ` + "`prompts`" + `
 `

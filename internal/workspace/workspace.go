@@ -26,11 +26,11 @@ const (
 // Info holds everything workspace scanning discovers about the project.
 type Info struct {
 	// Detected tech
-	Stack         Stack
-	Language      string
-	Framework     string
-	BuildTool     string
-	TestFramework string
+	Stack           Stack
+	Language        string
+	Framework       string
+	BuildTool       string
+	TestFramework   string
 	ExistingAITools []string // e.g., "CLAUDE.md", ".cursor/", "copilot-instructions.md"
 
 	// Context files

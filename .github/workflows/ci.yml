@@ -30,6 +30,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Formatting (gofmt)
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted (run: gofmt -w .):"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Build
         run: go build ./...
       - name: Vet

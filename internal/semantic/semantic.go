@@ -13,7 +13,7 @@ const (
 
 // ChangeClass describes one classified semantic change.
 type ChangeClass struct {
-	Label string    // "constraint-added", "constraint-removed", etc.
+	Label string // "constraint-added", "constraint-removed", etc.
 	Risk  RiskLevel
 	Items []string // the specific lines that changed
 }

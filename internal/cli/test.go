@@ -118,13 +118,13 @@ func printTestResults(results []testrunner.Result) {
 		case r.Err != nil:
 			failed++
 			icon := tui.ErrorStyle.Render("✗")
-			detail := tui.MutedStyle.Render("error: "+r.Err.Error())
+			detail := tui.MutedStyle.Render("error: " + r.Err.Error())
 			fmt.Printf("  %s  %s  %s\n", icon, name, detail)
 
 		case r.Skipped:
 			skipped++
 			icon := tui.MutedStyle.Render("—")
-			detail := tui.MutedStyle.Render("("+r.SkipReason+")")
+			detail := tui.MutedStyle.Render("(" + r.SkipReason + ")")
 			fmt.Printf("  %s  %s  %s\n", icon, name, detail)
 
 		case r.Passed:

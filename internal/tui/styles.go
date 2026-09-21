@@ -19,30 +19,30 @@ var (
 // Exported styles used by CLI commands and the REPL.
 // All are uninitialized at declaration; ApplyTheme() fills them.
 var (
-	BannerStyle        lipgloss.Style
-	TaglineStyle       lipgloss.Style
-	VersionStyle       lipgloss.Style
-	SuccessStyle       lipgloss.Style
-	ErrorStyle         lipgloss.Style
-	WarningStyle       lipgloss.Style
-	MutedStyle         lipgloss.Style
-	BrightStyle        lipgloss.Style
-	TextStyle          lipgloss.Style
-	HeaderStyle        lipgloss.Style
-	SubHeaderStyle     lipgloss.Style
-	PathStyle          lipgloss.Style
-	PromptNameStyle    lipgloss.Style
-	FocusedPromptStyle lipgloss.Style
-	BlockNameStyle     lipgloss.Style
-	InheritsStyle      lipgloss.Style
-	CommandStyle       lipgloss.Style
-	ArgDescStyle       lipgloss.Style
-	DividerStyle       lipgloss.Style
-	SelectedCompStyle  lipgloss.Style
+	BannerStyle         lipgloss.Style
+	TaglineStyle        lipgloss.Style
+	VersionStyle        lipgloss.Style
+	SuccessStyle        lipgloss.Style
+	ErrorStyle          lipgloss.Style
+	WarningStyle        lipgloss.Style
+	MutedStyle          lipgloss.Style
+	BrightStyle         lipgloss.Style
+	TextStyle           lipgloss.Style
+	HeaderStyle         lipgloss.Style
+	SubHeaderStyle      lipgloss.Style
+	PathStyle           lipgloss.Style
+	PromptNameStyle     lipgloss.Style
+	FocusedPromptStyle  lipgloss.Style
+	BlockNameStyle      lipgloss.Style
+	InheritsStyle       lipgloss.Style
+	CommandStyle        lipgloss.Style
+	ArgDescStyle        lipgloss.Style
+	DividerStyle        lipgloss.Style
+	SelectedCompStyle   lipgloss.Style
 	UnselectedCompStyle lipgloss.Style
-	InputPromptStyle   lipgloss.Style
-	SummaryBox         lipgloss.Style
-	BulletStyle        lipgloss.Style
+	InputPromptStyle    lipgloss.Style
+	SummaryBox          lipgloss.Style
+	BulletStyle         lipgloss.Style
 
 	// TraceArrow separates steps in a field resolution chain.
 	TraceArrow string

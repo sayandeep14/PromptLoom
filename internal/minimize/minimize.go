@@ -14,18 +14,18 @@ import (
 type IssueKind string
 
 const (
-	KindExactDuplicate    IssueKind = "exact-duplicate"
-	KindNearDuplicate     IssueKind = "near-duplicate"
-	KindContradiction     IssueKind = "contradiction"
+	KindExactDuplicate IssueKind = "exact-duplicate"
+	KindNearDuplicate  IssueKind = "near-duplicate"
+	KindContradiction  IssueKind = "contradiction"
 )
 
 // Issue is a single finding from the minimizer.
 type Issue struct {
-	Kind    IssueKind
-	Field   string
-	ItemA   string
-	ItemB   string
-	Prompt  string // prompt name where the issue was found
+	Kind   IssueKind
+	Field  string
+	ItemA  string
+	ItemB  string
+	Prompt string // prompt name where the issue was found
 	// Similarity is set for near-duplicates (0–1, where 1 = identical).
 	Similarity float64
 }

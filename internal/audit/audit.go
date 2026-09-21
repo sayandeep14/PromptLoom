@@ -30,11 +30,11 @@ func (r RiskLevel) String() string {
 
 // Finding is one flagged item from the audit scan.
 type Finding struct {
-	Risk    RiskLevel
-	Field   string  // e.g. "instructions", "constraints"
-	Value   string  // the offending text
-	Reason  string  // human-readable explanation
-	Fix     string  // suggested remediation
+	Risk   RiskLevel
+	Field  string // e.g. "instructions", "constraints"
+	Value  string // the offending text
+	Reason string // human-readable explanation
+	Fix    string // suggested remediation
 }
 
 type pattern struct {
@@ -87,10 +87,10 @@ var patterns = []pattern{
 	},
 	// HIGH — safety/policy bypass
 	{
-		phrases:  []string{"ignore policy", "bypass validation", "skip tests", "ignore all instructions", "disregard previous"},
-		risk:     High,
-		reason:   "safety or policy bypass instruction",
-		fix:      "Remove the bypass instruction; use conditional logic instead",
+		phrases: []string{"ignore policy", "bypass validation", "skip tests", "ignore all instructions", "disregard previous"},
+		risk:    High,
+		reason:  "safety or policy bypass instruction",
+		fix:     "Remove the bypass instruction; use conditional logic instead",
 	},
 	// HIGH — destructive commands without confirmation
 	{
@@ -102,10 +102,10 @@ var patterns = []pattern{
 	},
 	// HIGH — production environment references
 	{
-		phrases:  []string{"use production", "in production database", "production credentials", "prod api key"},
-		risk:     High,
-		reason:   "direct production environment reference",
-		fix:      "Use environment separation: `env prod { ... }` with a secret slot",
+		phrases: []string{"use production", "in production database", "production credentials", "prod api key"},
+		risk:    High,
+		reason:  "direct production environment reference",
+		fix:     "Use environment separation: `env prod { ... }` with a secret slot",
 	},
 	// MEDIUM — PII without privacy qualifier
 	{
@@ -117,10 +117,10 @@ var patterns = []pattern{
 	},
 	// MEDIUM — removes confirmation gate
 	{
-		phrases:  []string{"without confirmation", "without asking", "no approval needed", "skip confirmation"},
-		risk:     Medium,
-		reason:   "removes user confirmation gate",
-		fix:      `Add "after user confirms" qualifier`,
+		phrases: []string{"without confirmation", "without asking", "no approval needed", "skip confirmation"},
+		risk:    Medium,
+		reason:  "removes user confirmation gate",
+		fix:     `Add "after user confirms" qualifier`,
 	},
 	// LOW — urgency without safety qualifier
 	{

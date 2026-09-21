@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sayandeepgiri/promptloom/internal/loader"
 	"github.com/sayandeepgiri/promptloom/internal/registry"
 )
@@ -37,19 +37,19 @@ func RunInteractiveWeave(cwd string) error {
 type wizardStep int
 
 const (
-	stepBase     wizardStep = iota // choose base prompt
-	stepBlocks                     // choose blocks
-	stepVariant                    // choose variant
-	stepFormat                     // choose output format
-	stepName                       // enter prompt name
-	stepDone                       // done
-	stepCancelled                  // user quit
+	stepBase      wizardStep = iota // choose base prompt
+	stepBlocks                      // choose blocks
+	stepVariant                     // choose variant
+	stepFormat                      // choose output format
+	stepName                        // enter prompt name
+	stepDone                        // done
+	stepCancelled                   // user quit
 )
 
 type wizardModel struct {
-	step      wizardStep
-	reg       *registry.Registry
-	cwd       string
+	step wizardStep
+	reg  *registry.Registry
+	cwd  string
 
 	// choices
 	prompts  []string // available prompt names

@@ -5,9 +5,9 @@ package tui
 // appends the result to its output buffer.
 
 import (
-	"errors"
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,15 +22,16 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/atotto/clipboard"
 	"github.com/sayandeepgiri/promptloom/internal/ast"
+	iaudit "github.com/sayandeepgiri/promptloom/internal/audit"
 	"github.com/sayandeepgiri/promptloom/internal/config"
 	icontext "github.com/sayandeepgiri/promptloom/internal/context"
 	icontracts "github.com/sayandeepgiri/promptloom/internal/contract"
 	idiff "github.com/sayandeepgiri/promptloom/internal/diff"
 	idoctor "github.com/sayandeepgiri/promptloom/internal/doctor"
-	ilock "github.com/sayandeepgiri/promptloom/internal/lock"
 	iformat "github.com/sayandeepgiri/promptloom/internal/format"
 	igraph "github.com/sayandeepgiri/promptloom/internal/graph"
 	"github.com/sayandeepgiri/promptloom/internal/loader"
+	ilock "github.com/sayandeepgiri/promptloom/internal/lock"
 	ipack "github.com/sayandeepgiri/promptloom/internal/pack"
 	iparser "github.com/sayandeepgiri/promptloom/internal/parser"
 	"github.com/sayandeepgiri/promptloom/internal/registry"
@@ -38,10 +39,9 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/resolve"
 	"github.com/sayandeepgiri/promptloom/internal/semantic"
 	"github.com/sayandeepgiri/promptloom/internal/sourcemap"
-	itokens "github.com/sayandeepgiri/promptloom/internal/tokens"
-	itestrunner "github.com/sayandeepgiri/promptloom/internal/testrunner"
-	iaudit "github.com/sayandeepgiri/promptloom/internal/audit"
 	isummarize "github.com/sayandeepgiri/promptloom/internal/summarize"
+	itestrunner "github.com/sayandeepgiri/promptloom/internal/testrunner"
+	itokens "github.com/sayandeepgiri/promptloom/internal/tokens"
 	"github.com/sayandeepgiri/promptloom/internal/validate"
 )
 

@@ -62,7 +62,7 @@ type replModel struct {
 	pickerHashByte int          // byte offset of '#' in input value
 	pickerMulti    bool         // true when summarize command is active (multi-select)
 	// pickerSelected tracks Insert values of multi-chosen items.
-	pickerSelected    map[string]bool
+	pickerSelected map[string]bool
 
 	outputLines []string
 

@@ -37,17 +37,17 @@ type Options struct {
 
 // skipDirs are directory names that are never walked.
 var skipDirs = map[string]bool{
-	".git":         true,
-	".hg":          true,
-	"node_modules": true,
-	"vendor":       true,
-	".loom":        true,
-	"dist":         true,
-	"__pycache__":  true,
+	".git":          true,
+	".hg":           true,
+	"node_modules":  true,
+	"vendor":        true,
+	".loom":         true,
+	"dist":          true,
+	"__pycache__":   true,
 	".pytest_cache": true,
-	"target":       true, // maven/cargo
-	"build":        true,
-	".gradle":      true,
+	"target":        true, // maven/cargo
+	"build":         true,
+	".gradle":       true,
 }
 
 // keyFiles are high-priority files to always include in context.
@@ -117,10 +117,10 @@ func SummarizePaths(paths []string, cwd string, cfg *config.Config, opts Options
 // ---- file tree ----
 
 type fileEntry struct {
-	rel      string
-	size     int64
-	isDir    bool
-	isKey    bool
+	rel   string
+	size  int64
+	isDir bool
+	isKey bool
 }
 
 func buildFileTree(root string) []fileEntry {

@@ -108,15 +108,15 @@ func buildVars(opts Options) map[string]string {
 	fwTitle := titleCase(strings.ReplaceAll(fw, "-", " "))
 
 	return map[string]string{
-		"{{Language}}":      lang,
-		"{{language}}":      strings.ToLower(lang),
-		"{{LangPascal}}":    pascal,
-		"{{Framework}}":     fw,
-		"{{framework}}":     strings.ToLower(fw),
-		"{{FwPascal}}":      fwPascal,
+		"{{Language}}":       lang,
+		"{{language}}":       strings.ToLower(lang),
+		"{{LangPascal}}":     pascal,
+		"{{Framework}}":      fw,
+		"{{framework}}":      strings.ToLower(fw),
+		"{{FwPascal}}":       fwPascal,
 		"{{FrameworkTitle}}": fwTitle,
-		"{{Style}}":         style,
-		"{{style}}":         strings.ToLower(style),
+		"{{Style}}":          style,
+		"{{style}}":          strings.ToLower(style),
 	}
 }
 

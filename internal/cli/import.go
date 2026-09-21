@@ -106,7 +106,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		result := importer.Import(string(src), name)
 
 		for _, w := range result.Warnings {
-			fmt.Println(tui.WarningStyle.Render("  warn ["+name+"]: "+w))
+			fmt.Println(tui.WarningStyle.Render("  warn [" + name + "]: " + w))
 		}
 
 		outPath := filepath.Join(outDir, name+".prompt.loom")

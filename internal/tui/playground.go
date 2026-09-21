@@ -37,7 +37,7 @@ func RunPlayground(name, cwd string) error {
 type pgMode int
 
 const (
-	pgNormal    pgMode = iota
+	pgNormal pgMode = iota
 	pgPickVariant
 	pgPickFormat
 	pgPickOverlay
@@ -45,18 +45,18 @@ const (
 )
 
 type playgroundModel struct {
-	name    string
-	reg     *registry.Registry
-	cfg     interface{} // *config.Config — stored as interface{} to avoid import cycle
-	cwd     string
+	name string
+	reg  *registry.Registry
+	cfg  interface{} // *config.Config — stored as interface{} to avoid import cycle
+	cwd  string
 
 	variant  string
 	format   string
 	overlays []string
 	env      string
 
-	variants  []string
-	formats   []string
+	variants     []string
+	formats      []string
 	overlayNames []string
 
 	preview     string
@@ -68,7 +68,7 @@ type playgroundModel struct {
 	viewHeight   int
 	viewWidth    int
 
-	mode      pgMode
+	mode       pgMode
 	pickCursor int
 
 	contextInput textinput.Model

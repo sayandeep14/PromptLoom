@@ -31,19 +31,19 @@ func parseFromExpression(lines []string, pos ast.Position) (*ast.FromExpression,
 type feTokenType int
 
 const (
-	feTokIdent  feTokenType = iota
-	feTokInt                // integer literal
-	feTokLParen             // (
-	feTokRParen             // )
-	feTokLBrack             // [
-	feTokRBrack             // ]
-	feTokLBrace             // {
-	feTokRBrace             // }
-	feTokDot                // .
-	feTokStar               // *
-	feTokDotDot             // ..
-	feTokNewline            // \n
-	feTokDash               // - (at start of a bullet item line)
+	feTokIdent   feTokenType = iota
+	feTokInt                 // integer literal
+	feTokLParen              // (
+	feTokRParen              // )
+	feTokLBrack              // [
+	feTokRBrack              // ]
+	feTokLBrace              // {
+	feTokRBrace              // }
+	feTokDot                 // .
+	feTokStar                // *
+	feTokDotDot              // ..
+	feTokNewline             // \n
+	feTokDash                // - (at start of a bullet item line)
 	feTokEOF
 )
 

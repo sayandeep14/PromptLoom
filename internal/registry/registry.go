@@ -23,7 +23,7 @@ type Registry struct {
 	prompts    map[string]*ast.Node
 	blocks     map[string]*ast.Node
 	overlays   map[string]*ast.Node
-	globalVars []lexer.VarEntry // from .vars.loom files
+	globalVars []lexer.VarEntry  // from .vars.loom files
 	ns         NamespaceResolver // optional; set by loader after scanning loompack/
 }
 

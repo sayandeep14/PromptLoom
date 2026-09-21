@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	iaudit "github.com/sayandeepgiri/promptloom/internal/audit"
 	iast "github.com/sayandeepgiri/promptloom/internal/ast"
+	iaudit "github.com/sayandeepgiri/promptloom/internal/audit"
 	iblame "github.com/sayandeepgiri/promptloom/internal/blame"
 	"github.com/sayandeepgiri/promptloom/internal/importer"
 	ijournal "github.com/sayandeepgiri/promptloom/internal/journal"

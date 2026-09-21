@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	startNoLLM  bool
+	startNoLLM   bool
 	startMinimal bool
 	startBest    bool
 	startStack   string
@@ -312,14 +312,14 @@ func relPath(base, target string) string {
 
 func stackToLanguage(s string) string {
 	m := map[string]string{
-		"go":           "Go",
-		"python":       "Python",
-		"typescript":   "TypeScript",
-		"javascript":   "JavaScript",
-		"rust":         "Rust",
-		"java":         "Java",
-		"java-spring":  "Java",
-		"spring-boot":  "Java",
+		"go":          "Go",
+		"python":      "Python",
+		"typescript":  "TypeScript",
+		"javascript":  "JavaScript",
+		"rust":        "Rust",
+		"java":        "Java",
+		"java-spring": "Java",
+		"spring-boot": "Java",
 	}
 	if lang, ok := m[strings.ToLower(s)]; ok {
 		return lang
