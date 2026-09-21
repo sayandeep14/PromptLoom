@@ -555,7 +555,21 @@ loom/loompack/go-backend/
 └── pack.json     metadata + install timestamp
 ```
 
-Point at another registry with `--registry <url>` or `$LOOM_REGISTRY_URL`.
+PromptLoom has **no built-in default registry** — run your own (below) or use one your team provides, and point `loom` at it with any of:
+
+```bash
+loom install go-backend --registry https://registry.example.com   # one-off
+export LOOM_REGISTRY_URL=https://registry.example.com             # shell
+echo 'LOOM_REGISTRY_URL=https://registry.example.com' >> loom/.loom.env   # project
+```
+
+```toml
+# loom.toml
+[registry]
+url = "https://registry.example.com"
+```
+
+Precedence: `--registry` → `$LOOM_REGISTRY_URL` → `loom/.loom.env` → `loom.toml`. With no registry configured, `loom install` and `loom publish` print these instructions. `loom publish` refuses to send the upload secret over plain `http://` to anything but `localhost`.
 
 ### Publishing
 
@@ -781,6 +795,15 @@ go vet ./...                 # static checks
 ```
 
 Packages with unit tests include `parser`, `resolve` (including multi-parent), `validate`, `render`, `format`, `graph`, `deps`, `installer`, `sourcemap`, and `tui`.
+
+### Registry integration tests
+
+The registry's PostgreSQL tests are skipped unless `TEST_DATABASE_URL` points at a database whose name contains `test` (the tests wipe its tables):
+
+```bash
+docker run --rm -d --name loom-pg -p 55432:5432 -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=loom_test postgres:16
+cd server && TEST_DATABASE_URL='postgres://postgres:pw@localhost:55432/loom_test?sslmode=disable' go test ./...
+```
 
 ### Contributing
 

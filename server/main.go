@@ -8,6 +8,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/sayandeepgiri/promptloom/server/internal/config"
 	"github.com/sayandeepgiri/promptloom/server/internal/db"
+	"github.com/sayandeepgiri/promptloom/server/internal/store"
 )
 
 func main() {
@@ -33,7 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := startServer(cfg); err != nil {
+	if err := startServer(cfg, store.PG{}); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }

@@ -1,15 +1,33 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
 	"github.com/sayandeepgiri/promptloom/server/internal/models"
-	"github.com/sayandeepgiri/promptloom/server/internal/store"
 	"github.com/sayandeepgiri/promptloom/server/internal/validate"
 )
+
+// Store is the persistence layer the handlers depend on.
+// GetVault and GetBundle return (nil, nil) when the pack does not exist.
+type Store interface {
+	ListVaults(ctx context.Context) ([]models.ListItem, error)
+	GetVault(ctx context.Context, slug string) (*models.Vault, error)
+	GetBundle(ctx context.Context, slug string) (*models.Bundle, error)
+	UpsertVault(ctx context.Context, b *models.Bundle) error
+	DeleteVault(ctx context.Context, slug string) error
+}
+
+// API bundles the HTTP handlers with the store they use.
+type API struct {
+	Store Store
+}
+
+// New returns an API backed by s.
+func New(s Store) *API { return &API{Store: s} }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -39,8 +57,8 @@ func slugParam(w http.ResponseWriter, r *http.Request) (string, bool) {
 }
 
 // ListVaults handles GET /api/v1/vaults
-func ListVaults(w http.ResponseWriter, r *http.Request) {
-	items, err := store.ListVaults(r.Context())
+func (a *API) ListVaults(w http.ResponseWriter, r *http.Request) {
+	items, err := a.Store.ListVaults(r.Context())
 	if err != nil {
 		serverError(w, r, err)
 		return
@@ -52,12 +70,12 @@ func ListVaults(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetVault handles GET /api/v1/vaults/{slug}
-func GetVault(w http.ResponseWriter, r *http.Request) {
+func (a *API) GetVault(w http.ResponseWriter, r *http.Request) {
 	slug, ok := slugParam(w, r)
 	if !ok {
 		return
 	}
-	vault, err := store.GetVault(r.Context(), slug)
+	vault, err := a.Store.GetVault(r.Context(), slug)
 	if err != nil {
 		serverError(w, r, err)
 		return
@@ -70,12 +88,12 @@ func GetVault(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetBundle handles GET /api/v1/vaults/{slug}/bundle
-func GetBundle(w http.ResponseWriter, r *http.Request) {
+func (a *API) GetBundle(w http.ResponseWriter, r *http.Request) {
 	slug, ok := slugParam(w, r)
 	if !ok {
 		return
 	}
-	bundle, err := store.GetBundle(r.Context(), slug)
+	bundle, err := a.Store.GetBundle(r.Context(), slug)
 	if err != nil {
 		serverError(w, r, err)
 		return
@@ -89,7 +107,7 @@ func GetBundle(w http.ResponseWriter, r *http.Request) {
 
 // UploadVault handles POST /api/v1/vaults.
 // Authentication, rate limiting and the body-size cap are applied by middleware.
-func UploadVault(w http.ResponseWriter, r *http.Request) {
+func (a *API) UploadVault(w http.ResponseWriter, r *http.Request) {
 	var bundle models.Bundle
 	if err := json.NewDecoder(r.Body).Decode(&bundle); err != nil {
 		var tooBig *http.MaxBytesError
@@ -108,7 +126,7 @@ func UploadVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.UpsertVault(r.Context(), &bundle); err != nil {
+	if err := a.Store.UpsertVault(r.Context(), &bundle); err != nil {
 		serverError(w, r, err)
 		return
 	}
@@ -117,12 +135,12 @@ func UploadVault(w http.ResponseWriter, r *http.Request) {
 
 // DeleteVault handles DELETE /api/v1/vaults/{slug}.
 // Authentication and rate limiting are applied by middleware.
-func DeleteVault(w http.ResponseWriter, r *http.Request) {
+func (a *API) DeleteVault(w http.ResponseWriter, r *http.Request) {
 	slug, ok := slugParam(w, r)
 	if !ok {
 		return
 	}
-	if err := store.DeleteVault(r.Context(), slug); err != nil {
+	if err := a.Store.DeleteVault(r.Context(), slug); err != nil {
 		serverError(w, r, err)
 		return
 	}

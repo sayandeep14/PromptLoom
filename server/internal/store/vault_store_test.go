@@ -1,0 +1,272 @@
+package store_test
+
+import (
+	"context"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/sayandeepgiri/promptloom/server/internal/db"
+	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeepgiri/promptloom/server/internal/store"
+)
+
+// Integration tests: they need a real PostgreSQL and are skipped unless
+// TEST_DATABASE_URL is set. The database name must contain "test" because the
+// tests recreate the schema and wipe every table.
+//
+//	docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=loom_test postgres:16
+//	TEST_DATABASE_URL=postgres://postgres:pw@localhost:55432/loom_test go test ./internal/store/...
+func setup(t *testing.T) context.Context {
+	t.Helper()
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	t.Setenv("DATABASE_URL", url)
+	if err := db.Connect(ctx); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	var name string
+	if err := db.Pool.QueryRow(ctx, `SELECT current_database()`).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(name, "test") {
+		t.Fatalf("refusing to run destructive tests against database %q (name must contain \"test\")", name)
+	}
+
+	schema, err := os.ReadFile("../db/schema.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool.Exec(ctx, string(schema)); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `TRUNCATE vault_files, vaults CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	return ctx
+}
+
+func pack(slug string, files ...models.BundleFile) *models.Bundle {
+	if len(files) == 0 {
+		files = []models.BundleFile{{Path: "prompts/A.prompt.loom", FileType: "prompt", Content: "prompt A {}"}}
+	}
+	return &models.Bundle{
+		Name: "Pack " + slug, Slug: slug, Version: "1.0.0", Description: "d", Author: "me",
+		Tags: []string{"go", "backend"}, Files: files,
+	}
+}
+
+func TestUpsertAndGetRoundTrip(t *testing.T) {
+	ctx := setup(t)
+	b := pack("go-backend",
+		models.BundleFile{Path: "prompts/A.prompt.loom", FileType: "prompt", Content: "prompt A {}"},
+		models.BundleFile{Path: ".dependency.loom", FileType: "meta", Content: "python>=1.0.0"},
+		models.BundleFile{Path: "blocks/B.block.loom", FileType: "block", Content: "block B {}"},
+	)
+	b.PackID = "550e8400-e29b-41d4-a716-446655440000"
+	b.RelatedLibraries = []models.RelatedLibrary{{Name: "gin", Version: "1.9.0", ID: "x"}}
+
+	if err := store.UpsertVault(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.GetBundle(ctx, "go-backend")
+	if err != nil || got == nil {
+		t.Fatalf("GetBundle: %v %v", got, err)
+	}
+	if got.Name != b.Name || got.Version != "1.0.0" || got.PackID != b.PackID || got.Author != "me" {
+		t.Errorf("metadata mismatch: %+v", got)
+	}
+	if len(got.Tags) != 2 || got.Tags[0] != "go" {
+		t.Errorf("tags: %v", got.Tags)
+	}
+	if len(got.RelatedLibraries) != 1 || got.RelatedLibraries[0].Name != "gin" {
+		t.Errorf("related libraries: %+v", got.RelatedLibraries)
+	}
+	// Files come back ordered by path.
+	want := []string{".dependency.loom", "blocks/B.block.loom", "prompts/A.prompt.loom"}
+	if len(got.Files) != 3 {
+		t.Fatalf("files: %+v", got.Files)
+	}
+	for i, p := range want {
+		if got.Files[i].Path != p {
+			t.Errorf("file %d: %q, want %q", i, got.Files[i].Path, p)
+		}
+	}
+	if got.Files[0].Content != "python>=1.0.0" || got.Files[0].FileType != "meta" {
+		t.Errorf("file content/type lost: %+v", got.Files[0])
+	}
+}
+
+func TestNilTagsAndEmptyPackID(t *testing.T) {
+	ctx := setup(t)
+	b := pack("bare")
+	b.Tags = nil // client omitted tags entirely; column is NOT NULL
+	b.PackID = ""
+	if err := store.UpsertVault(ctx, b); err != nil {
+		t.Fatalf("upload without tags/pack_id must work: %v", err)
+	}
+	v, err := store.GetVault(ctx, "bare")
+	if err != nil || v == nil {
+		t.Fatal(v, err)
+	}
+	if v.PackID != "" || len(v.Tags) != 0 {
+		t.Errorf("got pack_id=%q tags=%v", v.PackID, v.Tags)
+	}
+}
+
+func TestUpsertReplacesFilesAndKeepsIdentity(t *testing.T) {
+	ctx := setup(t)
+	if err := store.UpsertVault(ctx, pack("p",
+		models.BundleFile{Path: "prompts/Old.prompt.loom", FileType: "prompt", Content: "old"},
+		models.BundleFile{Path: "prompts/Keep.prompt.loom", FileType: "prompt", Content: "v1"})); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := store.GetVault(ctx, "p")
+
+	v2 := pack("p", models.BundleFile{Path: "prompts/Keep.prompt.loom", FileType: "prompt", Content: "v2"})
+	v2.Version = "2.0.0"
+	if err := store.UpsertVault(ctx, v2); err != nil {
+		t.Fatal(err)
+	}
+
+	second, _ := store.GetVault(ctx, "p")
+	if second.ID != first.ID {
+		t.Error("re-publishing must update in place, not create a new row")
+	}
+	if second.Version != "2.0.0" || second.FileCount != 1 {
+		t.Errorf("after replace: version=%s files=%d", second.Version, second.FileCount)
+	}
+	b, _ := store.GetBundle(ctx, "p")
+	if len(b.Files) != 1 || b.Files[0].Content != "v2" {
+		t.Errorf("stale files remain: %+v", b.Files)
+	}
+}
+
+func TestUpsertIsAtomic(t *testing.T) {
+	ctx := setup(t)
+	if err := store.UpsertVault(ctx, pack("p")); err != nil {
+		t.Fatal(err)
+	}
+	// Duplicate paths violate UNIQUE(vault_id, path) midway through the file inserts.
+	bad := pack("p",
+		models.BundleFile{Path: "prompts/X.prompt.loom", FileType: "prompt", Content: "x"},
+		models.BundleFile{Path: "prompts/X.prompt.loom", FileType: "prompt", Content: "y"})
+	bad.Version = "9.9.9"
+	if err := store.UpsertVault(ctx, bad); err == nil {
+		t.Fatal("expected the duplicate-path upload to fail")
+	}
+	got, _ := store.GetBundle(ctx, "p")
+	if got.Version != "1.0.0" || len(got.Files) != 1 || got.Files[0].Path != "prompts/A.prompt.loom" {
+		t.Errorf("failed upload must roll back completely, got version=%s files=%+v", got.Version, got.Files)
+	}
+}
+
+func TestUniquenessConstraints(t *testing.T) {
+	ctx := setup(t)
+	a := pack("a")
+	a.PackID = "550e8400-e29b-41d4-a716-446655440000"
+	if err := store.UpsertVault(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+
+	sameName := pack("b")
+	sameName.Name = a.Name
+	if err := store.UpsertVault(ctx, sameName); err == nil {
+		t.Error("two packs with the same name must conflict")
+	}
+	samePackID := pack("c")
+	samePackID.PackID = a.PackID
+	if err := store.UpsertVault(ctx, samePackID); err == nil {
+		t.Error("two packs with the same pack_id must conflict")
+	}
+	// A failed insert must not leave a half-created pack behind.
+	if v, _ := store.GetVault(ctx, "b"); v != nil {
+		t.Error("pack b should not exist")
+	}
+}
+
+func TestSchemaRejectsBadFileType(t *testing.T) {
+	ctx := setup(t)
+	bad := pack("p", models.BundleFile{Path: "x.loom", FileType: "script", Content: "x"})
+	if err := store.UpsertVault(ctx, bad); err == nil {
+		t.Error("file_type outside prompt|block|overlay|meta must be rejected by the schema")
+	}
+}
+
+func TestListOrderingAndCounts(t *testing.T) {
+	ctx := setup(t)
+	items, err := store.ListVaults(ctx)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("empty list: %v %v", items, err)
+	}
+	two := pack("zeta", models.BundleFile{Path: "a.prompt.loom", FileType: "prompt", Content: "1"},
+		models.BundleFile{Path: "b.prompt.loom", FileType: "prompt", Content: "2"})
+	two.Name = "Alpha"
+	one := pack("alpha")
+	one.Name = "Zulu"
+	for _, b := range []*models.Bundle{one, two} {
+		if err := store.UpsertVault(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err = store.ListVaults(ctx)
+	if err != nil || len(items) != 2 {
+		t.Fatal(items, err)
+	}
+	if items[0].Name != "Alpha" || items[0].FileCount != 2 || items[1].Name != "Zulu" || items[1].FileCount != 1 {
+		t.Errorf("ordering/counts wrong: %+v", items)
+	}
+}
+
+func TestMissingPackReturnsNil(t *testing.T) {
+	ctx := setup(t)
+	if v, err := store.GetVault(ctx, "nope"); v != nil || err != nil {
+		t.Errorf("GetVault: %v %v", v, err)
+	}
+	if b, err := store.GetBundle(ctx, "nope"); b != nil || err != nil {
+		t.Errorf("GetBundle: %v %v", b, err)
+	}
+}
+
+func TestDeleteCascadesFiles(t *testing.T) {
+	ctx := setup(t)
+	if err := store.UpsertVault(ctx, pack("p")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteVault(ctx, "p"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := store.GetVault(ctx, "p"); v != nil {
+		t.Error("pack still exists")
+	}
+	var n int
+	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM vault_files`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("orphaned files: %d (%v)", n, err)
+	}
+	if err := store.DeleteVault(ctx, "p"); err != nil {
+		t.Errorf("deleting a missing pack should not error: %v", err)
+	}
+}
+
+func TestSQLInjectionInSlugIsHarmless(t *testing.T) {
+	ctx := setup(t)
+	if err := store.UpsertVault(ctx, pack("victim")); err != nil {
+		t.Fatal(err)
+	}
+	// Handlers reject such slugs, but the store must be safe on its own too.
+	if _, err := store.GetVault(ctx, "x' OR '1'='1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteVault(ctx, "x'; DROP TABLE vaults; --"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := store.GetVault(ctx, "victim"); v == nil {
+		t.Error("data was affected by an injection attempt")
+	}
+}

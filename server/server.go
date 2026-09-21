@@ -22,7 +22,8 @@ import (
 //	writes: rate limit (stricter) → upload secret → body-size cap
 //
 // The rate limit sits before authentication so brute-forcing the secret is throttled.
-func newRouter(cfg *config.Config) http.Handler {
+func newRouter(cfg *config.Config, st handlers.Store) http.Handler {
+	api := handlers.New(st)
 	mux := http.NewServeMux()
 
 	readLimit := mw.RateLimit(mw.NewLimiter(cfg.ReadRPM), cfg.TrustProxy)
@@ -35,11 +36,11 @@ func newRouter(cfg *config.Config) http.Handler {
 		return mw.Chain(h, writeLimit, requireSecret, maxBody)
 	}
 
-	mux.Handle("GET /api/v1/vaults", read(handlers.ListVaults))
-	mux.Handle("GET /api/v1/vaults/{slug}", read(handlers.GetVault))
-	mux.Handle("GET /api/v1/vaults/{slug}/bundle", read(handlers.GetBundle))
-	mux.Handle("POST /api/v1/vaults", write(handlers.UploadVault))
-	mux.Handle("DELETE /api/v1/vaults/{slug}", write(handlers.DeleteVault))
+	mux.Handle("GET /api/v1/vaults", read(api.ListVaults))
+	mux.Handle("GET /api/v1/vaults/{slug}", read(api.GetVault))
+	mux.Handle("GET /api/v1/vaults/{slug}/bundle", read(api.GetBundle))
+	mux.Handle("POST /api/v1/vaults", write(api.UploadVault))
+	mux.Handle("DELETE /api/v1/vaults/{slug}", write(api.DeleteVault))
 
 	// Health check — deliberately outside the rate limiter so probes never get throttled.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -50,10 +51,10 @@ func newRouter(cfg *config.Config) http.Handler {
 	return mw.Chain(mux, mw.SecurityHeaders(), mw.CORS(cfg.CORSOrigins))
 }
 
-func startServer(cfg *config.Config) error {
+func startServer(cfg *config.Config, st handlers.Store) error {
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           newRouter(cfg),
+		Handler:           newRouter(cfg, st),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

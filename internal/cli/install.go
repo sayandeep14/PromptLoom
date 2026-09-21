@@ -3,10 +3,12 @@ package cli
 import (
 	"bufio"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/sayandeepgiri/promptloom/internal/config"
 	"github.com/sayandeepgiri/promptloom/internal/installer"
 	"github.com/sayandeepgiri/promptloom/internal/tui"
 	"github.com/spf13/cobra"
@@ -29,7 +31,9 @@ Registry URL resolution order:
   2. $LOOM_REGISTRY_URL environment variable
   3. LOOM_REGISTRY_URL in loom/.loom.env
   4. [registry] url in loom.toml
-  5. Default: https://registry.promptloom.dev
+
+PromptLoom has no built-in default registry. Run your own (see server/ in the
+repository) or use one your team provides, then set its URL with one of the above.
 
 Examples:
   loom install go-backend
@@ -55,6 +59,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if installRegistry != "" {
 		registryURL = installRegistry
 		registrySource = "--registry flag"
+	}
+	if registryURL == "" {
+		return errNoRegistry()
+	}
+	if err := checkRegistryURL(registryURL); err != nil {
+		return err
+	}
+	if isPlainHTTPRemote(registryURL) {
+		fmt.Fprintf(os.Stderr, "%s  registry %s uses plain HTTP — packs are downloaded unencrypted and unauthenticated\n",
+			tui.MutedStyle.Render("!"), registryURL)
 	}
 	// Propagate so installer.Install picks it up via os.Getenv.
 	os.Setenv("LOOM_REGISTRY_URL", registryURL)
@@ -151,19 +165,67 @@ func printInstallResult(r *installer.Result, cwd string, direct bool) {
 	}
 }
 
-// resolveRegistryURL returns the registry base URL and its source label.
-// Resolution order: --registry flag → shell env → loom/.loom.env → default.
+// resolveRegistryURL returns the registry base URL and its source label, or
+// ("", "") when none is configured — there is deliberately no built-in default.
+// Order: shell env → loom/.loom.env → [registry] url in loom.toml.
+// (The --registry flag is applied by the callers and takes precedence.)
 func resolveRegistryURL(dir string) (url, source string) {
-	if v := os.Getenv("LOOM_REGISTRY_URL"); v != "" {
+	if v := strings.TrimSpace(os.Getenv("LOOM_REGISTRY_URL")); v != "" {
 		return v, "$LOOM_REGISTRY_URL"
 	}
 	if path := findLoomEnvFile(dir); path != "" {
 		env := readLoomEnvFromPath(path)
-		if v := env["LOOM_REGISTRY_URL"]; v != "" {
+		if v := strings.TrimSpace(env["LOOM_REGISTRY_URL"]); v != "" {
 			return v, path
 		}
 	}
-	return "https://registry.promptloom.dev", "default"
+	if root, ok := config.FindProjectRoot(dir); ok {
+		if cfg, err := config.Load(root); err == nil {
+			if v := strings.TrimSpace(cfg.Registry.URL); v != "" {
+				return v, filepath.Join(root, "loom.toml")
+			}
+		}
+	}
+	return "", ""
+}
+
+// errNoRegistry explains how to configure a registry.
+func errNoRegistry() error {
+	return fmt.Errorf(`no registry configured.
+
+PromptLoom does not ship with a default registry. Point it at one:
+
+  loom install <pack> --registry https://registry.example.com     (one-off)
+  export LOOM_REGISTRY_URL=https://registry.example.com           (shell)
+  echo 'LOOM_REGISTRY_URL=https://registry.example.com' >> loom/.loom.env   (project)
+
+  [registry]                                                       (loom.toml)
+  url = "https://registry.example.com"
+
+Don't have one? Run your own — see "Registry server" in the README (server/).
+For local testing: cd server && go run .  then use http://localhost:8080`)
+}
+
+// checkRegistryURL rejects registry URLs that are not absolute http(s) URLs.
+func checkRegistryURL(raw string) error {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("invalid registry URL %q: use an absolute http:// or https:// URL", raw)
+	}
+	return nil
+}
+
+// isPlainHTTPRemote reports whether raw is http:// to a non-loopback host.
+func isPlainHTTPRemote(raw string) bool {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return false
+	}
+	return true
 }
 
 // loomEnvValue reads key from the first loom/.loom.env (or .loom.env) found

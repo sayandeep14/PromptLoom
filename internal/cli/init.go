@@ -307,7 +307,7 @@ const loomEnvTemplate = `# .loom.env — environment overrides for loom commands
 # These are loaded automatically by loom. Do not commit secrets here.
 # Use loom/.loom.secret for API keys.
 
-# LOOM_REGISTRY_URL=https://registry.promptloom.dev
+# LOOM_REGISTRY_URL=https://registry.example.com   # no built-in default: set your registry
 # LOOM_HOST=http://localhost
 `
 

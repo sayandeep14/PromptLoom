@@ -1456,13 +1456,17 @@ loom install <vault-name> [--registry <url>]
 
 | Flag | Description |
 |---|---|
-| `--registry <url>` | Use a non-default registry URL |
+| `--registry <url>` | Registry base URL (overrides every other source) |
+
+**Registry resolution.** There is **no built-in default registry**. The URL comes from, in order: `--registry`, `$LOOM_REGISTRY_URL`, `LOOM_REGISTRY_URL` in `loom/.loom.env`, then `[registry] url` in `loom.toml`. If none is set, the command explains how to configure one. `http://` is accepted for `localhost`; for any other host a warning is printed, since packs would be downloaded unencrypted.
+
+**Safety.** Before writing anything, the installer rejects packs whose slug or file paths are unsafe (absolute paths, `..`, backslashes), so a malicious registry cannot write outside `loompack/<slug>/`.
 
 **Examples**
 
 ```bash
-loom install go-backend
-loom install spring-boot-essentials
+loom install go-backend --registry https://registry.example.com
+LOOM_REGISTRY_URL=http://localhost:8080 loom install go-backend
 ```
 
 ---
@@ -1501,7 +1505,7 @@ loom publish .
 loom publish . --dry-run
 
 # Publish to a private registry
-loom publish . --registry https://registry.my-company.com --secret $LOOM_TOKEN
+loom publish . --registry https://registry.my-company.com --secret $UPLOAD_SECRET
 ```
 
 ---

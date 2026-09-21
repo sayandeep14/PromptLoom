@@ -27,8 +27,8 @@ func call(h http.Handler, method, path, secret, body string) *httptest.ResponseR
 // middleware or input validation first.
 func TestWritesAreProtected(t *testing.T) {
 	const secret = "0123456789abcdef-secret"
-	open := newRouter(testCfg(""))
-	closed := newRouter(testCfg(secret))
+	open := newRouter(testCfg(""), nil)
+	closed := newRouter(testCfg(secret), nil)
 
 	// PL-101: with no secret configured, writes fail closed.
 	for _, r := range []struct{ method, path string }{
@@ -51,7 +51,7 @@ func TestWritesAreProtected(t *testing.T) {
 
 func TestUploadValidationRunsAfterAuth(t *testing.T) {
 	const secret = "0123456789abcdef-secret"
-	h := newRouter(testCfg(secret))
+	h := newRouter(testCfg(secret), nil)
 
 	traversal := `{"name":"x","slug":"x","version":"1.0.0","files":[{"path":"../../evil","file_type":"prompt","content":"x"}]}`
 	rec := call(h, "POST", "/api/v1/vaults", secret, traversal)
@@ -67,7 +67,7 @@ func TestUploadValidationRunsAfterAuth(t *testing.T) {
 }
 
 func TestBadSlugsRejectedBeforeStore(t *testing.T) {
-	h := newRouter(testCfg("0123456789abcdef-secret"))
+	h := newRouter(testCfg("0123456789abcdef-secret"), nil)
 	for _, p := range []string{"/api/v1/vaults/Bad_Slug!", "/api/v1/vaults/a%20b", "/api/v1/vaults/UPPER/bundle"} {
 		if got := call(h, "GET", p, "", "").Code; got != http.StatusBadRequest {
 			t.Errorf("GET %s: got %d, want 400", p, got)
@@ -76,7 +76,7 @@ func TestBadSlugsRejectedBeforeStore(t *testing.T) {
 }
 
 func TestHealthAndHeaders(t *testing.T) {
-	h := newRouter(testCfg(""))
+	h := newRouter(testCfg(""), nil)
 	rec := call(h, "GET", "/healthz", "", "")
 	if rec.Code != http.StatusOK || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("healthz: %d %v", rec.Code, rec.Header())
@@ -89,7 +89,7 @@ func TestHealthAndHeaders(t *testing.T) {
 func TestWriteRateLimit(t *testing.T) {
 	cfg := testCfg("0123456789abcdef-secret")
 	cfg.WriteRPM = 3
-	h := newRouter(cfg)
+	h := newRouter(cfg, nil)
 	codes := []int{}
 	for i := 0; i < 5; i++ {
 		codes = append(codes, call(h, "POST", "/api/v1/vaults", "wrong", "{}").Code)

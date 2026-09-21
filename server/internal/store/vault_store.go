@@ -83,7 +83,7 @@ func GetBundle(ctx context.Context, slug string) (*models.Bundle, error) {
 		SELECT path, file_type, content
 		FROM vault_files
 		WHERE vault_id = $1
-		ORDER BY path`, vault.ID)
+		ORDER BY path COLLATE "C"`, vault.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get bundle files: %w", err)
 	}
@@ -130,6 +130,12 @@ func UpsertVault(ctx context.Context, bundle *models.Bundle) error {
 		relLibsJSON = string(b)
 	}
 
+	// tags is NOT NULL: a nil slice would be sent as SQL NULL and fail the insert.
+	tags := bundle.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+
 	var vaultID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO vaults (pack_id, name, slug, description, author, version, tags, related_libraries)
@@ -144,7 +150,7 @@ func UpsertVault(ctx context.Context, bundle *models.Bundle) error {
 		      related_libraries = EXCLUDED.related_libraries
 		RETURNING id`,
 		nullableString(bundle.PackID), bundle.Name, bundle.Slug, bundle.Description,
-		bundle.Author, bundle.Version, bundle.Tags, relLibsJSON,
+		bundle.Author, bundle.Version, tags, relLibsJSON,
 	).Scan(&vaultID)
 	if err != nil {
 		return fmt.Errorf("upsert vault: %w", err)

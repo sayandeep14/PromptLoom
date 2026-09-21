@@ -4,6 +4,7 @@ package installer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,8 +21,9 @@ import (
 	"github.com/sayandeepgiri/promptloom/internal/resolve"
 )
 
-// defaultRegistryURL is used when LOOM_REGISTRY_URL is not set.
-const defaultRegistryURL = "https://registry.promptloom.dev"
+// ErrNoRegistry is returned when no registry URL is configured. PromptLoom does
+// not ship with a default registry: you point it at your own.
+var ErrNoRegistry = errors.New("no registry configured: set LOOM_REGISTRY_URL, pass --registry, or add [registry] url to loom.toml")
 
 // RelatedLibrary mirrors the server's RelatedLibrary type.
 type RelatedLibrary struct {
@@ -90,7 +92,7 @@ func PackDir(slug, cwd string) string {
 func Install(vaultName, cwd string) (*Result, error) {
 	registryURL := os.Getenv("LOOM_REGISTRY_URL")
 	if registryURL == "" {
-		registryURL = defaultRegistryURL
+		return nil, ErrNoRegistry
 	}
 	registryURL = strings.TrimRight(registryURL, "/")
 

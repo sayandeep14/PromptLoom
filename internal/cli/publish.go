@@ -62,7 +62,8 @@ Pack structure:
     .dependency.loom ← pack dependencies
     .export.loom     ← public API declarations
 
-Registry URL: --registry flag → $LOOM_REGISTRY_URL → loom/.loom.env → default.
+Registry URL: --registry flag → $LOOM_REGISTRY_URL → loom/.loom.env → [registry] url in loom.toml.
+There is no built-in default registry.
 Upload secret: --secret flag → $UPLOAD_SECRET.
 
 Examples:
@@ -162,17 +163,27 @@ func runPublish(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Resolve registry URL (flag > env > .loom.env > default).
+	// Resolve registry URL (flag > env > .loom.env > loom.toml; no default).
 	cwd, _ := os.Getwd()
 	registryURL := publishRegistry
 	if registryURL == "" {
 		registryURL, _ = resolveRegistryURL(cwd)
+	}
+	if registryURL == "" {
+		return errNoRegistry()
+	}
+	if err := checkRegistryURL(registryURL); err != nil {
+		return err
 	}
 	registryURL = strings.TrimRight(registryURL, "/")
 
 	secret := publishSecret
 	if secret == "" {
 		secret = os.Getenv("UPLOAD_SECRET")
+	}
+	// Never send the upload secret over an unencrypted connection to a remote host.
+	if secret != "" && isPlainHTTPRemote(registryURL) {
+		return fmt.Errorf("refusing to send the upload secret to %s over plain HTTP — use https://", registryURL)
 	}
 
 	fmt.Printf("%s  uploading to %s…\n",

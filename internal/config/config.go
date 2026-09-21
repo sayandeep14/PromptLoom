@@ -52,6 +52,10 @@ type Testing struct {
 	TimeoutSec  int    `toml:"timeout_sec"`
 }
 
+type Registry struct {
+	URL string `toml:"url"` // base URL of the pack registry (optional)
+}
+
 type Config struct {
 	Project    Project                      `toml:"project"`
 	Paths      Paths                        `toml:"paths"`
@@ -60,6 +64,7 @@ type Config struct {
 	Testing    Testing                      `toml:"testing"`
 	Profiles   map[string]map[string]string `toml:"profile"`
 	Targets    []Target                     `toml:"targets"`
+	Registry   Registry                     `toml:"registry"`
 }
 
 func Defaults() *Config {
