@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 	"github.com/sayandeep14/PromptLoom/internal/loader"
 	"github.com/sayandeep14/PromptLoom/internal/parser"
 	"github.com/sayandeep14/PromptLoom/internal/registry"
@@ -40,7 +41,7 @@ func BuildChangelog(cwd, since, promptFilter string) ([]PromptChangelog, error) 
 		return nil, fmt.Errorf("load project: %w", err)
 	}
 
-	commits, err := gitLogCommits(cwd, since)
+	commits, err := gitLogCommits(cwd, since, sourceDirs(cwd))
 	if err != nil {
 		return nil, fmt.Errorf("git log: %w", err)
 	}
@@ -95,6 +96,21 @@ func BuildChangelog(cwd, since, promptFilter string) ([]PromptChangelog, error) 
 	return result, nil
 }
 
+// sourceDirs are the configured prompt, block and overlay directories, relative to cwd (the
+// defaults when there is no loom.toml).
+func sourceDirs(cwd string) []string {
+	dirs := []string{"prompts", "blocks", "overlays"}
+	if cfg, err := config.Load(cwd); err == nil {
+		dirs = nil
+		for _, d := range []string{cfg.Paths.Prompts, cfg.Paths.Blocks, cfg.Paths.Overlays} {
+			if d != "" {
+				dirs = append(dirs, filepath.ToSlash(d))
+			}
+		}
+	}
+	return dirs
+}
+
 // gitCommit holds minimal info about one commit.
 type gitCommit struct {
 	hash    string
@@ -103,7 +119,7 @@ type gitCommit struct {
 	subject string
 }
 
-func gitLogCommits(cwd, since string) ([]gitCommit, error) {
+func gitLogCommits(cwd, since string, dirs []string) ([]gitCommit, error) {
 	// \x1f (unit separator) cannot appear in an author name or subject, unlike "|".
 	args := []string{"log", "--format=%H%x1f%an%x1f%aI%x1f%s"}
 	if since != "" {
@@ -116,8 +132,9 @@ func gitLogCommits(cwd, since string) ([]gitCommit, error) {
 			args = append(args, since+"..HEAD")
 		}
 	}
-	// Scope to loom source directories only.
-	args = append(args, "--", "prompts", "blocks", "overlays")
+	// Scope to the project's loom source directories only.
+	args = append(args, "--")
+	args = append(args, dirs...)
 
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd

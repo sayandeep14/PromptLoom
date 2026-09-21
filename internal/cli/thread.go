@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/format"
 	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -156,6 +157,12 @@ var temperature = "0.7"
 func writeScaffold(dest, content string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return err
+	}
+	// A scaffold must already be in canonical form, or `loom fmt --check` fails on a brand-new file.
+	if strings.HasSuffix(dest, ".prompt.loom") || strings.HasSuffix(dest, ".block.loom") || strings.HasSuffix(dest, ".overlay.loom") {
+		if formatted, err := format.Source(dest, content); err == nil {
+			content = formatted
+		}
 	}
 	if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
 		return fmt.Errorf("could not write %s: %w", dest, err)
