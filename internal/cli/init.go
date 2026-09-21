@@ -33,9 +33,9 @@ var initCmd = &cobra.Command{
       TODO.md           ← current tasks for loom start
       docs/
     .loom.env
-    .loom.config        ← loomlocker config
     .loom.secret        ← API keys (gitignored)
-  loom.toml             ← PromptLoom project config`,
+  loom.toml             ← PromptLoom project config
+  .loom.config          ← loomlocker config + custom commands (gitignored, at the project root)`,
 	RunE: runInit,
 }
 
@@ -111,15 +111,26 @@ func runInit(_ *cobra.Command, _ []string) error {
 	}
 	fmt.Println("  created  loom/.loom.env")
 
-	// ── loom/.loom.config ───────────────────────────────────────────────────
-	loomCfgPath := filepath.Join(loomDir, ".loom.config")
+	// ── .loom.config (project root) ─────────────────────────────────────────
+	// It lives at the root because the secret paths inside it ("loom/.loom.secret") are relative
+	// to the directory that holds it, and because loom execute, loomlocker and the client
+	// libraries all look for it from the working directory upward.
+	loomCfgPath := filepath.Join(cwd, ".loom.config")
+	legacyCfgPath := filepath.Join(loomDir, ".loom.config")
 	if _, err := os.Stat(loomCfgPath); os.IsNotExist(err) {
-		// Write a default loomlocker config using loomlocker's own function.
-		// We write it manually here to avoid importing the loomlocker module.
-		if err := os.WriteFile(loomCfgPath, []byte(defaultLoomConfig), 0o644); err != nil {
-			return fmt.Errorf("write .loom.config: %w", err)
+		if _, legacyErr := os.Stat(legacyCfgPath); legacyErr == nil {
+			// Older versions wrote it to loom/, where nothing looked for it: move it.
+			if err := os.Rename(legacyCfgPath, loomCfgPath); err != nil {
+				return fmt.Errorf("move loom/.loom.config to the project root: %w", err)
+			}
+			fmt.Println("  moved    loom/.loom.config → .loom.config  (it belongs at the project root)")
+		} else {
+			// Write a default loomlocker config manually to avoid importing the loomlocker module.
+			if err := os.WriteFile(loomCfgPath, []byte(defaultLoomConfig), 0o644); err != nil {
+				return fmt.Errorf("write .loom.config: %w", err)
+			}
+			fmt.Println("  created  .loom.config")
 		}
-		fmt.Println("  created  loom/.loom.config")
 	}
 
 	// ── loom/.loom.secret ───────────────────────────────────────────────────
@@ -133,7 +144,7 @@ func runInit(_ *cobra.Command, _ []string) error {
 
 	// ── .gitignore entries ──────────────────────────────────────────────────
 	gitignorePath := filepath.Join(cwd, ".gitignore")
-	for _, entry := range []string{"loom/.loom.secret", "loom/.loom.config", "loom/loompack/"} {
+	for _, entry := range []string{"loom/.loom.secret", ".loom.config", "loom/loompack/"} {
 		appendGitignoreEntry(gitignorePath, entry)
 	}
 	fmt.Println("  updated  .gitignore")

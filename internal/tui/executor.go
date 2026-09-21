@@ -688,6 +688,95 @@ func checkSecretSlots(name string, reg *registry.Registry, vars map[string]strin
 }
 
 // RunWeave resolves and renders one or all prompts.
+// PreparedRun is a prompt ready to be sent to a model by `loom run`.
+type PreparedRun struct {
+	Body     string             // the rendered prompt (with any attached context): the system message
+	Contract *ast.ContractBlock // the prompt's contract, to check answers against
+	Config   *config.Config
+	Sources  []icontext.Source
+}
+
+// PrepareRun resolves and renders a prompt exactly as `loom weave <Name>` would (variables and
+// their secret-slot guard, variant, overlays, env, attached context), always in the default
+// Markdown form: the output format is irrelevant to a model and a JSON-wrapped system prompt would
+// be wrong. Missing slot values are an error; run never prompts interactively.
+func PrepareRun(name string, opts WeaveOptions, cwd string) (*PreparedRun, error) {
+	reg, cfg, err := loader.Load(cwd)
+	if err != nil {
+		return nil, err
+	}
+	baseVars, err := buildWeaveVariables(cfg, cwd, opts)
+	if err != nil {
+		return nil, err
+	}
+	opts.Format = ""
+	opts.InteractiveSlots = false
+	r, err := renderSingle(reg, cfg, name, opts, baseVars, cwd)
+	if err != nil {
+		return nil, err
+	}
+	node, _ := reg.LookupPrompt(name)
+	return &PreparedRun{Body: r.Body, Contract: node.Contract, Config: cfg, Sources: r.Sources}, nil
+}
+
+// renderedPrompt is one prompt resolved and rendered with every option applied.
+type renderedPrompt struct {
+	RP      *ast.ResolvedPrompt
+	Body    string // the rendered text, with any attached context appended
+	Format  render.Formatter
+	Sources []icontext.Source
+}
+
+// renderSingle resolves and renders one named prompt: variables (with the secret-slot guard),
+// variant, overlays, env, output format and attached context. `loom weave <Name>` and `loom run`
+// both go through it, so a prompt means the same thing to both.
+func renderSingle(reg *registry.Registry, cfg *config.Config, name string, opts WeaveOptions, baseVars map[string]string, cwd string) (*renderedPrompt, error) {
+	prompt, ok := reg.LookupPrompt(name)
+	if !ok {
+		return nil, fmt.Errorf("prompt %q not found", name)
+	}
+	varValues := cloneMap(baseVars)
+	if opts.InteractiveSlots {
+		var err error
+		varValues, err = fillMissingSlots(prompt, varValues)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if missing := requiredPromptVars(prompt, varValues); len(missing) > 0 {
+		return nil, fmt.Errorf("missing required values for %s", strings.Join(missing, ", "))
+	}
+
+	// Enforce secret slot protection before resolution.
+	if err := checkSecretSlots(name, reg, varValues); err != nil {
+		return nil, err
+	}
+
+	rp, err := resolve.ResolveWithOptions(name, reg, resolve.Options{
+		Variables: varValues,
+		Variant:   opts.Variant,
+		Overlays:  opts.Overlays,
+		Env:       opts.Env,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(rp.UnresolvedTokens) > 0 {
+		return nil, fmt.Errorf("unresolved variables: %s", strings.Join(rp.UnresolvedTokens, ", "))
+	}
+	body, format, err := render.RenderFormat(rp, cfg, opts.Format)
+	if err != nil {
+		return nil, err
+	}
+
+	ctxSources, err := resolveContextSources(opts, cwd)
+	if err != nil {
+		return nil, err
+	}
+	body = icontext.AppendContextSection(body, ctxSources)
+	return &renderedPrompt{RP: rp, Body: body, Format: format, Sources: ctxSources}, nil
+}
+
 // WeaveFailedError is returned by RunWeave --all when some prompts could not be rendered. The
 // output returned alongside it describes every prompt, so callers should print it.
 type WeaveFailedError struct{ Failed, Total int }
@@ -809,49 +898,11 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 		return b.String(), nil
 	}
 
-	prompt, ok := reg.LookupPrompt(name)
-	if !ok {
-		return "", fmt.Errorf("prompt %q not found", name)
-	}
-	varValues := cloneMap(baseVars)
-	if opts.InteractiveSlots {
-		var err error
-		varValues, err = fillMissingSlots(prompt, varValues)
-		if err != nil {
-			return "", err
-		}
-	}
-	if missing := requiredPromptVars(prompt, varValues); len(missing) > 0 {
-		return "", fmt.Errorf("missing required values for %s", strings.Join(missing, ", "))
-	}
-
-	// Enforce secret slot protection before resolution.
-	if err := checkSecretSlots(name, reg, varValues); err != nil {
-		return "", err
-	}
-
-	rp, err := resolve.ResolveWithOptions(name, reg, resolve.Options{
-		Variables: varValues,
-		Variant:   opts.Variant,
-		Overlays:  opts.Overlays,
-		Env:       opts.Env,
-	})
+	rendered, err := renderSingle(reg, cfg, name, opts, baseVars, cwd)
 	if err != nil {
 		return "", err
 	}
-	if len(rp.UnresolvedTokens) > 0 {
-		return "", fmt.Errorf("unresolved variables: %s", strings.Join(rp.UnresolvedTokens, ", "))
-	}
-	body, format, err := render.RenderFormat(rp, cfg, opts.Format)
-	if err != nil {
-		return "", err
-	}
-
-	ctxSources, err := resolveContextSources(opts, cwd)
-	if err != nil {
-		return "", err
-	}
-	body = icontext.AppendContextSection(body, ctxSources)
+	rp, body, format, ctxSources := rendered.RP, rendered.Body, rendered.Format, rendered.Sources
 
 	if opts.Stdout && emitSourceMap {
 		return "", fmt.Errorf("--sourcemap cannot be combined with --stdout")

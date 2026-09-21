@@ -36,7 +36,7 @@ Global flag available on every command:
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
-| [AI Testing](#ai-testing) | `test`, `check-output`, `eval` |
+| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `run` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
@@ -1262,6 +1262,76 @@ cat response.txt | loom check-output SpringBootReviewer -
 
 ---
 
+### `loom run`
+
+**What it does**
+
+Runs a prompt against a model and **streams the answer** to your terminal. The prompt is resolved and rendered exactly as `loom weave <Name>` would (variables, variants, overlays, env, attached context) and sent as the *system* message; your input is the user message.
+
+**Why it exists**
+
+It closes the loop between writing a prompt and seeing it work: `weave` renders it, `inspect` validates it, `test` and `eval` judge it, and `run` simply *uses* it, with the same safety rules as everything else. The design, including what it deliberately does not do, is in [AGENT_RUNTIME.md](AGENT_RUNTIME.md).
+
+**When to use it**
+
+To try a prompt on real input (`loom run CodeReviewer --input-file change.patch`), to hold a conversation with it (`--chat`), or in a script (`--json`, `--check`).
+
+**Syntax**
+
+```
+loom run <PromptName> [--input TEXT | --input-file PATH | (stdin)] [--chat]
+         [--set k=v] [--slot k=v] [--vars FILE] [--profile P] [--variant V] [--overlay O] [--env E]
+         [--with SRC] [--context BUNDLE]
+         [--model [provider:]model] [--max-tokens N] [--max-turns N] [--no-stream]
+         [--check] [--out FILE] [--json] [--dry-run]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--input`, `-i <text>` | The message to send |
+| `--input-file <path>` | Read the message from a file (must be readable under `permission.read`) |
+| *(stdin)* | With neither flag, piped stdin is the message. On a terminal, the prompt alone is sent with the message "Follow your instructions." |
+| `--chat` | A conversation: each line you type is a message and the history is sent with the next one. `/exit` (or Ctrl-D) leaves, `/reset` clears the history, `/show` prints the system prompt. Ctrl-C stops the reply in progress and returns to the prompt |
+| `--set`, `--slot`, `--vars`, `--profile` | Variable values, as for `weave`. A required slot with no value is an error (`run` never prompts); a *secret* slot cannot be set on the command line |
+| `--variant`, `--overlay`, `--env` | As for `weave` |
+| `--with <spec>`, `--context <name>` | Attach context: `file:path`, `dir:path`, `git:diff`, `git:staged`, `stdin`, or a context bundle |
+| `--model <spec>` | `model` or `provider:model` (`gemini`, `anthropic`, `openai`). Default: `[testing]` in `loom.toml`. A `provider:` prefix uses that provider's own key variable |
+| `--max-tokens <n>` | Limit the length of each answer |
+| `--max-turns <n>` | With `--chat`: the most exchanges in one conversation (default 50) |
+| `--no-stream` | Wait for the whole answer instead of streaming it |
+| `--check` | Check every answer against the prompt's `contract`; exit 1 on a violation |
+| `--out <file>` | Write a Markdown transcript (system prompt, your messages, the answers). Written with mode 0600, and only where `permission.write` allows |
+| `--json` | Print one JSON object (`prompt`, `model`, `input`, `output`, `usage`, `duration_ms`, `contract_failures`) instead of the text. Not with `--chat` |
+| `--dry-run` | Print exactly what would be sent (model, system prompt, message) and call nothing. Needs no API key |
+
+**Safety**
+
+- **The model can only produce text.** `loom` never executes an answer, writes files because of it, or calls tools for it.
+- **What may be attached is limited by `.loom.config`.** `permission.read` lists the paths `--with file:`, `--with dir:` and `--input-file` may read (default `["*"]`, everything); with a restricted list, `git:` sources and context bundles are refused because they read too much. `permission.write` limits `--out`. Refusals happen before anything is read or sent, and name the setting. Credential files (`.env`, keys, `.loomsecret`) are also skipped in directory and bundle sources.
+- **Replies are untrusted.** On a terminal, control sequences in the reply (colours are dropped too) are stripped so an answer cannot retitle your window, hide text or write to your clipboard. Piped output is passed through unchanged.
+- **Your API key** goes in a request header only. If LoomLocker has your key file locked, the key is a placeholder token and `run` says to use `loom execute <name> --unlock`.
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| `0` | The answer was produced (and satisfied the contract, with `--check`) |
+| `1` | Anything else: a missing key, a refused attachment, a model error, an interrupted reply, a contract violation with `--check` |
+
+**Examples**
+
+```bash
+loom run CodeReviewer --input-file change.patch
+git diff | loom run CodeReviewer --set repo_name=billing
+loom run Tutor --chat --model anthropic:claude-sonnet-4-6 --out session.md
+loom run CodeReviewer --input-file x.go --check --json | jq .output
+loom run CodeReviewer --input-file x.go --dry-run
+```
+
+---
+
 ### `loom eval`
 
 **What it does**
@@ -2255,6 +2325,7 @@ loom execute ship --unlock
 | `loom deploy` | Write all configured targets to their destinations |
 | `loom test [Name]` | Smoke-test a prompt against a real AI model |
 | `loom check-output <Name> <file>` | Validate a response file against a prompt contract |
+| `loom run <Name>` | Run a prompt against a model and stream the answer (`--chat` for a conversation) |
 | `loom eval [Name...]` | Score answers with a judge model; record/compare baselines to catch regressions |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |

@@ -1,0 +1,131 @@
+# Agent runtime: design
+
+Status: **accepted** (PL-501). Implemented by `loom run` (PL-502). Builds on the shared model client
+(`internal/llm`, PL-405). Later tickets extend it: refine/decide (PL-503), quest mode (PL-504),
+scripts (PL-505).
+
+## Goal
+
+Run a prompt you have written, resolved and validated with loom **against a model**, from the
+terminal, and see the answer as it is produced: `loom run CodeReviewer --input-file diff.patch`.
+A prompt library is only useful if the prompts can be exercised; `run` closes the loop between
+*writing* a prompt (`weave`, `inspect`) and *judging* it (`test`, `eval`).
+
+## Scope
+
+| Capability | Version 1 | Why |
+|---|---|---|
+| Resolve + render a prompt exactly like `weave` (vars, slots, variant, overlays, env, `--with` context) | **Yes** | one meaning of "a prompt": `run` and `weave` share `renderSingle` |
+| Streaming output | **Yes** | a long answer is useless if you wait for all of it; Ctrl-C must be able to stop a bad one |
+| Multi-turn (`--chat`) | **Yes** | most prompt debugging is a conversation; history is local and explicit |
+| Contract check of the answer (`--check`) | **Yes** | the contract already exists; `run` can enforce it |
+| Token usage | best effort | providers report it; PL-704 will aggregate |
+| **Tool use / function calling** | **No** | see the safety model: the model can only produce text, so there is nothing to authorize |
+| Model-driven file writes, shell commands, web access | **No** | same |
+| Autonomous multi-step loops | **No** | `quest` (PL-504) will compose *supervised* steps on top of `run` |
+
+Non-goals: being a general chat client, managing conversations across sessions (a transcript can be
+saved, not resumed), or picking a model for you.
+
+## Safety model
+
+`loom run` sends text to a third party and prints text back. There are four things to get right.
+
+### 1. The model can act on nothing
+
+In version 1 the model's reply is **data**. `loom` never executes it, writes files because of it, or
+calls tools on its behalf. This is deliberate: it makes the runtime safe by construction and lets
+the rest of the model be simple. When tool use arrives it must satisfy the conditions in
+*Future: tools* below; it will not be added by loosening anything here.
+
+### 2. What leaves the machine
+
+Everything sent is visible **before** it is sent (`--dry-run` prints the exact system prompt, the
+history and the input, and calls nothing). What can be included, and the guards on each:
+
+| Content | Guard |
+|---|---|
+| The rendered prompt | secret slots (`slot x { secret: true }`) refuse plain `--set` values and are never echoed |
+| `--with file:PATH`, `dir:PATH`, `--context` bundles | `.loom.config` **`permission.read`** patterns decide which paths may be read (default `*`); directory and bundle sources already skip credential files (`.env`, `*.pem`, `.loomsecret`, …); an explicit `file:` naming a credential file is refused |
+| The user's input | the user's own text |
+| `git:` and `stdin` sources | the user's own choice; shown by `--dry-run` |
+
+`permission.read` is the first place that setting is enforced. It lets a project state once, in a
+file an agent cannot quietly rewrite while locked, which files may be shown to a model.
+
+### 3. What comes back
+
+A reply is untrusted text. Two consequences:
+
+- **Terminal safety.** A reply printed to a terminal is stripped of control characters (ANSI/OSC
+  escape sequences can retitle the window, move the cursor to hide text, or write to the
+  clipboard). Newlines and tabs are kept. When stdout is a pipe or file the reply is passed through
+  unchanged, because the consumer is a program, not a terminal.
+- **No execution.** See 1.
+
+### 4. Secrets and LoomLocker
+
+- The **API key** is read from the environment or `.loomsecret` (PL-405) and only ever sent in a
+  header. If LoomLocker has the key file locked, the "key" is a token (`lk_…`) and the provider
+  would answer with an authentication error; `run` recognises the token and says to run under
+  `loom execute <cmd> --unlock` (or unlock first) instead of leaking a confusing 401.
+- A **transcript** (`--out`) may contain whatever was sent and received. Writing it obeys
+  **`permission.write`**, and it never contains the API key.
+
+### Limits
+
+`--max-tokens` bounds the answer; attached context is size-capped (the existing bundle limits);
+requests time out (`[testing] timeout_sec`, chat turns get their own timeout); **Ctrl-C** cancels the
+request in flight and, in chat, returns to the prompt rather than exiting; a chat keeps at most
+`--max-turns` (default 50) exchanges so an accidental loop cannot grow without bound.
+
+## Interface
+
+```
+loom run <Name> [--input TEXT | --input-file PATH | (stdin)] [--chat]
+         [--set k=v] [--vars FILE] [--profile P] [--variant V] [--overlay O] [--env E]
+         [--with SRC] [--context BUNDLE]
+         [--model [provider:]model] [--max-tokens N] [--no-stream]
+         [--check] [--out FILE] [--json] [--dry-run]
+```
+
+- Without `--chat`, the input is the one user message; with none given and stdin a terminal, the
+  prompt alone is sent (some prompts need no input).
+- `--chat` opens a conversation: your lines are messages, `/exit` (or Ctrl-D) ends, `/reset` clears
+  the history, `/show` prints the system prompt. The rendered prompt is the **system** message of
+  every turn.
+- Exit codes: `0` success; `1` a failure (model error, refused context, missing key, bad flags), or
+  with `--check` the answer violated the prompt's contract.
+
+## Architecture
+
+```
+loom run
+  └─ tui.renderSingle          resolve + render (shared with weave)  → system text, sources
+  └─ run.Check permissions     permission.read / write
+  └─ agent.Session             history, turn limit, contract check
+       └─ llm.Client.Stream    provider streaming (SSE) → deltas
+```
+
+`internal/llm` gains `Stream` (Gemini `streamGenerateContent?alt=sse`, Anthropic `stream: true`,
+OpenAI `stream: true`), a conversation history on `Request`, and best-effort `Usage`. Streaming
+parsers are tested against recorded provider events, not live services.
+
+## Future: tools (not in version 1)
+
+A tool-calling runtime will only be built when all of these can be met:
+
+1. **Opt-in per tool, per prompt.** A tool is available only if the prompt's `capabilities` block
+   names it in `allowed`; `forbidden` always wins, including over inherited `allowed`.
+2. **Least privilege on paths.** File tools obey `permission.read` / `permission.write`.
+3. **Confirmation by default.** Every call that changes state (write, exec, network) is shown and
+   needs an explicit yes, unless the user passed a flag naming exactly what may run unattended.
+4. **Audit.** Every call and result is recorded in the transcript.
+5. **LoomLocker aware.** Tools never see secrets that are locked, and their output is scanned for
+   the tokens/values of configured secrets before it is shown or sent back.
+
+## Testing
+
+Provider streams (well-formed, split mid-event, error events, stray blank lines) against fake
+servers; history and turn limits; permissions; terminal sanitising; `--dry-run` making no request;
+Ctrl-C/context cancellation; end-to-end through the binary with a fake endpoint.

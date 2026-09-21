@@ -329,6 +329,7 @@ loom check-output SummaryWriter response.txt
 ```text
 your-project/
 ├── loom.toml                 # PromptLoom project config
+├── .loom.config              # LoomLocker + custom commands (gitignored)
 ├── .gitignore                # updated automatically
 └── loom/
     ├── src/
@@ -344,7 +345,6 @@ your-project/
     │   └── docs/
     ├── dist/                 # rendered output (written by `loom weave`)
     ├── .loom.env
-    ├── .loom.config          # LoomLocker + custom commands (gitignored)
     └── .loom.secret          # API keys (gitignored, mode 0600)
 ```
 

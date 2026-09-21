@@ -185,3 +185,88 @@ func TestEvalCommandReportsProblemsClearly(t *testing.T) {
 		t.Errorf("exit %d\n%s", code, out)
 	}
 }
+
+// `loom init` used to write .loom.config to loom/, where loom execute, loomlocker and the client
+// libraries never look, and whose relative secret paths then resolved to loom/loom/....
+func TestInitPutsLoomConfigWhereEverythingLooksForIt(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if out, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatalf("init: %d\n%s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".loom.config")); err != nil {
+		t.Fatalf(".loom.config must be at the project root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "loom", ".loom.config")); err == nil {
+		t.Error("nothing may be written to loom/.loom.config")
+	}
+	if gi, _ := os.ReadFile(filepath.Join(dir, ".gitignore")); !strings.Contains(string(gi), ".loom.config") || !strings.Contains(string(gi), "loom/.loom.secret") {
+		t.Errorf(".gitignore: %s", gi)
+	}
+	// loom execute now finds it (an unknown command is reported, not a missing config)
+	out, code := runLoom(t, bin, dir, "execute", "nothing")
+	if code != 1 || strings.Contains(out, "not found") || !strings.Contains(out, "unknown command") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// from a subdirectory too
+	sub := filepath.Join(dir, "loom", "src")
+	if out, _ := runLoom(t, bin, sub, "execute", "nothing"); !strings.Contains(out, "unknown command") {
+		t.Errorf("%s", out)
+	}
+
+	// a project made by an older version: init moves the misplaced file instead of duplicating it
+	legacy := t.TempDir()
+	os.MkdirAll(filepath.Join(legacy, "loom"), 0o755)
+	os.WriteFile(filepath.Join(legacy, "loom", ".loom.config"), []byte(`{"custom":{"hello":"echo hi"}}`), 0o644)
+	if out, code := runLoom(t, bin, legacy, "init"); code != 0 || !strings.Contains(out, "moved") {
+		t.Fatalf("init on a legacy project: %d\n%s", code, out)
+	}
+	if b, err := os.ReadFile(filepath.Join(legacy, ".loom.config")); err != nil || !strings.Contains(string(b), "echo hi") {
+		t.Errorf("the user's config must be kept: %s %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "loom", ".loom.config")); err == nil {
+		t.Error("the old copy must be gone")
+	}
+}
+
+func TestRunCommandThroughTheBinary(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if _, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatal("init")
+	}
+	if _, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer"); code != 0 {
+		t.Fatal("recipe")
+	}
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	// a dry run needs no key and shows the rendered prompt and the message
+	out, code := runLoom(t, bin, dir, "run", "CodeReviewer", "--dry-run", "--input", "review this", "--set", "repo_name=demo")
+	if code != 0 || !strings.Contains(out, "senior Generic engineer") && !strings.Contains(out, "engineer") || !strings.Contains(out, "review this") || !strings.Contains(out, "nothing was sent") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// without a key: a clear message, no attempt
+	out, code = runLoom(t, bin, dir, "run", "CodeReviewer", "--input", "x", "--set", "repo_name=demo")
+	if code != 1 || !strings.Contains(out, "$GEMINI_API_KEY") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// a locked key file: the placeholder is recognised
+	t.Setenv("GEMINI_API_KEY", "lk_7f3a9b2c1d4e5a6b")
+	out, code = runLoom(t, bin, dir, "run", "CodeReviewer", "--input", "x", "--set", "repo_name=demo")
+	if code != 1 || !strings.Contains(out, "LoomLocker token") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// a restricted permission.read refuses an attachment before anything happens
+	os.WriteFile(filepath.Join(dir, ".loom.config"), []byte(`{"permission":{"read":["loom/**"],"write":["*"]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("private"), 0o644)
+	out, code = runLoom(t, bin, dir, "run", "CodeReviewer", "--dry-run", "--with", "file:notes.txt", "--set", "repo_name=demo")
+	if code != 1 || !strings.Contains(out, "permission.read") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// unknown prompt / missing slot
+	if out, code := runLoom(t, bin, dir, "run", "Nope", "--dry-run"); code != 1 || !strings.Contains(out, "not found") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+}

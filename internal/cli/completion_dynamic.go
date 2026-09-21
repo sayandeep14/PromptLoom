@@ -137,7 +137,7 @@ func completeVariantsOrEnvs(envs bool) func(*cobra.Command, []string, string) ([
 func registerCompletions() {
 	one := completeNames(false, 1)
 	for _, c := range []*cobra.Command{weaveCmd, castCmd, copyCmd, traceCmd, unravelCmd, contractCmd, statsCmd,
-		fingerprintCmd, auditCmd, doctorCmd, smellsCmd, testCmd, blameCmd, changelogCmd} {
+		fingerprintCmd, auditCmd, doctorCmd, smellsCmd, testCmd, blameCmd, changelogCmd, runCmd} {
 		if c.ValidArgsFunction == nil {
 			c.ValidArgsFunction = one
 		}
@@ -147,10 +147,13 @@ func registerCompletions() {
 	graphCmd.ValidArgsFunction = completeNames(true, 1)
 	impactCmd.ValidArgsFunction = completeNames(true, 1)
 
-	for _, c := range []*cobra.Command{weaveCmd, castCmd, copyCmd} {
-		_ = c.RegisterFlagCompletionFunc("format", completeFormats)
+	for _, c := range []*cobra.Command{weaveCmd, castCmd, copyCmd, runCmd} {
+		if c != runCmd {
+			_ = c.RegisterFlagCompletionFunc("format", completeFormats)
+		}
 		_ = c.RegisterFlagCompletionFunc("overlay", completeOverlays)
 		_ = c.RegisterFlagCompletionFunc("variant", completeVariantsOrEnvs(false))
 	}
 	_ = weaveCmd.RegisterFlagCompletionFunc("env", completeVariantsOrEnvs(true))
+	_ = runCmd.RegisterFlagCompletionFunc("env", completeVariantsOrEnvs(true))
 }

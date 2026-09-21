@@ -42,6 +42,9 @@ var (
 // MaxResponseBytes bounds how much of a response is read.
 const MaxResponseBytes = 8 << 20
 
+// lockedTokenRe matches the placeholder LoomLocker writes in place of a locked secret.
+var lockedTokenRe = regexp.MustCompile(`^lk_[0-9a-f]{16}$`)
+
 var modelNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`)
 
 // Client is a configured connection to one provider and model.
@@ -53,11 +56,31 @@ type Client struct {
 	Timeout  time.Duration // per request; 0 means 60s
 }
 
-// Request is one prompt for the model.
+// Message is one earlier turn of a conversation.
+type Message struct {
+	Role    string // "user" or "assistant"
+	Content string
+}
+
+// Request is one prompt for the model. History holds earlier turns (oldest first); User is the
+// new message.
 type Request struct {
 	System    string
+	History   []Message
 	User      string
 	MaxTokens int // 0: the provider's default
+}
+
+// Usage is what the provider reported for a call, when it reports anything.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+}
+
+// turns is History followed by the new user message.
+func (r Request) turns() []Message {
+	out := append([]Message(nil), r.History...)
+	return append(out, Message{Role: "user", Content: r.User})
 }
 
 // FromConfig builds a Client from the [testing] section of loom.toml: provider, model, and the
@@ -66,10 +89,9 @@ func FromConfig(cfg *config.Config) (*Client, error) {
 	return New(cfg, "", "")
 }
 
-// New is FromConfig with an optional override of the provider and/or model, for features that
-// compare several models. An override of the provider uses THAT provider's key variable and
-// default model, not the project's.
-func New(cfg *config.Config, provider, model string) (*Client, error) {
+// Resolve works out which provider, model and key variable an (optionally overridden) request
+// would use, without needing the key itself.
+func Resolve(cfg *config.Config, provider, model string) (prov, mdl, keyEnv string, err error) {
 	overridden := provider != ""
 	if provider == "" {
 		provider = cfg.Testing.Provider
@@ -80,13 +102,13 @@ func New(cfg *config.Config, provider, model string) (*Client, error) {
 	}
 	defEnv, defModel, ok := config.ProviderDefaults(provider)
 	if !ok {
-		return nil, fmt.Errorf("unknown provider %q (supported: gemini, anthropic, openai)", provider)
+		return "", "", "", fmt.Errorf("unknown provider %q (supported: gemini, anthropic, openai)", provider)
 	}
 	sameProvider := !overridden || strings.EqualFold(provider, cfg.Testing.Provider) || (cfg.Testing.Provider == "" && provider == Gemini)
 
-	envVar := defEnv
+	keyEnv = defEnv
 	if sameProvider && cfg.Testing.APIKeyEnv != "" {
-		envVar = cfg.Testing.APIKeyEnv
+		keyEnv = cfg.Testing.APIKeyEnv
 	}
 	if model == "" {
 		model = defModel
@@ -94,9 +116,24 @@ func New(cfg *config.Config, provider, model string) (*Client, error) {
 			model = cfg.Testing.DefaultModel
 		}
 	}
+	return provider, model, keyEnv, nil
+}
+
+// New is FromConfig with an optional override of the provider and/or model, for features that
+// compare several models. An override of the provider uses THAT provider's key variable and
+// default model, not the project's.
+func New(cfg *config.Config, provider, model string) (*Client, error) {
+	provider, model, envVar, err := Resolve(cfg, provider, model)
+	if err != nil {
+		return nil, err
+	}
 	key := os.Getenv(envVar)
 	if key == "" {
 		return nil, fmt.Errorf("API key not set: $%s is empty\nAdd it to .loomsecret or export it in your shell", envVar)
+	}
+	if lockedTokenRe.MatchString(key) {
+		return nil, fmt.Errorf("the API key in $%s is a LoomLocker token (%s…), not a real key: the secret file is locked.\n"+
+			"Run the command under `loom execute <name> --unlock`, or unlock first with `loomlocker unlock`", envVar, key[:6])
 	}
 	timeout := time.Duration(cfg.Testing.TimeoutSec) * time.Second
 	return &Client{Provider: provider, Model: model, APIKey: key, KeyEnv: envVar, Timeout: timeout}, nil
@@ -196,32 +233,44 @@ func unreadable(provider string, status int, body []byte) error {
 
 // ---- Gemini ----
 
-func (c *Client) gemini(ctx context.Context, r Request) (string, error) {
-	type part struct {
-		Text string `json:"text"`
+type gPart struct {
+	Text string `json:"text"`
+}
+type gContent struct {
+	Role  string  `json:"role,omitempty"`
+	Parts []gPart `json:"parts"`
+}
+type gRequest struct {
+	SystemInstruction *gContent  `json:"systemInstruction,omitempty"`
+	Contents          []gContent `json:"contents"`
+	GenerationConfig  *struct {
+		MaxOutputTokens int `json:"maxOutputTokens"`
+	} `json:"generationConfig,omitempty"`
+}
+
+func (c *Client) geminiBody(r Request) gRequest {
+	var req gRequest
+	for _, m := range r.turns() {
+		role := "user"
+		if m.Role == "assistant" {
+			role = "model" // Gemini's name for the assistant
+		}
+		req.Contents = append(req.Contents, gContent{Role: role, Parts: []gPart{{Text: m.Content}}})
 	}
-	type content struct {
-		Role  string `json:"role,omitempty"`
-		Parts []part `json:"parts"`
-	}
-	req := struct {
-		SystemInstruction *content  `json:"systemInstruction,omitempty"`
-		Contents          []content `json:"contents"`
-		GenerationConfig  *struct {
-			MaxOutputTokens int `json:"maxOutputTokens"`
-		} `json:"generationConfig,omitempty"`
-	}{Contents: []content{{Role: "user", Parts: []part{{Text: r.User}}}}}
 	if r.System != "" {
-		req.SystemInstruction = &content{Parts: []part{{Text: r.System}}}
+		req.SystemInstruction = &gContent{Parts: []gPart{{Text: r.System}}}
 	}
 	if r.MaxTokens > 0 {
 		req.GenerationConfig = &struct {
 			MaxOutputTokens int `json:"maxOutputTokens"`
 		}{r.MaxTokens}
 	}
+	return req
+}
 
+func (c *Client) gemini(ctx context.Context, r Request) (string, error) {
 	url := fmt.Sprintf("%s/models/%s:generateContent", GeminiBaseURL, c.Model)
-	data, status, err := c.post(ctx, url, req, map[string]string{"x-goog-api-key": c.APIKey})
+	data, status, err := c.post(ctx, url, c.geminiBody(r), map[string]string{"x-goog-api-key": c.APIKey})
 	if err != nil {
 		return "", err
 	}
@@ -259,26 +308,32 @@ func (c *Client) gemini(ctx context.Context, r Request) (string, error) {
 
 // ---- Anthropic ----
 
-func (c *Client) anthropic(ctx context.Context, r Request) (string, error) {
+type aMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+type aRequest struct {
+	Model     string     `json:"model"`
+	MaxTokens int        `json:"max_tokens"`
+	System    string     `json:"system,omitempty"`
+	Stream    bool       `json:"stream,omitempty"`
+	Messages  []aMessage `json:"messages"`
+}
+
+func (c *Client) anthropicBody(r Request, stream bool) aRequest {
 	max := r.MaxTokens
 	if max <= 0 {
 		max = 4096
 	}
-	req := struct {
-		Model     string `json:"model"`
-		MaxTokens int    `json:"max_tokens"`
-		System    string `json:"system,omitempty"`
-		Messages  []struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"messages"`
-	}{Model: c.Model, MaxTokens: max, System: r.System}
-	req.Messages = append(req.Messages, struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}{"user", r.User})
+	req := aRequest{Model: c.Model, MaxTokens: max, System: r.System, Stream: stream}
+	for _, m := range r.turns() {
+		req.Messages = append(req.Messages, aMessage{m.Role, m.Content})
+	}
+	return req
+}
 
-	data, status, err := c.post(ctx, AnthropicURL, req, map[string]string{
+func (c *Client) anthropic(ctx context.Context, r Request) (string, error) {
+	data, status, err := c.post(ctx, AnthropicURL, c.anthropicBody(r, false), map[string]string{
 		"x-api-key": c.APIKey, "anthropic-version": "2023-06-01",
 	})
 	if err != nil {
@@ -318,22 +373,38 @@ func (c *Client) anthropic(ctx context.Context, r Request) (string, error) {
 
 // ---- OpenAI ----
 
-func (c *Client) openai(ctx context.Context, r Request) (string, error) {
-	type msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	req := struct {
-		Model     string `json:"model"`
-		Messages  []msg  `json:"messages"`
-		MaxTokens int    `json:"max_tokens,omitempty"`
-	}{Model: c.Model, MaxTokens: r.MaxTokens}
-	if r.System != "" {
-		req.Messages = append(req.Messages, msg{"system", r.System})
-	}
-	req.Messages = append(req.Messages, msg{"user", r.User})
+type oMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+type oRequest struct {
+	Model         string     `json:"model"`
+	Messages      []oMessage `json:"messages"`
+	MaxTokens     int        `json:"max_tokens,omitempty"`
+	Stream        bool       `json:"stream,omitempty"`
+	StreamOptions *struct {
+		IncludeUsage bool `json:"include_usage"`
+	} `json:"stream_options,omitempty"`
+}
 
-	data, status, err := c.post(ctx, OpenAIURL, req, map[string]string{"Authorization": "Bearer " + c.APIKey})
+func (c *Client) openaiBody(r Request, stream bool) oRequest {
+	req := oRequest{Model: c.Model, MaxTokens: r.MaxTokens, Stream: stream}
+	if stream {
+		req.StreamOptions = &struct {
+			IncludeUsage bool `json:"include_usage"`
+		}{true}
+	}
+	if r.System != "" {
+		req.Messages = append(req.Messages, oMessage{"system", r.System})
+	}
+	for _, m := range r.turns() {
+		req.Messages = append(req.Messages, oMessage{m.Role, m.Content})
+	}
+	return req
+}
+
+func (c *Client) openai(ctx context.Context, r Request) (string, error) {
+	data, status, err := c.post(ctx, OpenAIURL, c.openaiBody(r, false), map[string]string{"Authorization": "Bearer " + c.APIKey})
 	if err != nil {
 		return "", err
 	}
