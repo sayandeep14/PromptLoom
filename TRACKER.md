@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety
+**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101, PL-102 done; next PL-103)
 
 ---
 
@@ -23,7 +23,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | Epic | Goal | Progress |
 |---|---|---|
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
-| **E1** Trust & Safety | Secure registry, tested core, working install path | 0 / 8 |
+| **E1** Trust & Safety | Secure registry, tested core, working install path | 2 / 10 |
 | **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 0 / 5 |
 | **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
@@ -69,14 +69,16 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 
 | ID | Ticket | Status | Pri | Size | Depends |
 |---|---|---|---|---|---|
-| PL-101 | **Registry auth**: fail closed when `UPLOAD_SECRET` is unset; use `subtle.ConstantTimeCompare` (not `EqualFold`); apply to `DELETE` as well as `POST` | TODO | P0 | S | PL-004 |
-| PL-102 | Registry hardening: request body size limit, per-IP rate limit, validate slug/version/file paths (no `..`), tighten CORS default from `*` | TODO | P0 | M | PL-101 |
+| PL-101 | **Registry auth**: fail closed when `UPLOAD_SECRET` is unset; constant-time, case-sensitive compare; applies to `POST` and `DELETE`; secret must be ≥16 chars | DONE | P0 | S | PL-004 |
+| PL-102 | Registry hardening: body size cap, per-IP rate limits, input validation (slug/version/paths/sizes), CORS off by default, server timeouts + graceful shutdown, generic 500s. Also client-side: `loom install` rejects unsafe paths/slugs | DONE | P0 | M | PL-101 |
 | PL-103 | Registry tests: handlers + store (use a test Postgres or an interface fake) | TODO | P0 | M | PL-101 |
 | PL-104 | **Decide registry hosting** (self-host only vs. hosted). Replace hard-coded default `https://registry.promptloom.dev` or ship a clear "no registry configured" error with setup steps | TODO | P0 | S | — |
 | PL-105 | Dockerfile + `docker-compose.yml` (server + Postgres) and deploy notes | TODO | P1 | M | PL-102, PL-104 |
 | PL-106 | End-to-end tests over `testdata/valid` and `testdata/invalid` (currently empty): every validation rule has a passing and a failing fixture | TODO | P0 | L | PL-004 |
 | PL-107 | Unit tests for `loader`, `lock`, `installer` (conflict + lock paths), `deps` edge cases, `contract`, `audit`, `doctor` | TODO | P1 | L | PL-106 |
 | PL-108 | Migration path for old syntax: friendly, specific error when a file uses `+=`, `-=`, bare `:` or `extends`, pointing at the `:=` / `from()` fix (a `loom migrate` command was dropped as a design decision — re-open only if needed) | TODO | P1 | M | PL-106 |
+| PL-109 | Run `gofmt -w` across the ~26 unformatted files and add a `gofmt -l` check to CI | TODO | P2 | S | PL-004 |
+| PL-110 | Registry follow-ups: TLS/HSTS guidance, per-pack ownership (today one shared secret can overwrite any pack), constant-time-safe secret rotation, request logging | TODO | P1 | M | PL-103 |
 
 **Exit criteria for E1:** `go test ./...` covers the parser→render path and every validation rule; registry refuses unauthenticated writes; `loom install` works against a documented registry.
 
@@ -180,6 +182,7 @@ Only start after E1 and E4 are done.
 | 2026-05 | `+=` and `-=` removed; `:=` is the only operator; multiple inheritance uses `from()` |
 | 2026-05 | `loom migrate` cancelled — new packs use v2 from the start; old examples live in `examples/legacy/` |
 | 2026-09-21 | One tracker file (this one) replaces the scattered planning notes; language and command docs remain in `docs/` |
+| 2026-09-21 | Registry write endpoints fail closed (503) without `UPLOAD_SECRET`; the local dev secret must now be ≥16 chars |
 | 2026-09-21 | `docs/TOOL_REFERENCE.md` and `docs/PACKMAKER_DESIGN.md` removed from git as stale/contradictory; `docs/LOOM_COMMAND.md` and `docs/LOOM_LANGUAGE.md` are canonical |
 
 ## Known risks

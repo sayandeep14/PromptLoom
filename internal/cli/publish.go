@@ -273,15 +273,23 @@ func uploadToRegistry(registryURL, secret string, bundle uploadBundle) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("unauthorized — check --secret or $UPLOAD_SECRET")
+		return fmt.Errorf("unauthorized — check --secret or $UPLOAD_SECRET (the value is case-sensitive)")
 	}
 	if resp.StatusCode != http.StatusOK {
 		var errBody struct {
-			Error string `json:"error"`
+			Error   string   `json:"error"`
+			Details []string `json:"details"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errBody)
 		if errBody.Error != "" {
-			return fmt.Errorf("server error (%d): %s", resp.StatusCode, errBody.Error)
+			msg := fmt.Sprintf("server error (%d): %s", resp.StatusCode, errBody.Error)
+			for _, d := range errBody.Details {
+				msg += "\n    - " + d
+			}
+			if resp.StatusCode == http.StatusServiceUnavailable {
+				msg += "\n  hint: this registry is read-only until its operator sets UPLOAD_SECRET"
+			}
+			return fmt.Errorf("%s", msg)
 		}
 		return fmt.Errorf("server returned %d", resp.StatusCode)
 	}

@@ -568,21 +568,41 @@ loom publish ./my-pack --secret "$UPLOAD_SECRET"
 
 A standalone Go HTTP service backed by PostgreSQL.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/v1/vaults` | List packs |
-| `GET` | `/api/v1/vaults/{slug}` | Pack metadata |
-| `GET` | `/api/v1/vaults/{slug}/bundle` | Full bundle (JSON) |
-| `POST` | `/api/v1/vaults` | Upload / replace (`X-Upload-Secret`) |
-| `DELETE` | `/api/v1/vaults/{slug}` | Delete (`X-Upload-Secret`) |
-| `GET` | `/healthz` | Health check |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/vaults` | — | List packs |
+| `GET` | `/api/v1/vaults/{slug}` | — | Pack metadata |
+| `GET` | `/api/v1/vaults/{slug}/bundle` | — | Full bundle (JSON) |
+| `POST` | `/api/v1/vaults` | `X-Upload-Secret` | Upload / replace a pack |
+| `DELETE` | `/api/v1/vaults/{slug}` | `X-Upload-Secret` | Delete a pack |
+| `GET` | `/healthz` | — | Health check |
 
 ```bash
 cd server
 psql "$DATABASE_URL" -f internal/db/schema.sql
-cp .env.example .env        # DATABASE_URL, PORT, UPLOAD_SECRET, CORS_ORIGINS
+cp .env.example .env        # then edit it
 go run .
 ```
+
+**Configuration** (see `server/.env.example`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | — (required) | PostgreSQL connection URL |
+| `PORT` | `8080` | HTTP port |
+| `UPLOAD_SECRET` | unset | Secret for publish/delete, **min 16 chars**. If unset the registry is read-only |
+| `CORS_ORIGINS` | unset | Allowed browser origins; unset sends no CORS headers |
+| `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy so rate limits use `X-Forwarded-For` |
+| `MAX_BODY_BYTES` | `8388608` | Request body cap |
+| `RATE_LIMIT_READ_PER_MIN` / `RATE_LIMIT_WRITE_PER_MIN` | `120` / `10` | Per-IP limits |
+
+**Security behaviour**
+
+- **Fails closed.** With no `UPLOAD_SECRET`, `POST` and `DELETE` return `503`; they are never open.
+- The secret is compared in constant time and is case-sensitive; failed attempts count against the write rate limit.
+- Uploads are validated: slug, semantic version, UUID, file types, sizes, and file paths (no `..`, absolute paths, backslashes, or unusual characters).
+- Database errors are logged, never returned to clients.
+- `loom install` independently rejects unsafe paths and slugs, so a malicious registry cannot write outside the pack directory.
 
 ---
 

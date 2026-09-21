@@ -5,7 +5,9 @@ package installer
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,9 +167,9 @@ func Install(vaultName, cwd string) (*Result, error) {
 
 // fetchBundle calls GET {registryURL}/api/v1/vaults/{name}/bundle.
 func fetchBundle(registryURL, vaultName string) (*Bundle, error) {
-	url := fmt.Sprintf("%s/api/v1/vaults/%s/bundle", registryURL, vaultName)
+	endpoint := fmt.Sprintf("%s/api/v1/vaults/%s/bundle", registryURL, url.PathEscape(vaultName))
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("fetch bundle: %w", err)
 	}
@@ -181,11 +183,14 @@ func fetchBundle(registryURL, vaultName string) (*Bundle, error) {
 	}
 
 	var bundle Bundle
-	if err := json.NewDecoder(resp.Body).Decode(&bundle); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBundleBytes)).Decode(&bundle); err != nil {
 		return nil, fmt.Errorf("decode bundle: %w", err)
 	}
 	if len(bundle.Files) == 0 {
 		return nil, fmt.Errorf("vault %q has no files", vaultName)
+	}
+	if err := validateBundle(&bundle); err != nil {
+		return nil, err
 	}
 	return &bundle, nil
 }
