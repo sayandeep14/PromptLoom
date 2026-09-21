@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "bloompy"
@@ -9,9 +9,25 @@ description = "Python client library for LoomLocker — safe secret management i
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
+authors = [{ name = "Sayandeep Giri" }]
+keywords = ["loomlocker", "promptloom", "secrets", "dotenv", "ai-agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = [
     "requests>=2.28",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sayandeep14/PromptLoom"
+Documentation = "https://github.com/sayandeep14/PromptLoom/blob/main/loomlocker/README.md"
+Source = "https://github.com/sayandeep14/PromptLoom/tree/main/libs/bloompy"
+Issues = "https://github.com/sayandeep14/PromptLoom/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "responses>=0.23"]

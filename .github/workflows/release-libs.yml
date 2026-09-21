@@ -1,0 +1,113 @@
+# Publishes the LoomLocker client libraries. Each library has its own tag, so they version
+# independently:
+#
+#   bloompy (PyPI)          git tag bloompy-v0.1.0 && git push origin bloompy-v0.1.0
+#   loomj   (Maven Central) git tag loomj-v0.1.0   && git push origin loomj-v0.1.0
+#   gloom   (Go)            git tag libs/gloom/v0.1.0 && git push origin libs/gloom/v0.1.0
+#                           (nothing to upload: the Go module proxy serves the tag;
+#                            this workflow only verifies it builds)
+#
+# Every job first checks that the tag matches the version in the library's own metadata, and runs
+# the tests. Publishing needs one-time account setup, described in libs/PUBLISHING.md; until it is
+# done, run this workflow manually (workflow_dispatch) to build and check everything without
+# publishing anything.
+name: Release libraries
+
+on:
+  push:
+    tags: ["bloompy-v*", "loomj-v*", "libs/gloom/v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bloompy:
+    name: bloompy → PyPI
+    if: startsWith(github.ref, 'refs/tags/bloompy-v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # PyPI "trusted publishing": no API token is stored anywhere
+      contents: read
+    defaults:
+      run:
+        working-directory: libs/bloompy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          tag="${GITHUB_REF_NAME#bloompy-v}"
+          [ "$version" = "$tag" ] || { echo "tag says $tag but pyproject.toml says $version"; exit 1; }
+      - run: python -m unittest discover -s tests -v
+      - run: pip install build twine
+      - run: python -m build --outdir dist .
+      - run: twine check dist/*
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: libs/bloompy/dist/
+
+  loomj:
+    name: loomj → Maven Central
+    if: startsWith(github.ref, 'refs/tags/loomj-v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: maven-central
+    defaults:
+      run:
+        working-directory: libs/loomj
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+      - name: Tag matches the pom version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(mvn -q -B help:evaluate -Dexpression=project.version -DforceStdout)"
+          tag="${GITHUB_REF_NAME#loomj-v}"
+          [ "$version" = "$tag" ] || { echo "tag says $tag but pom.xml says $version"; exit 1; }
+      - name: Test
+        run: mvn -B test
+      - name: Build the release artifacts (unsigned, nothing published)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: mvn -B -Prelease -Dgpg.skip=true -DskipTests package
+      - name: Sign and publish to Maven Central
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -Prelease -DskipTests deploy
+
+  gloom:
+    name: gloom (Go module)
+    if: startsWith(github.ref, 'refs/tags/libs/gloom/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: libs/gloom
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go vet ./... && go test ./...
+      - name: Ask the module proxy for the tag (so pkg.go.dev picks it up)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="${GITHUB_REF_NAME#libs/gloom/}"
+          curl -fsS "https://proxy.golang.org/github.com/sayandeep14/!prompt!loom/libs/gloom/@v/${version}.info" || echo "(the proxy will fetch it on first use)"

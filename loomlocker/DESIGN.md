@@ -35,7 +35,7 @@ Terminal A                                  Terminal B
 
 ```json
 {
-  "secret": [".loom.secret", ".env:{API_KEY}", "application.yaml:{kafka.consumer-id}"],
+  "secret": [".loom.secret", ".env:{API_KEY}", "application.yaml:{kafka.consumer-id}", "config.json:{db.password}"],
   "loomlocker": {
     "active": true,
     "lockhost": "http://localhost",
@@ -52,6 +52,7 @@ Terminal A                                  Terminal B
 | `".loom.secret"` | every `KEY=VALUE` in the file |
 | `".env:{API_KEY}"` | every assignment of that key |
 | `"application.yaml:{a.b.c}"` | the scalar at that dotted path |
+| `"config.json:{a.b.c}"` | the string at that dotted path; array positions are numbers (`"servers.0.password"`) |
 
 `lockhost` **must be a loopback address** (`http://localhost`, `127.0.0.1`, `::1`); anything else is
 rejected at load time, because the session password is sent to that address.
@@ -73,7 +74,15 @@ Locking and unlocking are **all-or-nothing** and **byte-exact**:
 
 Limits: YAML values must be **single-line scalars** (multi-line block scalars and multi-line quoted
 values are refused with a clear error rather than mangled). A YAML key containing a `.` cannot be
-addressed by a dotted path. JSON files are not supported yet.
+addressed by a dotted path.
+
+JSON files are edited the same way (as text, at the value's exact byte span): formatting, key order,
+indentation, escapes, a BOM and CRLF line endings all come back exactly, and while locked the file is
+still valid JSON of the same shape. The value must be a **string** (a number or boolean would change
+type when replaced by a token, so it is refused with a clear error), the file must be strict JSON
+(no comments or trailing commas), a key that appears twice is refused as ambiguous, and, as with
+YAML, a key containing a `.` cannot be addressed. A JSON entry always needs a path: `config.json`
+alone is an error, not a whole-file lock.
 
 ## Crash safety
 

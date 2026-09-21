@@ -632,7 +632,7 @@ sequenceDiagram
 
 ```json
 {
-  "secret": [".loom.secret", ".env:{API_KEY}", "application.yaml:{kafka.consumer-id}"],
+  "secret": [".loom.secret", ".env:{API_KEY}", "application.yaml:{kafka.consumer-id}", "config.json:{db.password}"],
   "loomlocker": {
     "active": true,
     "lockhost": "http://localhost",
@@ -652,6 +652,7 @@ sequenceDiagram
 | `".loom.secret"` | Every `KEY=VALUE` in the file |
 | `".env:{API_KEY}"` | One key in a dotenv file |
 | `"application.yaml:{kafka.consumer-id}"` | A dotted YAML path |
+| `"config.json:{db.password}"` | A dotted JSON path to a string; array positions are numbers (`servers.0.password`) |
 
 ### Use
 
@@ -696,7 +697,7 @@ new Safe().unlock().execute(() -> Dotenv.load()).autolock();
 
 Each library finds `.loom.config` by walking up the tree, honours `LOOM_HOST` / `LOOM_PORT`, reads the password from `LOOM_SESSION_PASSWORD`, and is a no-op when LoomLocker isn't running. See `libs/*/README.md`.
 
-Full design: [`loomlocker/DESIGN.md`](loomlocker/DESIGN.md).
+User guide: [`loomlocker/README.md`](loomlocker/README.md). Full design: [`loomlocker/DESIGN.md`](loomlocker/DESIGN.md). Publishing the libraries: [`libs/PUBLISHING.md`](libs/PUBLISHING.md).
 
 ---
 

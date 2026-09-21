@@ -90,10 +90,14 @@ func LockSecretsWith(secrets []string, workDir string, state *State, beforeWrite
 		}
 		var err error
 		switch {
+		case key == "" && isJSON(file):
+			err = fmt.Errorf("a JSON file needs the path of the value to lock, as in %s:{db.password}", file)
 		case key == "":
 			err = lockEnvText(plan, true, "")
 		case isYAML(file):
 			err = lockYAMLText(plan, key)
+		case isJSON(file):
+			err = lockJSONText(plan, key)
 		default:
 			err = lockEnvText(plan, false, key)
 		}

@@ -1,6 +1,6 @@
 # bloompy
 
-Python client library for [LoomLocker](../../loomlocker/README.md) — safe secret management in AI-assisted projects.
+Python client library for [LoomLocker](https://github.com/sayandeep14/PromptLoom/blob/main/loomlocker/README.md) — safe secret management in AI-assisted projects.
 
 ## Install
 
