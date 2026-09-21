@@ -7,6 +7,7 @@ package tui
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -2998,6 +2999,30 @@ func RunGraph(name, format string, unused bool, cwd string) (string, bool) {
 		return b.String(), false
 	}
 
+	// One prompt (or block): show only what is related to it.
+	if name != "" {
+		nb, err := g.Focus(name)
+		if err != nil {
+			return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+		}
+		switch format {
+		case "mermaid":
+			return g.FocusMermaid(nb), false
+		case "dot":
+			return g.FocusDOT(nb), false
+		}
+		var b strings.Builder
+		if g.HasCycles() {
+			b.WriteString("  " + ErrorStyle.Render("⚠ Inheritance cycles detected — fix before rendering:") + "\n")
+			for _, cycle := range g.Cycles() {
+				b.WriteString("    " + ErrorStyle.Render("↻") + " " + strings.Join(cycle, " → ") + "\n")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(indentBlock(nb.Text(), "  "))
+		return b.String(), g.HasCycles()
+	}
+
 	switch format {
 	case "mermaid":
 		return g.Mermaid(), false
@@ -3024,6 +3049,49 @@ func RunGraph(name, format string, unused bool, cwd string) (string, bool) {
 		hasErr := g.HasCycles()
 		return b.String(), hasErr
 	}
+}
+
+// indentBlock indents every non-empty line of s.
+func indentBlock(s, prefix string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, l := range lines {
+		if l != "" {
+			lines[i] = prefix + l
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// RunImpact reports what depends on a prompt or block: direct and transitive dependents. With
+// asJSON the result is machine readable, for scripts and CI.
+func RunImpact(name string, asJSON bool, cwd string) (string, error) {
+	reg, _, err := loader.Load(cwd)
+	if err != nil {
+		return "", err
+	}
+	g := igraph.Build(reg)
+	im, err := g.Impact(name)
+	if err != nil {
+		return "", err
+	}
+	if asJSON {
+		out, err := json.MarshalIndent(struct {
+			Name       string   `json:"name"`
+			Kind       string   `json:"kind"`
+			Direct     []string `json:"direct"`
+			Transitive []string `json:"transitive"`
+			Total      int      `json:"total"`
+		}{im.Name, string(im.Kind), nonNil(im.Direct), nonNil(im.Transitive), im.Total()}, "", "  ")
+		return string(out) + "\n", err
+	}
+	return indentBlock(im.Text(), "  "), nil
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────

@@ -128,8 +128,8 @@ Builds on existing packages (`internal/graph`, `internal/testrunner`, `internal/
 
 | ID | Ticket | Status | Pri | Size | Depends |
 |---|---|---|---|---|---|
-| PL-401 | `loom graph <PromptName>`: per-prompt inheritance diagram (ancestors, descendants, blocks used) as text + Mermaid | TODO | P1 | S | PL-106 |
-| PL-402 | `loom impact <Name>`: blast radius — direct and transitive dependents from the existing graph | TODO | P1 | S | PL-401 |
+| PL-401 | `loom graph <PromptName>`: per-prompt inheritance diagram (ancestors, descendants, blocks used) as text + Mermaid — **Done:** `loom graph <Name>` now shows the neighbourhood (ancestors nearest-first, descendants, blocks with the ancestor they come through; for a block, its users and what inherits from them) as text, Mermaid and DOT. The old per-prompt Mermaid/DOT drew the whole library and the text showed ancestors only | DONE | P1 | S | PL-106 |
+| PL-402 | `loom impact <Name>`: blast radius — direct and transitive dependents from the existing graph — **Done:** `loom impact <Name> [--json]`: direct and transitive dependents of a prompt or block, did-you-mean on unknown names, cycle-safe | DONE | P1 | S | PL-401 |
 | PL-403 | `loom sync` / `check-sync`: render to Claude, Copilot, Cursor and `AGENTS.md` targets from `[[targets]]`; hash-compare for drift | TODO | P1 | M | PL-106 |
 | PL-404 | `loom eval`: `.eval.toml` fixtures, LLM-judge scoring (0–100), `--record` / `--compare`, `--models`; gate in `loom ci` | TODO | P1 | XL | PL-107 |
 | PL-405 | Provider abstraction for LLM calls (Gemini + Anthropic + OpenAI-compatible) shared by `test`, `start`, `summarize`, `eval` | TODO | P1 | M | PL-107 |

@@ -37,7 +37,7 @@ Global flag available on every command:
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
 | [AI Testing](#ai-testing) | `test`, `check-output` |
-| [Library Management](#library-management) | `list`, `fmt`, `graph`, `todos`, `stale` |
+| [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `lsp` |
 | [Context & Summarisation](#context--summarisation) | `summarize` |
@@ -1358,7 +1358,7 @@ The command exits 1 while any of those remain (and, with `--check`, while any fi
 
 **What it does**
 
-Renders the dependency graph of the entire prompt library: inheritance relationships and block usage. Launches an interactive split-panel TUI browser by default. Can also output text, Mermaid diagram syntax, or Graphviz DOT for embedding in documentation.
+Renders the dependency graph of the entire prompt library: inheritance relationships and block usage. With a prompt or block name it shows only that thing's **neighbourhood**: the prompts it inherits from (nearest first), the prompts that inherit from it, and the blocks it gets (marking which come through an ancestor). For a block: the prompts that use it and everything below them. Launches an interactive split-panel TUI browser by default. Can also output text, Mermaid diagram syntax, or Graphviz DOT for embedding in documentation.
 
 **Why it exists**
 
@@ -1388,14 +1388,57 @@ loom graph [PromptName] [--format ascii|mermaid|dot] [--unused] [--no-interactiv
 # Interactive TUI graph browser (default)
 loom graph
 
-# Subgraph for one prompt
-loom graph SpringBootReviewer
+# Everything related to one prompt: what it inherits from, what inherits from it, its blocks
+loom graph SpringBootReviewer --no-interactive
+
+# The same neighbourhood as a diagram (only related prompts and blocks are drawn)
+loom graph SpringBootReviewer --format mermaid
 
 # Mermaid diagram for embedding in a README
 loom graph --format mermaid --no-interactive
 
 # Show unused blocks
 loom graph --unused
+```
+
+---
+
+### `loom impact`
+
+**What it does**
+
+Shows the **blast radius** of changing a prompt or a block: every prompt that would be affected, split into *direct* and *transitive* dependents.
+
+- For a **prompt**: the prompts that inherit from it, and everything further down the inheritance chain.
+- For a **block**: the prompts that use it, and everything that inherits from those (they resolve to a parent that includes the block).
+
+**Why it exists**
+
+Base prompts and shared blocks are the most leveraged files in a library: one edit changes many rendered prompts. `impact` answers "what breaks if I touch this?" before you do.
+
+**When to use it**
+
+Before refactoring a base prompt, tightening a shared block, or deleting something you think is unused ("Nothing depends on it: it is safe to change or remove"). With `--json` in CI to flag risky changes.
+
+**Syntax**
+
+```
+loom impact <Name> [--json]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--json` | Print `{"name", "kind", "direct", "transitive", "total"}` instead of text |
+
+An unknown name fails with a *did you mean* suggestion.
+
+**Examples**
+
+```bash
+loom impact BaseEngineer
+loom impact SecurityChecklist --json
 ```
 
 ---
@@ -2049,7 +2092,8 @@ loom execute ship --unlock
 | `loom check-output <Name> <file>` | Validate a response file against a prompt contract |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |
-| `loom graph [Name]` | Interactive dependency graph browser |
+| `loom graph [Name]` | Dependency graph; with a name, that prompt's neighbourhood |
+| `loom impact <Name>` | Which prompts are affected when a prompt or block changes |
 | `loom todos` | List all `todo:` items across the library |
 | `loom stale` | Detect version mismatches between prompts and dependency files |
 | `loom pack build` | Bundle the project into a `.lpack` archive |
