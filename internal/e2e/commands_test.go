@@ -82,6 +82,7 @@ func TestCommandsOnARealProject(t *testing.T) {
 		{"weave one --stdout", []string{"weave", "CodeReviewer", "--stdout", "--set", "repo_name=demo"}, 0, []string{"# CodeReviewer"}},
 		{"weave format", []string{"weave", "CodeReviewer", "--stdout", "--format", "plain", "--set", "repo_name=demo"}, 0, nil},
 		{"weave bad format", []string{"weave", "CodeReviewer", "--stdout", "--format", "nonsense", "--set", "repo_name=demo"}, 1, nil},
+		{"deploy without targets", []string{"deploy", "--check"}, 1, []string{"no [[targets]]"}},
 		{"weave --all needs values", []string{"weave", "--all"}, 1, []string{"failed to render", "repo_name"}},
 		{"ci", []string{"ci"}, 0, []string{"PASSED"}},
 		{"import", []string{"import", "--help"}, 0, nil},

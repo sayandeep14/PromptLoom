@@ -984,6 +984,7 @@ A single command that runs all CI gates in sequence:
 2. `loom doctor` — health scores and smell detection
 3. `loom check-lock` — verify `dist/` fingerprints match `loom.lock`
 4. `loom diff --all --against-dist` — confirm rendered output is not stale
+5. `loom deploy --check` — when `[[targets]]` are configured, confirm the deployed files (`CLAUDE.md`, `AGENTS.md`, …) are in sync
 
 Exits 0 only if every gate passes. Exits 1 on the first failure with a clear message identifying which gate failed and why.
 
@@ -1110,7 +1111,7 @@ After any prompt change that should be reflected in your AI tool configuration f
 **Syntax**
 
 ```
-loom deploy [--dry-run] [--diff] [--target <format>]
+loom deploy [--dry-run] [--diff] [--check] [--target <format>]
 ```
 
 **Flags**
@@ -1119,29 +1120,34 @@ loom deploy [--dry-run] [--diff] [--target <format>]
 |---|---|
 | `--dry-run` | Preview which target files would be written without touching the filesystem |
 | `--diff` | Show a line diff for any target file that would change |
+| `--check` | Write nothing; exit 1 if any target file is missing or differs from what its prompt renders to. Catches a hand-edited `CLAUDE.md` / `AGENTS.md` / Cursor rule that drifted from its prompt, and a prompt that changed without a redeploy. `loom ci` runs it automatically when targets are configured |
 | `--target <format>` | Only deploy targets of a specific format (e.g. `claude-code`, `copilot`, `cursor-rule`) |
 
 **`loom.toml` target configuration**
 
 ```toml
 [[targets]]
-name    = "claude-reviewer"
 prompt  = "CodeReviewer"
 format  = "claude-code"
-out     = ".claude/commands/review.md"
+dest    = ".claude/commands/review.md"
 
 [[targets]]
-name    = "copilot-base"
 prompt  = "BaseEngineer"
 format  = "copilot"
-out     = ".github/copilot-instructions.md"
+dest    = ".github/copilot-instructions.md"
 
 [[targets]]
-name    = "cursor-reviewer"
 prompt  = "CodeReviewer"
 format  = "cursor-rule"
-out     = ".cursor/rules/review.mdc"
+dest    = ".cursor/rules/review.mdc"
+
+[[targets]]
+prompt  = "BaseEngineer"
+format  = "markdown"
+dest    = "AGENTS.md"
 ```
+
+Each target has exactly three keys: `prompt` (the prompt to render), `format` (`markdown`, `claude-code`, `copilot`, `cursor-rule`, `json-anthropic`, `json-openai` or `plain`) and `dest` (the file to write, relative to the project). A prompt with required `slot`s that have no value cannot be deployed: that target fails with the unresolved variables listed.
 
 **Examples**
 
@@ -1151,6 +1157,9 @@ loom deploy
 
 # Preview what would be written
 loom deploy --dry-run
+
+# CI: fail if the deployed files are out of date
+loom deploy --check
 
 # Show what changed in each target file
 loom deploy --diff

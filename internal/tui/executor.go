@@ -653,7 +653,20 @@ type CopyOptions struct {
 type DeployOptions struct {
 	DryRun       bool
 	Diff         bool
+	Check        bool // write nothing; fail when a target file is missing or differs (for CI)
 	TargetFormat string
+}
+
+// ErrTargetsOutOfSync is returned by RunDeploy in check mode when a target file is missing or
+// differs from what the prompts render to.
+var ErrTargetsOutOfSync = errors.New("deploy targets are out of sync with the prompts (run: loom deploy)")
+
+// DeployFailedError is returned by RunDeploy when some targets could not be rendered. The output
+// returned with it says which ones and why, so callers should print it.
+type DeployFailedError struct{ Failed, Total int }
+
+func (e *DeployFailedError) Error() string {
+	return fmt.Sprintf("%d of %d deploy targets failed to render", e.Failed, e.Total)
 }
 
 // checkSecretSlots errors if any secret slots have been given plain-text values via --set.
@@ -1043,11 +1056,12 @@ func RunDeploy(opts DeployOptions, cwd string) (string, error) {
 	}
 
 	var b strings.Builder
-	written, unchanged, planned := 0, 0, 0
+	written, unchanged, planned, failed := 0, 0, 0, 0
 
 	for _, target := range selected {
 		body, current, rp, dest, changed, err := renderDeployTarget(target, reg, cfg, cwd)
 		if err != nil {
+			failed++
 			b.WriteString(fmt.Sprintf("  %s  %s: %v\n",
 				ErrorStyle.Render("✗"), PathStyle.Render(target.Dest), err))
 			continue
@@ -1062,7 +1076,15 @@ func RunDeploy(opts DeployOptions, cwd string) (string, error) {
 					}
 				}
 			}
-			if opts.DryRun {
+			if opts.Check {
+				planned++
+				state := "out of sync"
+				if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
+					state = "missing"
+				}
+				b.WriteString(fmt.Sprintf("  %s  %s  %s\n",
+					ErrorStyle.Render("✗"), state, PathStyle.Render(dest)))
+			} else if opts.DryRun {
 				planned++
 				b.WriteString(fmt.Sprintf("  %s  would write  %s\n",
 					WarningStyle.Render("↺"), PathStyle.Render(dest)))
@@ -1093,6 +1115,13 @@ func RunDeploy(opts DeployOptions, cwd string) (string, error) {
 
 	b.WriteByte('\n')
 	switch {
+	case opts.Check:
+		if planned == 0 && failed == 0 {
+			b.WriteString("  " + SuccessStyle.Render(fmt.Sprintf("All %d targets are in sync.", unchanged)) + "\n")
+		} else {
+			b.WriteString(fmt.Sprintf("  %s out of sync  %s in sync\n",
+				ErrorStyle.Render(fmt.Sprintf("%d targets", planned)), MutedStyle.Render(fmt.Sprintf("%d", unchanged))))
+		}
 	case opts.DryRun:
 		b.WriteString(fmt.Sprintf("  %s planned  %s unchanged\n",
 			WarningStyle.Render(fmt.Sprintf("%d targets", planned)),
@@ -1103,6 +1132,13 @@ func RunDeploy(opts DeployOptions, cwd string) (string, error) {
 			MutedStyle.Render(fmt.Sprintf("%d", unchanged))))
 	}
 
+	// A target that could not be rendered is a failure, not something to print and forget.
+	if failed > 0 {
+		return b.String(), &DeployFailedError{Failed: failed, Total: len(selected)}
+	}
+	if opts.Check && planned > 0 {
+		return b.String(), ErrTargetsOutOfSync
+	}
 	return b.String(), nil
 }
 
@@ -2779,6 +2815,21 @@ func RunCI(cwd string) (string, bool, error) {
 			}
 			results = append(results, CIResult{Name: "test", Passed: testPassed || testTotal == 0, Detail: testDetail})
 		}
+	}
+
+	// Deploy targets: when [[targets]] are configured, the files they write must be in sync.
+	if reg != nil && cfg != nil && len(cfg.Targets) > 0 {
+		_, err := RunDeploy(DeployOptions{Check: true}, cwd)
+		detail := "all targets are in sync"
+		if errors.Is(err, ErrTargetsOutOfSync) {
+			detail = "targets out of sync — run loom deploy"
+		} else if err != nil {
+			detail = err.Error()
+		}
+		if err != nil {
+			failed = true
+		}
+		results = append(results, CIResult{Name: "deploy", Passed: err == nil, Detail: detail})
 	}
 
 	// Gate 6: audit — scan for dangerous instructions (HIGH findings fail CI).
