@@ -31,6 +31,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() error {
+	registerCompletions()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, tui.ErrorStyle.Render("Error: "+err.Error()))
 		return err

@@ -153,3 +153,32 @@ func TestPromptsDir(t *testing.T) {
 		t.Errorf("broken config falls back: %s", got)
 	}
 }
+
+// provider = "anthropic" must not inherit Gemini's key variable and model.
+func TestProviderDefaultsFollowTheProvider(t *testing.T) {
+	load := func(toml string) *Config {
+		t.Helper()
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "loom.toml"), []byte(toml), 0o644)
+		c, err := Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if c := load("[testing]\nprovider = \"anthropic\"\n"); c.Testing.APIKeyEnv != "ANTHROPIC_API_KEY" || !strings.HasPrefix(c.Testing.DefaultModel, "claude") {
+		t.Errorf("anthropic defaults: %+v", c.Testing)
+	}
+	// what the user wrote always wins
+	c := load("[testing]\nprovider = \"anthropic\"\napi_key_env = \"MY_KEY\"\ndefault_model = \"claude-x\"\n")
+	if c.Testing.APIKeyEnv != "MY_KEY" || c.Testing.DefaultModel != "claude-x" {
+		t.Errorf("explicit values were overridden: %+v", c.Testing)
+	}
+	// the default provider is unchanged
+	if c := load("[project]\nname = \"x\"\n"); c.Testing.APIKeyEnv != "GEMINI_API_KEY" || c.Testing.DefaultModel != "gemini-2.5-flash" {
+		t.Errorf("gemini defaults: %+v", c.Testing)
+	}
+	if c := load("[testing]\nprovider = \"Anthropic\"\n"); c.Testing.APIKeyEnv != "ANTHROPIC_API_KEY" {
+		t.Errorf("provider names are case-insensitive: %+v", c.Testing)
+	}
+}

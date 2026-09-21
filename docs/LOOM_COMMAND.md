@@ -39,7 +39,7 @@ Global flag available on every command:
 | [AI Testing](#ai-testing) | `test`, `check-output` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
-| [Integrations](#integrations) | `mcp manifest`, `import`, `lsp` |
+| [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
 | [Context & Summarisation](#context--summarisation) | `summarize` |
 | [Recipes & Templates](#recipes--templates) | `recipe list`, `recipe apply` |
 | [Journal](#journal) | `journal add`, `journal list` |
@@ -601,10 +601,28 @@ On a schedule (daily CI, pre-release) to track library health over time. Also us
 **Syntax**
 
 ```
-loom doctor [PromptName]
+loom doctor [PromptName] [--system]
 ```
 
-No flags. Pass a name to check one prompt, omit it to check all.
+Pass a name to check one prompt, omit it to check all.
+
+| Flag | Description |
+|---|---|
+| `--system` | Check the **installation** instead of prompts: the loom version, whether the project loads, and the optional pieces some commands rely on (see below) |
+
+**Installation check (`--system`)**
+
+```
+  ✓  loom           v5.0.0
+  ✓  project        6 prompts, 3 blocks, 0 overlays (current directory)
+  ✓  git            /usr/bin/git
+  ⚠  model API key  $GEMINI_API_KEY is not set
+                    only `loom test`, `loom summarize` and `loom start` call a model; put the key in .loomsecret or export it
+  ⚠  registry       not configured
+  ⚠  loomlocker     not found on PATH
+```
+
+Missing optional pieces are warnings that name the commands that need them, and do not change the exit code. Only a project that fails to load (or a malformed `loom.toml`) is a failure (exit 1). The key checked follows `[testing] provider` in `loom.toml` (`GEMINI_API_KEY` for Gemini, `ANTHROPIC_API_KEY` for Anthropic, or your `api_key_env`).
 
 **Example output**
 
@@ -1749,6 +1767,45 @@ loom import old-prompts/ --dir --force
 
 ---
 
+### `loom completion`
+
+**What it does**
+
+Prints a shell completion script for bash, zsh, fish or PowerShell. Once installed, `Tab` completes commands and flags, and — because it reads the current project — **prompt and block names**, `--overlay` names, `--variant` / `--env` names of the prompt you already typed, and `--format` values.
+
+```
+loom weave Sec<Tab>          → SecurityReviewer   (prompt · inherits CodeReviewer)
+loom impact Sec<Tab>         → SecurityChecklist  (block), SecurityReviewer
+loom weave X --variant <Tab> → the variants declared on X
+loom weave --format j<Tab>   → json-anthropic  json-openai
+```
+
+Outside a project, or when the library does not load, only commands and flags are offered.
+
+**Syntax**
+
+```
+loom completion bash|zsh|fish|powershell
+```
+
+**Installing**
+
+```bash
+# bash (load for this shell / add to ~/.bashrc)
+source <(loom completion bash)
+
+# zsh
+loom completion zsh > "${fpath[1]}/_loom"     # then restart the shell
+
+# fish
+loom completion fish > ~/.config/fish/completions/loom.fish
+
+# PowerShell
+loom completion powershell | Out-String | Invoke-Expression
+```
+
+---
+
 ### `loom lsp`
 
 **What it does**
@@ -2074,7 +2131,7 @@ loom execute ship --unlock
 | `loom trace <Name>` | Show inheritance chain and field sources |
 | `loom unravel <Name>` | Print fully resolved fields without Markdown formatting |
 | `loom contract <Name>` | Print contract and capabilities declarations |
-| `loom doctor [Name]` | Health score and smell report |
+| `loom doctor [Name]` | Health score and smell report (`--system`: check the installation) |
 | `loom smells [Name]` | Heuristic quality issues |
 | `loom stats [Name]` | Per-field token estimates |
 | `loom minimize` | Find and remove duplicate content |
@@ -2104,6 +2161,7 @@ loom execute ship --unlock
 | `loom publish <dir>` | Publish a pack to the registry |
 | `loom mcp manifest [Name]` | Generate an MCP tool manifest |
 | `loom import [file.md]` | Convert Markdown prompt to PromptLoom DSL |
+| `loom completion <shell>` | Shell completion script (completes prompt names from the project) |
 | `loom lsp` | Start the LSP server (for editors such as Neovim) |
 | `loom summarize <path>` | LLM-generated summary of a project or files |
 | `loom recipe list` | List built-in recipe templates |

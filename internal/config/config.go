@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -111,8 +112,21 @@ func Load(dir string) (*Config, error) {
 		return nil, fmt.Errorf("could not read loom.toml: %w", err)
 	}
 	cfg := Defaults()
-	if _, err := toml.Decode(string(data), cfg); err != nil {
+	md, err := toml.Decode(string(data), cfg)
+	if err != nil {
 		return nil, fmt.Errorf("could not parse loom.toml: %w", err)
+	}
+	// The defaults describe the default provider (Gemini). A project that picks another provider
+	// and does not name its own key variable or model gets that provider's defaults, not
+	// Gemini's: otherwise `provider = "anthropic"` would look for $GEMINI_API_KEY and send a
+	// Gemini model name to Anthropic.
+	if strings.EqualFold(cfg.Testing.Provider, "anthropic") {
+		if !md.IsDefined("testing", "api_key_env") {
+			cfg.Testing.APIKeyEnv = "ANTHROPIC_API_KEY"
+		}
+		if !md.IsDefined("testing", "default_model") {
+			cfg.Testing.DefaultModel = "claude-sonnet-4-6"
+		}
 	}
 	if cfg.Render.IncludeSourceMapV2 {
 		cfg.Render.IncludeSourceMap = true
