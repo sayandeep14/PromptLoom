@@ -95,7 +95,7 @@ func TestDocumentedCommandsExist(t *testing.T) {
 		for _, f := range fields {
 			words = append(words, f)
 		}
-		found := false
+		found := words[0] == "completion" // cobra's built-in, deliberately left out of commandPaths
 		for n := len(words); n > 0 && !found; n-- {
 			_, found = paths[strings.Join(words[:n], " ")]
 		}
