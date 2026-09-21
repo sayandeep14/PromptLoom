@@ -242,3 +242,43 @@ func TestAnthropicBlocksWithoutATypeCountAsText(t *testing.T) {
 		t.Errorf("%q %v", out, err)
 	}
 }
+
+func TestNewOverridesProviderAndModel(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "g")
+	t.Setenv("ANTHROPIC_API_KEY", "a")
+	t.Setenv("PROJECT_KEY", "p")
+	cfg := config.Defaults()
+	cfg.Testing.APIKeyEnv, cfg.Testing.DefaultModel = "PROJECT_KEY", "project-model"
+
+	// the project's own settings apply to the project's provider
+	c, err := New(cfg, "", "")
+	if err != nil || c.Provider != Gemini || c.Model != "project-model" || c.KeyEnv != "PROJECT_KEY" {
+		t.Errorf("%+v %v", c, err)
+	}
+	// a model override keeps the provider and its key
+	if c, _ := New(cfg, "", "other-model"); c.Model != "other-model" || c.KeyEnv != "PROJECT_KEY" {
+		t.Errorf("%+v", c)
+	}
+	// another provider brings ITS key variable and default model, not the project's
+	c, err = New(cfg, "anthropic", "")
+	if err != nil || c.Provider != Anthropic || c.KeyEnv != "ANTHROPIC_API_KEY" || c.Model != "claude-sonnet-4-6" {
+		t.Errorf("%+v %v", c, err)
+	}
+	if c, _ := New(cfg, "anthropic", "claude-x"); c.Model != "claude-x" {
+		t.Errorf("%+v", c)
+	}
+	if _, err := New(cfg, "openai", ""); err == nil || !strings.Contains(err.Error(), "$OPENAI_API_KEY") {
+		t.Errorf("%v", err)
+	}
+}
+
+func TestParseSpec(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"gpt-4o": {"", "gpt-4o"}, "openai:gpt-4o": {"openai", "gpt-4o"}, "Anthropic:claude-x": {"anthropic", "claude-x"},
+		"model:v1": {"", "model:v1"}, " gemini:m ": {"gemini", "m"}, "": {"", ""},
+	} {
+		if p, m := ParseSpec(in); p != want[0] || m != want[1] {
+			t.Errorf("ParseSpec(%q) = %q, %q; want %q, %q", in, p, m, want[0], want[1])
+		}
+	}
+}

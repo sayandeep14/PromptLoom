@@ -36,7 +36,7 @@ Global flag available on every command:
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
-| [AI Testing](#ai-testing) | `test`, `check-output` |
+| [AI Testing](#ai-testing) | `test`, `check-output`, `eval` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
@@ -984,7 +984,8 @@ A single command that runs all CI gates in sequence:
 2. `loom doctor` — health scores and smell detection
 3. `loom check-lock` — verify `dist/` fingerprints match `loom.lock`
 4. `loom diff --all --against-dist` — confirm rendered output is not stale
-5. `loom deploy --check` — when `[[targets]]` are configured, confirm the deployed files (`CLAUDE.md`, `AGENTS.md`, …) are in sync
+5. `loom eval --compare` — when `evals/*.eval.toml` exist and an API key is set, run the eval suites and compare with the recorded baseline
+6. `loom deploy --check` — when `[[targets]]` are configured, confirm the deployed files (`CLAUDE.md`, `AGENTS.md`, …) are in sync
 
 Exits 0 only if every gate passes. Exits 1 on the first failure with a clear message identifying which gate failed and why.
 
@@ -1257,6 +1258,104 @@ loom check-output SpringBootReviewer response.txt
 
 # Validate from stdin
 cat response.txt | loom check-output SpringBootReviewer -
+```
+
+---
+
+### `loom eval`
+
+**What it does**
+
+Scores a prompt's *answers*, not just its text. An **eval suite** lists cases; for each case `loom eval` renders the prompt, sends it with the case's input to a model, and asks a **judge model** to grade the answer against the case's criteria, each from 0 to 100. A case's score is the mean; it passes when the score reaches its pass mark (default 70) **and** the answer satisfies the prompt's own `contract` (so a perfect score cannot excuse a missing required section).
+
+Scores can be **recorded** as a baseline and **compared** later, so a change to a prompt that makes answers worse is caught in review or CI, even when every case still passes.
+
+**Why it exists**
+
+`loom inspect` tells you the prompt is well-formed and `loom test` that the answer has the right *shape*. Neither tells you whether the answer is any *good*. Evals do, with the criteria you wrote down, the same way on every run.
+
+**When to use it**
+
+When changing a prompt that matters: run `loom eval --compare` before merging. When choosing between models or providers (`--models`). In CI, to keep quality from silently slipping.
+
+**Suite files**
+
+`evals/<Name>.eval.toml`:
+
+```toml
+prompt      = "CodeReviewer"          # required: the prompt under test
+threshold   = 70                      # optional pass mark for every case (1-100)
+judge_model = "anthropic:claude-x"    # optional: who grades ("model" or "provider:model")
+
+[[case]]
+name      = "flags SQL injection"     # required, unique: identifies the case in baselines
+input     = "Review: db.Query(\"SELECT * FROM t WHERE id=\" + id)"
+criteria  = ["names the injection risk", "suggests a parameterised query"]
+min_score = 80                        # optional: overrides the threshold for this case
+vars      = { repo_name = "demo" }    # optional: values for the prompt's vars and slots
+# reference = "..."                   # optional: a model answer the judge may compare against
+# input_file = "cases/long.md"        # alternative to input, relative to the suite file
+```
+
+Suites are validated when loaded: unknown keys (a typo such as `criterias`), a case without a name, input or criteria, duplicate case names and out-of-range scores are errors that name the file and case. A prompt that needs variables must get them under `vars`, or the case fails without spending a model call.
+
+**How grading works**
+
+The judge is shown the input, the answer and the numbered criteria, and must reply with one score per criterion as JSON. A reply that skips a criterion, gives a score outside 0-100, or is not JSON is an **error**, never a made-up score. The answer under test is untrusted text: it is fenced as data and the judge is told to ignore any instructions inside it. Judge scores vary a little between runs, which is why comparisons allow a **tolerance** (5 points by default).
+
+**Syntax**
+
+```
+loom eval [Name...] [--models m1,m2] [--judge m] [--record] [--compare]
+          [--tolerance N | --strict] [--threshold N] [--dir <path>]
+```
+
+`Name` is a suite name or the name of a prompt (every suite that evaluates it). With no name, every suite runs.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--models m1,m2` | Models to compare, each `model` or `provider:model` (`gemini`, `anthropic`, `openai`). With several, the report is a table of cases × models. A `provider:` prefix uses that provider's own API key variable and default model |
+| `--judge <model>` | The judge (`model` or `provider:model`). Default: the suite's `judge_model`, else the model in `[testing]` |
+| `--record` | Save the scores as the baseline in `evals/.baseline/<Suite>.json` (readable JSON, one entry per case and model, so it diffs cleanly in git). Refused when some cases failed to run, so a baseline never has holes |
+| `--compare` | Compare with the baseline: a score that dropped by more than the tolerance is a **regression** and the command exits 1. Cases without a baseline are marked *new*. Without a baseline yet, it says so and does not fail |
+| `--tolerance N` | Points a score may drop before it counts as a regression (default 5) |
+| `--strict` | With `--compare`: any drop is a regression (tolerance 0) |
+| `--threshold N` | Override the pass mark of every case (1-100) |
+| `--dir <path>` | Directory of suites (default `evals`) |
+
+**Example output**
+
+```
+CodeReviewer  (prompt CodeReviewer)
+  ✓ flags SQL injection                 92  ▲ was 85 (+7)
+  ✗ tolerates clean code                55  (needs 80)
+      20  does not invent problems — flagged a style nit as a bug
+  2 case(s): 1 passed, 1 failed, 0 errored · mean 73.5
+
+2 case(s): 1 passed, 1 failed, 0 errored
+```
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| `0` | Every case passed (and nothing regressed, with `--compare`) |
+| `1` | A case scored below its pass mark, broke the contract, could not run, or a score regressed |
+
+**Cost and CI**
+
+Every case makes **two model calls** (the answer and the grading) per model. `loom ci` runs the suites (comparing with the baseline when there is one) as an `eval` gate, but only when suites exist and an API key is available; otherwise the gate is skipped, like the `test` gate. Keep suites small and focused, and use a cheaper judge for routine runs.
+
+**Examples**
+
+```bash
+loom eval
+loom eval CodeReviewer --models gemini-2.5-flash,anthropic:claude-sonnet-4-6
+loom eval --record                 # after a change you are happy with
+loom eval --compare                # before merging the next one
+loom eval --compare --strict --judge openai:gpt-4o-mini
 ```
 
 ---
@@ -2156,6 +2255,7 @@ loom execute ship --unlock
 | `loom deploy` | Write all configured targets to their destinations |
 | `loom test [Name]` | Smoke-test a prompt against a real AI model |
 | `loom check-output <Name> <file>` | Validate a response file against a prompt contract |
+| `loom eval [Name...]` | Score answers with a judge model; record/compare baselines to catch regressions |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |
 | `loom graph [Name]` | Dependency graph; with a name, that prompt's neighbourhood |

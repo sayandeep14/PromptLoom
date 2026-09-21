@@ -78,6 +78,7 @@ func init() {
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(packCmd)
 	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(evalCmd)
 	rootCmd.AddCommand(blameCmd)
 	rootCmd.AddCommand(changelogCmd)
 	rootCmd.AddCommand(auditCmd)

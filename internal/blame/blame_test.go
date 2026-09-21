@@ -277,7 +277,7 @@ func TestChangelog(t *testing.T) {
 	}
 
 	// --since a date and a ref
-	cl, err = BuildChangelog(r.dir, "2024-01-03", "Reviewer")
+	cl, err = BuildChangelog(r.dir, "2024-01-04", "Reviewer")
 	if err != nil || len(cl) != 1 || len(cl[0].Entries) != 1 || !strings.Contains(cl[0].Entries[0].Message, "Stay private") {
 		t.Errorf("%+v %v", cl, err)
 	}
@@ -347,5 +347,30 @@ func TestSliceDiffAndLooksLikeDate(t *testing.T) {
 		if looksLikeDate(s) != want {
 			t.Errorf("looksLikeDate(%q)", s)
 		}
+	}
+}
+
+// A bare date used to be read as "that date at the current time of day".
+func TestChangelogSinceADateMeansTheStartOfThatDay(t *testing.T) {
+	r := newRepo(t)
+	r.write("loom.toml", loomToml)
+	r.write("prompts/Reviewer.prompt.loom", reviewerV1)
+	r.commit("early") // 2024-01-02 12:00Z
+	r.write("prompts/Reviewer.prompt.loom", strings.Replace(reviewerV1, "Be brief", "Be terse", 1))
+	r.commit("later") // 2024-01-03 12:00Z
+
+	// whatever time it is now, 2024-01-03 includes the commit made at noon that day
+	cl, err := BuildChangelog(r.dir, "2024-01-03", "")
+	if err != nil || len(cl) != 1 || len(cl[0].Entries) == 0 {
+		t.Fatalf("%+v %v", cl, err)
+	}
+	for _, e := range cl[0].Entries {
+		if e.Date.Day() != 3 {
+			t.Errorf("an entry from before the day was included: %+v", e)
+		}
+	}
+	// and the next day excludes it
+	if cl, _ := BuildChangelog(r.dir, "2024-01-04", ""); len(cl) != 0 {
+		t.Errorf("%+v", cl)
 	}
 }

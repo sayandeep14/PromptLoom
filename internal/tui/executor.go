@@ -7,6 +7,7 @@ package tui
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	icontracts "github.com/sayandeep14/PromptLoom/internal/contract"
 	idiff "github.com/sayandeep14/PromptLoom/internal/diff"
 	idoctor "github.com/sayandeep14/PromptLoom/internal/doctor"
+	ieval "github.com/sayandeep14/PromptLoom/internal/eval"
 	iformat "github.com/sayandeep14/PromptLoom/internal/format"
 	igraph "github.com/sayandeep14/PromptLoom/internal/graph"
 	"github.com/sayandeep14/PromptLoom/internal/loader"
@@ -2809,6 +2811,35 @@ func RunCI(cwd string) (string, bool, error) {
 				testDetail = "no contracts declared"
 			}
 			results = append(results, CIResult{Name: "test", Passed: testPassed || testTotal == 0, Detail: testDetail})
+		}
+	}
+
+	// Eval suites: when evals/*.eval.toml exist, run them (against the recorded baseline, if any).
+	// Like the test gate this calls a model, so it is skipped when no API key is available.
+	if reg != nil && cfg != nil {
+		if suites, _ := ieval.FindSuites(filepath.Join(cwd, ieval.DefaultDir)); len(suites) > 0 {
+			keyEnv := cfg.Testing.APIKeyEnv
+			if keyEnv == "" {
+				keyEnv, _, _ = config.ProviderDefaults(cfg.Testing.Provider)
+			}
+			if os.Getenv(keyEnv) == "" {
+				results = append(results, CIResult{Name: "eval", Skip: true, Detail: fmt.Sprintf("(skipped — $%s not set)", keyEnv)})
+			} else {
+				out, err := ieval.RunProject(context.Background(), cwd, ieval.Params{Compare: true})
+				detail, passed := "", false
+				switch {
+				case err != nil:
+					detail = err.Error()
+				case out.OK():
+					detail, passed = fmt.Sprintf("%d/%d cases passed", out.Summary.Passed, out.Summary.Total), true
+				default:
+					detail = fmt.Sprintf("%d failed, %d errored, %d regressed", out.Summary.Failed, out.Summary.Errored, out.Regressions)
+				}
+				if !passed {
+					failed = true
+				}
+				results = append(results, CIResult{Name: "eval", Passed: passed, Detail: detail})
+			}
 		}
 	}
 

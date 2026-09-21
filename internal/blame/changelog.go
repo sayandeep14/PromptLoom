@@ -127,6 +127,11 @@ func gitLogCommits(cwd, since string, dirs []string) ([]gitCommit, error) {
 			return nil, fmt.Errorf("invalid --since value %q: expected a date (YYYY-MM-DD) or a git ref", since)
 		}
 		if looksLikeDate(since) {
+			// git fills a bare date with the CURRENT time of day, so "--since 2024-01-03" would
+			// mean different things at 9am and at 5pm. A date means the start of that day.
+			if len(since) == len("2006-01-02") {
+				since += " 00:00:00"
+			}
 			args = append(args, "--since="+since)
 		} else {
 			args = append(args, since+"..HEAD")

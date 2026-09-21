@@ -83,6 +83,7 @@ func TestCommandsOnARealProject(t *testing.T) {
 		{"weave format", []string{"weave", "CodeReviewer", "--stdout", "--format", "plain", "--set", "repo_name=demo"}, 0, nil},
 		{"weave bad format", []string{"weave", "CodeReviewer", "--stdout", "--format", "nonsense", "--set", "repo_name=demo"}, 1, nil},
 		{"deploy without targets", []string{"deploy", "--check"}, 1, []string{"no [[targets]]"}},
+		{"eval without suites", []string{"eval"}, 1, []string{"no eval suites found"}},
 		{"weave --all needs values", []string{"weave", "--all"}, 1, []string{"failed to render", "repo_name"}},
 		{"ci", []string{"ci"}, 0, []string{"PASSED"}},
 		{"import", []string{"import", "--help"}, 0, nil},
@@ -149,5 +150,38 @@ func TestCommandsThatNeedServicesFailCleanly(t *testing.T) {
 	}
 	if out, code := env("check-output", "Nope", "missing.md"); code == 0 {
 		t.Errorf("check-output on nothing: %d\n%s", code, out)
+	}
+}
+
+func TestEvalCommandReportsProblemsClearly(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if _, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatal("init")
+	}
+	if _, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer"); code != 0 {
+		t.Fatal("recipe")
+	}
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	// a broken suite: the error names the file and the mistake
+	os.MkdirAll(filepath.Join(dir, "evals"), 0o755)
+	os.WriteFile(filepath.Join(dir, "evals", "Bad.eval.toml"), []byte("prompt = \"CodeReviewer\"\n[[case]]\nname = \"a\"\ninput = \"x\"\n"), 0o644)
+	out, code := runLoom(t, bin, dir, "eval")
+	if code != 1 || !strings.Contains(out, "Bad.eval.toml") || !strings.Contains(out, "needs at least one criterion") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+
+	// a valid suite but no API key: nothing is attempted and the error says what to set
+	os.WriteFile(filepath.Join(dir, "evals", "Bad.eval.toml"), []byte("prompt = \"CodeReviewer\"\n[[case]]\nname = \"a\"\ninput = \"x\"\ncriteria = [\"is useful\"]\nvars = { repo_name = \"demo\" }\n"), 0o644)
+	out, code = runLoom(t, bin, dir, "eval")
+	if code != 1 || !strings.Contains(out, "$GEMINI_API_KEY") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// an unknown suite name lists what exists
+	out, code = runLoom(t, bin, dir, "eval", "Nope")
+	if code != 1 || !strings.Contains(out, "suites: Bad") {
+		t.Errorf("exit %d\n%s", code, out)
 	}
 }

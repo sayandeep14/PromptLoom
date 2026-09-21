@@ -63,21 +63,36 @@ type Request struct {
 // FromConfig builds a Client from the [testing] section of loom.toml: provider, model, and the
 // API key read from the configured environment variable. Errors say what to change.
 func FromConfig(cfg *config.Config) (*Client, error) {
-	provider := strings.ToLower(strings.TrimSpace(cfg.Testing.Provider))
+	return New(cfg, "", "")
+}
+
+// New is FromConfig with an optional override of the provider and/or model, for features that
+// compare several models. An override of the provider uses THAT provider's key variable and
+// default model, not the project's.
+func New(cfg *config.Config, provider, model string) (*Client, error) {
+	overridden := provider != ""
+	if provider == "" {
+		provider = cfg.Testing.Provider
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" {
 		provider = Gemini
 	}
 	defEnv, defModel, ok := config.ProviderDefaults(provider)
 	if !ok {
-		return nil, fmt.Errorf("unknown provider %q in [testing] (supported: gemini, anthropic, openai)", cfg.Testing.Provider)
+		return nil, fmt.Errorf("unknown provider %q (supported: gemini, anthropic, openai)", provider)
 	}
-	envVar := cfg.Testing.APIKeyEnv
-	if envVar == "" {
-		envVar = defEnv
+	sameProvider := !overridden || strings.EqualFold(provider, cfg.Testing.Provider) || (cfg.Testing.Provider == "" && provider == Gemini)
+
+	envVar := defEnv
+	if sameProvider && cfg.Testing.APIKeyEnv != "" {
+		envVar = cfg.Testing.APIKeyEnv
 	}
-	model := cfg.Testing.DefaultModel
 	if model == "" {
 		model = defModel
+		if sameProvider && cfg.Testing.DefaultModel != "" {
+			model = cfg.Testing.DefaultModel
+		}
 	}
 	key := os.Getenv(envVar)
 	if key == "" {
@@ -85,6 +100,19 @@ func FromConfig(cfg *config.Config) (*Client, error) {
 	}
 	timeout := time.Duration(cfg.Testing.TimeoutSec) * time.Second
 	return &Client{Provider: provider, Model: model, APIKey: key, KeyEnv: envVar, Timeout: timeout}, nil
+}
+
+// ParseSpec splits "model" or "provider:model" (provider is one of gemini, anthropic, openai;
+// any other colon belongs to the model name, as in "model:v1").
+func ParseSpec(spec string) (provider, model string) {
+	spec = strings.TrimSpace(spec)
+	if head, rest, ok := strings.Cut(spec, ":"); ok {
+		switch strings.ToLower(head) {
+		case Gemini, Anthropic, OpenAI:
+			return strings.ToLower(head), rest
+		}
+	}
+	return "", spec
 }
 
 // Complete sends the request and returns the model's text.
