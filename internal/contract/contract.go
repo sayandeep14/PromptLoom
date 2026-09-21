@@ -3,6 +3,7 @@ package contract
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/sayandeepgiri/promptloom/internal/ast"
@@ -24,8 +25,7 @@ func Check(c *ast.ContractBlock, outputText string) []Failure {
 	lower := strings.ToLower(outputText)
 
 	for _, sec := range c.RequiredSections {
-		heading := "## " + strings.ToLower(sec)
-		if !strings.Contains(lower, heading) {
+		if !hasHeading(outputText, sec) {
 			failures = append(failures, Failure{
 				Kind:   "missing-section",
 				Detail: fmt.Sprintf("required section %q not found in output", sec),
@@ -34,8 +34,7 @@ func Check(c *ast.ContractBlock, outputText string) []Failure {
 	}
 
 	for _, sec := range c.ForbiddenSections {
-		heading := "## " + strings.ToLower(sec)
-		if strings.Contains(lower, heading) {
+		if hasHeading(outputText, sec) {
 			failures = append(failures, Failure{
 				Kind:   "forbidden-section",
 				Detail: fmt.Sprintf("forbidden section %q found in output", sec),
@@ -62,4 +61,13 @@ func Check(c *ast.ContractBlock, outputText string) []Failure {
 	}
 
 	return failures
+}
+
+// hasHeading reports whether text contains a Markdown heading (any level, # to ######)
+// whose title is exactly name, ignoring case, surrounding spaces and a trailing colon.
+// It is line-anchored on purpose: "## Summary of findings" or an inline mention of
+// "## summary" inside a sentence must not satisfy a required "Summary" section.
+func hasHeading(text, name string) bool {
+	re := regexp.MustCompile(`(?im)^[ \t]{0,3}#{1,6}[ \t]+` + regexp.QuoteMeta(strings.TrimSpace(name)) + `[ \t]*:?[ \t]*#*[ \t]*\r?$`)
+	return re.MatchString(text)
 }

@@ -464,6 +464,8 @@ prompt SummaryWriter {
 | `must_include` | Literal strings the output must contain |
 | `must_not_include` | Literal strings the output must not contain |
 
+Section matching is exact: `required_sections: - Summary` is satisfied by a Markdown heading line of any level (`# Summary`, `## Summary`, `### Summary:`), ignoring case, but **not** by `## Summary of findings` or by the words "## summary" inside a sentence. `must_include` / `must_not_include` are case-insensitive substring checks.
+
 ---
 
 ## 11. Capabilities

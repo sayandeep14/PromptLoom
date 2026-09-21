@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,7 +95,10 @@ func Write(lf *Lockfile, cwd string) error {
 func Read(cwd string) (*Lockfile, error) {
 	var lf Lockfile
 	if _, err := toml.DecodeFile(Path(cwd), &lf); err != nil {
-		return nil, fmt.Errorf("loom.lock not found — run: loom lock")
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("loom.lock not found — run: loom lock")
+		}
+		return nil, fmt.Errorf("loom.lock is unreadable (%v) — fix it or regenerate with: loom lock", err)
 	}
 	return &lf, nil
 }

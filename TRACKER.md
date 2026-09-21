@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–106, PL-111 done; next PL-107, then PL-108)
+**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–107, PL-111 done; next PL-108)
 
 ---
 
@@ -23,7 +23,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | Epic | Goal | Progress |
 |---|---|---|
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
-| **E1** Trust & Safety | Secure registry, tested core, working install path | 7 / 13 |
+| **E1** Trust & Safety | Secure registry, tested core, working install path | 8 / 13 |
 | **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 0 / 5 |
 | **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
@@ -75,10 +75,11 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-104 | **Registry hosting decision: self-host first.** No built-in default URL; `loom install`/`publish` explain how to configure one; `[registry] url` in `loom.toml` now works; URL validated; upload secret never sent over plain HTTP to a remote host | DONE | P0 | S | — |
 | PL-105 | Registry Docker deployment: multi-stage distroless image (20 MB, non-root, read-only), `docker-compose.yml` (server + Postgres, DB not published), self-applying idempotent schema (`AUTO_MIGRATE`, advisory-locked), `healthcheck` subcommand, CI smoke job, `server/README.md` (TLS, backup/restore, upgrade) | DONE | P0 | M | PL-102, PL-104 |
 | PL-106 | End-to-end fixture tests: 16 valid + 45 invalid projects in `testdata/` run through loader → validate → resolve → render, with golden outputs, exact two-way diagnostic matching, positions required, invariants (dedup, determinism), a rule-coverage guard, and built-binary CLI tests (see `testdata/README.txt`). Mutation-checked. Found + fixed: unterminated-body parse errors had no line number | DONE | P0 | L | PL-004 |
-| PL-107 | Unit tests for `loader`, `lock`, `installer` (conflict + lock paths), `deps` edge cases, `contract`, `audit`, `doctor` | TODO | P1 | L | PL-106 |
+| PL-107 | Unit tests for `contract`, `audit`, `doctor`, `lock`, `loader`, `installer` (fake registry: dependency graph, conflicts, cycles, missing/corrupt cases, reinstall) and `deps` (edge cases, pre-release versions). Found + fixed 8 defects, each with a test that fails without the fix: contract heading matching was substring-based (`## Summary of findings` satisfied `Summary`); audit matched `ssn` inside `className` and flagged prohibitions ("Never skip tests") as HIGH risk; doctor flagged one instruction as conflicting with itself; doctor truncated multi-byte text mid-character; `lock.Read` reported a corrupt lockfile as "not found"; pre-release versions (accepted by the registry) were unparseable client-side; `loom install` did not restore a deleted dependency of an already-installed pack | DONE | P1 | L | PL-106 |
 | PL-108 | Migration path for old syntax: friendly, specific error when a file uses `+=`, `-=`, bare `:` or `extends`, pointing at the `:=` / `from()` fix (a `loom migrate` command was dropped as a design decision — re-open only if needed). **Note:** today the parser still *accepts* `:`, `+=`, `-=` with warnings, contrary to the docs; decide warn vs. error first (pinned by `warn-*` fixtures) | TODO | P1 | M | PL-106 |
 | PL-111 | **`:=` in blocks/overlays now composes** (list fields add to existing items; `format` is last-writer-wins; prompt/variant/env `:=` still replace). Measured on the shipped `python-starter` pack: `PythonEngineer` lost 13 of 18 constraints before the change. Also fixed: de-duplication now runs as the final resolver step (it was skipped for prompts without parents and after variants/overlays/env). Documented in `LOOM_LANGUAGE.md`; unit tests in `resolve/composable_test.go` | DONE | P0 | M | PL-106 |
 | PL-113 | Follow-up to PL-111: a prompt that `use`s a block *and* writes its own list field replaces the block's items (its own fields apply last), with no way to say "block + mine". Consider warning in `loom inspect`, or an explicit `from(blocks)` form | TODO | P2 | S | PL-111 |
+| PL-114 | Unit tests for the remaining untested packages (`lsp`, `testrunner`, `mcp`, `blame`, `minimize`, `stale`, `starter`, `summarize`, `semantic`, `tokens`, `journal`) and CLI-level tests for commands beyond inspect/weave | TODO | P1 | L | PL-107 |
 | PL-112 | Bare `slot name` (no `{ }`) is rejected by the lexer although the LSP hover text documents it as valid; either accept it (required by default) or fix the docs/hover | TODO | P2 | S | PL-106 |
 | PL-109 | Run `gofmt -w` across the ~26 unformatted files and add a `gofmt -l` check to CI | TODO | P2 | S | PL-004 |
 | PL-110 | Registry follow-ups: TLS/HSTS guidance, per-pack ownership (today one shared secret can overwrite any pack), constant-time-safe secret rotation, request logging | TODO | P1 | M | PL-103 |
@@ -194,6 +195,6 @@ Only start after E1 and E4 are done.
 ## Known risks
 
 - No public registry exists; every team must self-host one (PL-105 makes that a single command). Revisit if adoption needs a shared public one.
-- The pipeline now has an end-to-end net (PL-106), but many packages (`loader`, `lock`, `lsp`, `testrunner`, …) still lack unit tests (PL-107).
+- The pipeline has an end-to-end net (PL-106) and the core packages have unit tests (PL-107); still untested: `lsp`, `testrunner`, `mcp`, `blame`, `minimize`, `stale`, `starter`, `summarize`, `tui` (beyond deploy), and the CLI commands themselves. Track under a new PL-114.
 - Two language-semantics questions are open and pinned by fixtures: block/overlay `:=` (PL-111) and legacy operators (PL-108).
 - Lumine and the Go parser can drift apart (PL-203 addresses this with shared fixtures).

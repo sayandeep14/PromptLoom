@@ -415,17 +415,24 @@ func findConflicts(items []string) []string {
 
 	var found []string
 	for _, pair := range conflictPairs {
-		var itemA, itemB string
+		// A conflict needs two DIFFERENT items ("never explain" also contains "explain").
+		a, b := -1, -1
 		for i, l := range lower {
-			if strings.Contains(l, pair[0]) {
-				itemA = items[i]
+			if !strings.Contains(l, pair[0]) {
+				continue
 			}
-			if strings.Contains(l, pair[1]) {
-				itemB = items[i]
+			for j, m := range lower {
+				if j != i && strings.Contains(m, pair[1]) {
+					a, b = i, j
+					break
+				}
+			}
+			if a >= 0 {
+				break
 			}
 		}
-		if itemA != "" && itemB != "" {
-			found = append(found, fmt.Sprintf("%q conflicts with %q", truncate(itemA, 40), truncate(itemB, 40)))
+		if a >= 0 {
+			found = append(found, fmt.Sprintf("%q conflicts with %q", truncate(items[a], 40), truncate(items[b], 40)))
 		}
 	}
 	return found
@@ -444,8 +451,9 @@ func sameFormatSignature(a, b []string) bool {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return string(r[:n-1]) + "…"
 }

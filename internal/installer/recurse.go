@@ -97,39 +97,45 @@ func installRecursive(
 	}
 	visited[slug] = true
 
-	// Check if already installed at a satisfying version AND present on disk.
+	// Already installed at a satisfying version AND present on disk? Then don't download
+	// it again, but still walk its dependencies below: one of them may have been removed.
 	existing := packLock.Find(slug)
 	reqs := requirements[slug]
+	skip := false
 	if existing != nil && reqs != nil && allSatisfied(existing.Version, reqs.constraints) {
-		// Only skip if the pack directory actually exists on disk.
-		// If it was deleted or never written, fall through to reinstall.
 		if _, err := os.Stat(PackDir(slug, cwd)); err == nil {
-			return nil
+			skip = true
 		}
 	}
 
-	result, err := Install(slug, cwd)
-	if err != nil {
-		return fmt.Errorf("installing %s: %w", slug, err)
-	}
-	*results = append(*results, &DepResult{Result: result})
+	var sourceDir string
+	if skip {
+		sourceDir = filepath.Join(PackDir(slug, cwd), "source")
+	} else {
+		result, err := Install(slug, cwd)
+		if err != nil {
+			return fmt.Errorf("installing %s: %w", slug, err)
+		}
+		*results = append(*results, &DepResult{Result: result})
 
-	// Update the lock with the newly installed version.
-	var requiredByList []string
-	if requiredBy != "(direct)" {
-		requiredByList = []string{requiredBy}
+		// Update the lock with the newly installed version.
+		var requiredByList []string
+		if requiredBy != "(direct)" {
+			requiredByList = []string{requiredBy}
+		}
+		packLock.Upsert(deps.PackLockEntry{
+			Slug:       result.Meta.Slug,
+			Version:    result.Meta.Version,
+			RequiredBy: requiredByList,
+		})
+		sourceDir = result.SourceDir
 	}
-	packLock.Upsert(deps.PackLockEntry{
-		Slug:       result.Meta.Slug,
-		Version:    result.Meta.Version,
-		RequiredBy: requiredByList,
-	})
 
 	// Parse the pack's own .dependency.loom from its source dir.
-	depFile := filepath.Join(result.SourceDir, deps.Filename)
+	depFile := filepath.Join(sourceDir, deps.Filename)
 	packDeps, err := deps.ParseFile(depFile)
 	if err != nil {
-		// Pack has no .dependency.loom — no transitive deps.
+		// Pack has no (readable) .dependency.loom — no transitive deps.
 		return nil
 	}
 

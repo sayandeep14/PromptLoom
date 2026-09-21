@@ -2,6 +2,7 @@
 package audit
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/sayandeepgiri/promptloom/internal/ast"
@@ -43,6 +44,37 @@ type pattern struct {
 	fix     string
 	// negation: if any of these phrases also appear nearby, skip the match
 	negation []string
+	res      []*regexp.Regexp // compiled from phrases, see init
+}
+
+// prohibitions turn an instruction into its opposite ("never skip tests" is fine).
+var prohibitions = []string{"never", "do not", "don't", "must not", "should not", "not allowed"}
+
+func init() {
+	for i := range patterns {
+		p := &patterns[i]
+		for _, ph := range p.phrases {
+			p.res = append(p.res, phraseRegexp(ph))
+		}
+		// Telling the model NOT to do something risky is not itself a risk.
+		p.negation = append(p.negation, prohibitions...)
+	}
+}
+
+// phraseRegexp matches phrase case-insensitively, requiring a word boundary on any
+// edge that is a word character, so "ssn" no longer matches inside "className".
+func phraseRegexp(phrase string) *regexp.Regexp {
+	isWord := func(b byte) bool {
+		return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+	}
+	q := regexp.QuoteMeta(strings.ToLower(phrase))
+	if isWord(phrase[0]) {
+		q = `\b` + q
+	}
+	if isWord(phrase[len(phrase)-1]) {
+		q += `\b`
+	}
+	return regexp.MustCompile(q)
 }
 
 var patterns = []pattern{
@@ -137,8 +169,8 @@ func Audit(rp *ast.ResolvedPrompt) []Finding {
 	for _, it := range items {
 		lower := strings.ToLower(it.value)
 		for _, pat := range patterns {
-			for _, phrase := range pat.phrases {
-				if !strings.Contains(lower, phrase) {
+			for _, re := range pat.res {
+				if !re.MatchString(lower) {
 					continue
 				}
 				// Check negation words — if any appear in the same text, skip.
