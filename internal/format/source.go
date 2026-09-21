@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/lexer"
 	"github.com/sayandeep14/PromptLoom/internal/parser"
 )
 
@@ -22,6 +23,24 @@ func Source(filename, src string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	out := render(nodes, comments)
+
+	// Safety net: never hand back output that has lost something.
+	reNodes, reComments, err := parser.ParseWithComments(filename, out)
+	if err != nil {
+		return "", fmt.Errorf("refusing to format %s: the formatted output does not parse (%v)", filename, err)
+	}
+	if want, got := inventory(nodes), inventory(reNodes); !equalStrings(want, got) {
+		return "", fmt.Errorf("refusing to format %s: formatting would change its content (%s)", filename, firstDiff(want, got))
+	}
+	if len(reComments) != len(comments) {
+		return "", fmt.Errorf("refusing to format %s: %d comment(s) would be lost", filename, len(comments)-len(reComments))
+	}
+	return out, nil
+}
+
+// render writes nodes (and the comments that belong to them) as canonical source.
+func render(nodes []*ast.Node, comments []lexer.Comment) string {
 	c := newCommentCtx(nodes, comments)
 
 	parts := make([]string, len(nodes))
@@ -38,19 +57,7 @@ func Source(filename, src string) (string, error) {
 		writeComments(&sb, c.fileTail, 0, 0)
 		out += sb.String()
 	}
-
-	// Safety net: never hand back output that has lost something.
-	reNodes, reComments, err := parser.ParseWithComments(filename, out)
-	if err != nil {
-		return "", fmt.Errorf("refusing to format %s: the formatted output does not parse (%v)", filename, err)
-	}
-	if want, got := inventory(nodes), inventory(reNodes); !equalStrings(want, got) {
-		return "", fmt.Errorf("refusing to format %s: formatting would change its content (%s)", filename, firstDiff(want, got))
-	}
-	if len(reComments) != len(comments) {
-		return "", fmt.Errorf("refusing to format %s: %d comment(s) would be lost", filename, len(comments)-len(reComments))
-	}
-	return out, nil
+	return out
 }
 
 // inventory lists everything a set of nodes declares, in a form that is stable across

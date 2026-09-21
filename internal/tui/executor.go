@@ -1288,21 +1288,18 @@ func RunFingerprint(name, cwd string) (string, error) {
 	return b.String(), nil
 }
 
-// RunFmt formats .loom source files in cwd.
-func RunFmt(checkOnly bool, cwd string) (string, error) {
-	cfg, err := config.Load(cwd)
-	if err != nil {
-		return "", err
-	}
+type scanTarget struct {
+	dir  string
+	exts []string
+}
 
+// sourceScanTargets lists the configured prompt, block and overlay directories that exist,
+// with the file extensions that count as source in each.
+func sourceScanTargets(cfg *config.Config, cwd string) []scanTarget {
 	promptDir := filepath.Join(cwd, cfg.Paths.Prompts)
 	blockDir := filepath.Join(cwd, cfg.Paths.Blocks)
 	overlayDir := filepath.Join(cwd, cfg.Paths.Overlays)
 
-	type scanTarget struct {
-		dir  string
-		exts []string
-	}
 	var dirs []scanTarget
 	if fi, e := os.Stat(promptDir); e == nil && fi.IsDir() {
 		dirs = append(dirs, scanTarget{dir: promptDir, exts: []string{".prompt.loom", ".loom"}})
@@ -1313,6 +1310,34 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 	if fi, e := os.Stat(overlayDir); e == nil && fi.IsDir() {
 		dirs = append(dirs, scanTarget{dir: overlayDir, exts: []string{".overlay.loom", ".loom"}})
 	}
+	return dirs
+}
+
+// sourceFiles returns every source file path found in targets.
+func sourceFiles(targets []scanTarget) []string {
+	var out []string
+	for _, target := range targets {
+		entries, err := os.ReadDir(target.dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() && matchesLoomExts(e.Name(), target.exts) {
+				out = append(out, filepath.Join(target.dir, e.Name()))
+			}
+		}
+	}
+	return out
+}
+
+// RunFmt formats .loom source files in cwd.
+func RunFmt(checkOnly bool, cwd string) (string, error) {
+	cfg, err := config.Load(cwd)
+	if err != nil {
+		return "", err
+	}
+
+	dirs := sourceScanTargets(cfg, cwd)
 
 	var b strings.Builder
 	changed, total, failed := 0, 0, 0
@@ -3222,4 +3247,98 @@ func RunSummarize(args []string, cwd string) (string, bool) {
 		b.WriteString("  " + MutedStyle.Render("Tip: attach with --with file:"+result.SavedTo) + "\n")
 	}
 	return b.String(), false
+}
+
+// ErrNeedsMigration is returned by RunMigrate in check mode when files still use v1 syntax.
+var ErrNeedsMigration = errors.New("some files use v1 syntax (run: loom fmt --migrate)")
+
+// RunMigrate rewrites v1 syntax to v2 in every source file of the project (see format.Migrate).
+// With checkOnly nothing is written; the result says which files would change. Constructs with
+// no mechanical equivalent are listed by file and line and left as they are.
+func RunMigrate(checkOnly bool, cwd string) (string, error) {
+	cfg, err := config.Load(cwd)
+	if err != nil {
+		return "", err
+	}
+	files := sourceFiles(sourceScanTargets(cfg, cwd))
+
+	// Migrating `+=` needs to know which fields every block defines, so read them all first.
+	sources := map[string]string{}
+	lib := iformat.NewLibrary()
+	for _, path := range files {
+		if data, err := os.ReadFile(path); err == nil {
+			sources[path] = string(data)
+			lib.AddSource(path, string(data))
+		}
+	}
+
+	var b strings.Builder
+	rel := func(p string) string {
+		if r, err := filepath.Rel(cwd, p); err == nil {
+			return r
+		}
+		return p
+	}
+	changed, failed, manual := 0, 0, 0
+
+	for _, path := range files {
+		src, ok := sources[path]
+		if !ok {
+			failed++
+			b.WriteString(fmt.Sprintf("  %s  %s: could not be read\n", ErrorStyle.Render("✗"), PathStyle.Render(rel(path))))
+			continue
+		}
+		res, err := iformat.Migrate(path, src, lib)
+		if err != nil {
+			failed++
+			b.WriteString(fmt.Sprintf("  %s  %s\n", ErrorStyle.Render("✗"), err.Error()))
+			continue
+		}
+
+		switch {
+		case res.Changed() && checkOnly:
+			changed++
+			b.WriteString(fmt.Sprintf("  %s  %s  %s\n", WarningStyle.Render("⚠"), PathStyle.Render(rel(path)),
+				MutedStyle.Render(fmt.Sprintf("(%d change(s) to make)", len(res.Changes)))))
+		case res.Changed():
+			if err := writeFileAtomic(path, []byte(res.Output)); err != nil {
+				failed++
+				b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PathStyle.Render(rel(path)), err))
+				continue
+			}
+			changed++
+			b.WriteString(fmt.Sprintf("  %s  %s  %s\n", SuccessStyle.Render("✓"), PathStyle.Render(rel(path)),
+				MutedStyle.Render(fmt.Sprintf("(%d change(s))", len(res.Changes)))))
+		case len(res.Manual) == 0:
+			b.WriteString(fmt.Sprintf("  %s  %s\n", MutedStyle.Render("·"), MutedStyle.Render(rel(path))))
+		}
+
+		for _, n := range res.Manual {
+			manual++
+			b.WriteString(fmt.Sprintf("  %s  %s:%d  %s\n", WarningStyle.Render("→"), PathStyle.Render(rel(path)), n.Line, n.Message))
+		}
+	}
+
+	b.WriteByte('\n')
+	verb := "Migrated"
+	if checkOnly {
+		verb = "Would migrate"
+	}
+	b.WriteString("  " + SuccessStyle.Render(fmt.Sprintf("%s %d of %d files.", verb, changed, len(files))) + "\n")
+	if manual > 0 {
+		b.WriteString("  " + WarningStyle.Render(fmt.Sprintf("%d item(s) need a decision from you (marked →); they are left as written and `loom inspect` still reports them.", manual)) + "\n")
+	}
+	if failed > 0 {
+		b.WriteString("  " + ErrorStyle.Render(fmt.Sprintf("%d file(s) could not be migrated and were left untouched.", failed)) + "\n")
+	}
+
+	switch {
+	case failed > 0:
+		return b.String(), fmt.Errorf("%d file(s) could not be migrated", failed)
+	case checkOnly && changed > 0:
+		return b.String(), ErrNeedsMigration
+	case manual > 0:
+		return b.String(), fmt.Errorf("%d item(s) need manual migration", manual)
+	}
+	return b.String(), nil
 }

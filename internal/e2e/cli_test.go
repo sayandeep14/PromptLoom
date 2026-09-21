@@ -225,3 +225,115 @@ func TestGeneratedFilesLandWhereTheProjectLoadsThem(t *testing.T) {
 		t.Errorf("imported prompt must be listed: %d\n%s", code, out)
 	}
 }
+
+const v1Project = `[project]
+name = "legacy"
+version = "0.0.0"
+
+[paths]
+prompts  = "prompts"
+blocks   = "blocks"
+overlays = "overlays"
+out      = "dist"
+
+[validation]
+require_objective = false
+require_format    = false
+`
+
+func writeV1(t *testing.T, dir string) {
+	files := map[string]string{
+		"loom.toml":                 v1Project,
+		"prompts/Base.prompt.loom":  "// base prompt\nprompt Base {\n  persona:\n    You are careful.\n\n  instructions:\n    - Read the code.\n}\n",
+		"prompts/Child.prompt.loom": "prompt Child extends Base {\n  instructions +=\n    - Explain the fix.\n}\n",
+		"blocks/Rules.block.loom":   "block Rules {\n  constraints +=\n    - Never guess.\n}\n",
+	}
+	for rel, body := range files {
+		p := filepath.Join(dir, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestFmtMigrateUpgradesAV1Project(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	writeV1(t, dir)
+
+	// v1 is rejected by the current toolchain
+	if _, code := runLoom(t, bin, dir, "inspect"); code == 0 {
+		t.Fatal("a v1 project must not pass inspect")
+	}
+	before, _ := os.ReadFile(filepath.Join(dir, "prompts/Child.prompt.loom"))
+
+	// --check reports and changes nothing
+	out, code := runLoom(t, bin, dir, "fmt", "--migrate", "--check")
+	if code != 1 || !strings.Contains(out, "Child.prompt.loom") {
+		t.Errorf("check: exit %d\n%s", code, out)
+	}
+	if after, _ := os.ReadFile(filepath.Join(dir, "prompts/Child.prompt.loom")); string(after) != string(before) {
+		t.Error("--check must not modify files")
+	}
+
+	out, code = runLoom(t, bin, dir, "fmt", "--migrate")
+	if code != 0 || !strings.Contains(out, "Migrated 3 of 3 files") {
+		t.Fatalf("migrate: exit %d\n%s", code, out)
+	}
+	child, _ := os.ReadFile(filepath.Join(dir, "prompts/Child.prompt.loom"))
+	for _, want := range []string{"inherits Base", "from(parent[*]) and {", "- Explain the fix."} {
+		if !strings.Contains(string(child), want) {
+			t.Errorf("Child lacks %q:\n%s", want, child)
+		}
+	}
+	if base, _ := os.ReadFile(filepath.Join(dir, "prompts/Base.prompt.loom")); !strings.Contains(string(base), "// base prompt") || !strings.Contains(string(base), "persona :=") {
+		t.Errorf("Base:\n%s", base)
+	}
+
+	// the upgraded project is a valid v2 project and renders what v1 meant
+	if out, code := runLoom(t, bin, dir, "inspect"); code != 0 {
+		t.Fatalf("inspect after migration: %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "weave", "--all"); code != 0 {
+		t.Fatalf("weave: %d\n%s", code, out)
+	}
+	md, _ := os.ReadFile(filepath.Join(dir, "dist/Child.md"))
+	for _, want := range []string{"You are careful.", "Read the code.", "Explain the fix."} {
+		if !strings.Contains(string(md), want) {
+			t.Errorf("Child.md lacks %q:\n%s", want, md)
+		}
+	}
+
+	// idempotent
+	out, code = runLoom(t, bin, dir, "fmt", "--migrate", "--check")
+	if code != 0 || !strings.Contains(out, "0 of 3 files") {
+		t.Errorf("second run: exit %d\n%s", code, out)
+	}
+}
+
+func TestFmtMigrateReportsWhatItCannotDecide(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	writeV1(t, dir)
+	os.WriteFile(filepath.Join(dir, "prompts/Child.prompt.loom"),
+		[]byte("prompt Child extends Base {\n  use Rules\n\n  constraints +=\n    - Mine.\n\n  instructions -=\n    - Read the code.\n}\n"), 0o644)
+
+	out, code := runLoom(t, bin, dir, "fmt", "--migrate")
+	if code != 1 {
+		t.Errorf("exit %d, want 1 while items need a decision\n%s", code, out)
+	}
+	for _, want := range []string{"Child.prompt.loom:4", "block Rules", "Child.prompt.loom:7", "-=", "2 item(s) need a decision"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	child, _ := os.ReadFile(filepath.Join(dir, "prompts/Child.prompt.loom"))
+	if !strings.Contains(string(child), "constraints +=") || !strings.Contains(string(child), "instructions -=") {
+		t.Errorf("unmigratable constructs must be left as written:\n%s", child)
+	}
+	// the mechanical files were still migrated
+	if base, _ := os.ReadFile(filepath.Join(dir, "prompts/Base.prompt.loom")); !strings.Contains(string(base), "persona :=") {
+		t.Errorf("Base was not migrated:\n%s", base)
+	}
+}

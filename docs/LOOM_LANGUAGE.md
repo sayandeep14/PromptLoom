@@ -791,6 +791,8 @@ Use explicit `slug.Name` notation whenever ambiguity is possible.
 
 ### Migrating from v1 syntax
 
+`loom fmt --migrate` performs the rewrites below that are unambiguous and lists the ones that need your decision; see [`loom fmt`](LOOM_COMMAND.md#loom-fmt).
+
 | v1 | v2 |
 |---|---|
 | `persona:` | `persona :=` |
@@ -800,6 +802,7 @@ Use explicit `slug.Name` notation whenever ambiguity is possible.
 | `instructions +=` in a prompt with no parent | `instructions :=` (there is nothing to append to) |
 | `persona +=` (scalar) | no equivalent — replace the value with `:=` |
 | `constraints -=` | no equivalent — write the list you want; select parent items with `parent[0].constraints[1..3]` |
+| `+=` in a prompt that `use`s a block defining the same list | decide by hand: v1 added to the block's items, but in v2 the prompt's own list replaces them |
 
 ```
 # v1

@@ -487,8 +487,11 @@ func checkLegacyOperators(kind, name string, fields []ast.FieldOperation, parent
 		isScalar := ast.ScalarFields[f.FieldName]
 		switch f.Op {
 		case ast.OpAppend:
-			diags = append(diags, Diagnostic{Sev: Error, Pos: f.Pos,
-				Message: appendMessage(kind, name, f.FieldName, isScalar, parents)})
+			msg := appendMessage(kind, name, f.FieldName, isScalar, parents)
+			if migratable(kind, isScalar, parents) {
+				msg += migrateHint
+			}
+			diags = append(diags, Diagnostic{Sev: Error, Pos: f.Pos, Message: msg})
 		case ast.OpRemove:
 			if isScalar {
 				continue // reported by the dedicated scalar rule
@@ -503,11 +506,25 @@ func checkLegacyOperators(kind, name string, fields []ast.FieldOperation, parent
 				continue // the more specific "redefines inherited field" warning covers it
 			}
 			diags = append(diags, Diagnostic{Sev: Warning, Pos: f.Pos, Message: fmt.Sprintf(
-				"%s %q field %q uses ':' — v2 uses ':='. Change \"%s:\" to \"%s :=\"",
-				kind, name, f.FieldName, f.FieldName, f.FieldName)})
+				"%s %q field %q uses ':' — v2 uses ':='. Change \"%s:\" to \"%s :=\"%s",
+				kind, name, f.FieldName, f.FieldName, f.FieldName, migrateHint)})
 		}
 	}
 	return diags
+}
+
+const migrateHint = "\n  `loom fmt --migrate` rewrites this automatically."
+
+// migratable reports whether `loom fmt --migrate` can rewrite a `+=` of this shape on its own
+// (it still declines a few cases it cannot prove safe, and says so when it does).
+func migratable(kind string, isScalar bool, parents int) bool {
+	switch kind {
+	case "block", "overlay":
+		return !isScalar
+	case "prompt":
+		return parents == 0 || !isScalar
+	}
+	return false
 }
 
 func appendMessage(kind, name, field string, isScalar bool, parents int) string {

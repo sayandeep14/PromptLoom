@@ -1306,7 +1306,7 @@ Before committing. In a pre-commit hook. In CI with `--check` to fail on unforma
 **Syntax**
 
 ```
-loom fmt [--check]
+loom fmt [--check] [--migrate]
 ```
 
 **Flags**
@@ -1314,6 +1314,7 @@ loom fmt [--check]
 | Flag | Description |
 |---|---|
 | `--check` | Report unformatted files without modifying them. Exits 1 if any files would change. |
+| `--migrate` | Upgrade v1 syntax to v2 instead of formatting (see below). Combine with `--check` to preview. |
 
 **Examples**
 
@@ -1323,7 +1324,33 @@ loom fmt
 
 # CI check — fail if anything is unformatted
 loom fmt --check
+
+# Upgrade a v1 project to v2 syntax
+loom fmt --migrate
 ```
+
+**Migrating v1 projects (`--migrate`)**
+
+Since v2 the only field operator is `:=`. `loom fmt --migrate` rewrites everything that has one obvious v2 meaning:
+
+| v1 | becomes |
+|---|---|
+| `prompt A extends B {` | `prompt A inherits B {` |
+| `persona:` (bare colon) | `persona :=` |
+| `instructions +=` in a prompt with a parent | `instructions := from(parent[*]) and { … }` |
+| `constraints +=` in a block or overlay | `constraints :=` |
+| `instructions +=` in a prompt with no parent | `instructions :=` |
+
+Comments and layout of the rewritten files are kept, every result is parsed again before it is written, and a file that would lose anything is left untouched. Running it again changes nothing.
+
+Anything that has no mechanical equivalent is **listed with its file and line and left exactly as written**, so `loom inspect` keeps reporting it until you decide:
+
+- `-=` (v2 has no removal operator; write the list you want, or select parent items with `parent[0].field[1..3]`)
+- `+=` on a scalar field that is inherited (v2 replaces scalars; choose the final text)
+- `+=` in a prompt whose `use`d block also defines the same list — v1 added to the block's items, but in v2 a prompt that writes the list replaces them, so the choice is yours
+- `+=` inside a `variant` or `env` block, and a field declared twice in one body
+
+The command exits 1 while any of those remain (and, with `--check`, while any file still needs migrating), so it can gate a CI job during an upgrade.
 
 ---
 

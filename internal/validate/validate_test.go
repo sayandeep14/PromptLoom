@@ -770,3 +770,42 @@ prompt Dup {
 		t.Error("expected duplicate error, got none")
 	}
 }
+
+// The errors for v1 syntax point at the tool that fixes it — but only where it can.
+func TestLegacyOperatorMessagesMentionMigrate(t *testing.T) {
+	reg := buildReg(t, map[string]string{"a.loom": `prompt Base {
+  instructions :=
+    - a
+  persona :=
+    p
+}
+
+prompt Child inherits Base {
+  instructions +=
+    - b
+  persona +=
+    more
+  constraints:
+    - c
+}
+`})
+	diags := validate.Validate(reg, defaultCfg())
+	hint := "loom fmt --migrate"
+	var listHint, scalarHint, colonHint bool
+	for _, d := range diags {
+		switch {
+		case strings.Contains(d.Message, `"instructions"`) && strings.Contains(d.Message, "'+='"):
+			listHint = strings.Contains(d.Message, hint)
+		case strings.Contains(d.Message, `"persona"`) && strings.Contains(d.Message, "'+='"):
+			scalarHint = strings.Contains(d.Message, hint) // an inherited scalar cannot be migrated mechanically
+		case strings.Contains(d.Message, `"constraints"`) && strings.Contains(d.Message, "uses ':'"):
+			colonHint = strings.Contains(d.Message, hint)
+		}
+	}
+	if !listHint || !colonHint {
+		t.Errorf("list += (%v) and bare colon (%v) should mention `loom fmt --migrate`", listHint, colonHint)
+	}
+	if scalarHint {
+		t.Error("an inherited scalar += is not something --migrate can do; the message must not promise it")
+	}
+}
