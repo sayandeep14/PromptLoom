@@ -20,6 +20,7 @@ type Config struct {
 	ReadRPM      int      // per-IP read requests per minute
 	WriteRPM     int      // per-IP write requests per minute
 	TrustProxy   bool     // take the client IP from X-Forwarded-For
+	AutoMigrate  bool     // apply the (idempotent) schema on startup
 }
 
 // Load reads the configuration from the environment and validates it.
@@ -27,7 +28,8 @@ func Load() (*Config, error) {
 	c := &Config{
 		Port:         getenv("PORT", "8080"),
 		UploadSecret: os.Getenv("UPLOAD_SECRET"),
-		TrustProxy:   os.Getenv("TRUST_PROXY") == "1" || strings.EqualFold(os.Getenv("TRUST_PROXY"), "true"),
+		TrustProxy:   truthy(os.Getenv("TRUST_PROXY")),
+		AutoMigrate:  truthy(os.Getenv("AUTO_MIGRATE")),
 	}
 
 	for _, o := range strings.Split(os.Getenv("CORS_ORIGINS"), ",") {
@@ -59,6 +61,8 @@ func Load() (*Config, error) {
 	}
 	return c, nil
 }
+
+func truthy(v string) bool { return v == "1" || strings.EqualFold(v, "true") }
 
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {

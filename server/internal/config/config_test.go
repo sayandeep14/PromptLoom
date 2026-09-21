@@ -5,7 +5,7 @@ import "testing"
 func setEnv(t *testing.T, kv map[string]string) {
 	t.Helper()
 	for _, k := range []string{"PORT", "UPLOAD_SECRET", "CORS_ORIGINS", "MAX_BODY_BYTES",
-		"RATE_LIMIT_READ_PER_MIN", "RATE_LIMIT_WRITE_PER_MIN", "TRUST_PROXY"} {
+		"RATE_LIMIT_READ_PER_MIN", "RATE_LIMIT_WRITE_PER_MIN", "TRUST_PROXY", "AUTO_MIGRATE"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range kv {
@@ -56,5 +56,16 @@ func TestBadNumbers(t *testing.T) {
 		if _, err := Load(); err == nil {
 			t.Errorf("%v should fail", kv)
 		}
+	}
+}
+
+func TestAutoMigrate(t *testing.T) {
+	setEnv(t, nil)
+	if c, _ := Load(); c.AutoMigrate {
+		t.Error("AUTO_MIGRATE must default to off")
+	}
+	setEnv(t, map[string]string{"AUTO_MIGRATE": "1"})
+	if c, _ := Load(); !c.AutoMigrate {
+		t.Error("AUTO_MIGRATE=1 should enable it")
 	}
 }

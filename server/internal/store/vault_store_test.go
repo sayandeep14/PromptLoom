@@ -38,12 +38,11 @@ func setup(t *testing.T) context.Context {
 		t.Fatalf("refusing to run destructive tests against database %q (name must contain \"test\")", name)
 	}
 
-	schema, err := os.ReadFile("../db/schema.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Pool.Exec(ctx, string(schema)); err != nil {
-		t.Fatalf("apply schema: %v", err)
+	// Applying the schema twice also proves Migrate is idempotent.
+	for i := 0; i < 2; i++ {
+		if err := db.Migrate(ctx); err != nil {
+			t.Fatalf("migrate (run %d): %v", i+1, err)
+		}
 	}
 	if _, err := db.Pool.Exec(ctx, `TRUNCATE vault_files, vaults CASCADE`); err != nil {
 		t.Fatal(err)

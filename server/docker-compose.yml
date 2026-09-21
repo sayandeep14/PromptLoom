@@ -1,0 +1,50 @@
+# PromptLoom registry: server + PostgreSQL.
+#
+#   cp .env.example .env      # set POSTGRES_PASSWORD and UPLOAD_SECRET
+#   docker compose up -d --build
+#   curl http://localhost:8080/healthz
+#
+# Compose reads .env from this directory for the ${...} values below.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_DB: registry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry -d registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # No published port: the database is only reachable from the registry container.
+
+  registry:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://registry:${POSTGRES_PASSWORD}@db:5432/registry?sslmode=disable
+      AUTO_MIGRATE: "1"
+      UPLOAD_SECRET: ${UPLOAD_SECRET:?set UPLOAD_SECRET in .env (openssl rand -hex 32)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-8388608}
+      RATE_LIMIT_READ_PER_MIN: ${RATE_LIMIT_READ_PER_MIN:-120}
+      RATE_LIMIT_WRITE_PER_MIN: ${RATE_LIMIT_WRITE_PER_MIN:-10}
+    # Bound to localhost by default. To expose it, put a TLS reverse proxy in
+    # front (see README.md) or change this to "8080:8080" on a trusted network.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${HOST_PORT:-8080}:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pgdata:

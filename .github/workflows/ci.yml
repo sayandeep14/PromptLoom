@@ -58,6 +58,29 @@ jobs:
           cache-dependency-path: server/go.sum
       - run: go test -count=1 -v ./internal/store/...
 
+  registry-docker:
+    name: registry (Docker smoke test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: |
+          printf 'POSTGRES_PASSWORD=%s\nUPLOAD_SECRET=%s\nHOST_PORT=18080\n' \
+            "$(openssl rand -hex 12)" "$(openssl rand -hex 16)" > .env
+          docker compose up -d --build --wait --wait-timeout 120
+      - name: Health, auth and read paths
+        run: |
+          curl -fsS http://127.0.0.1:18080/healthz
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18080/api/v1/vaults -d '{}')" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/vaults)" = 200
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+      - run: docker compose down -v
+
   lumine:
     name: Lumine extension
     runs-on: ubuntu-latest

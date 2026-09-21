@@ -580,43 +580,16 @@ loom publish ./my-pack --secret "$UPLOAD_SECRET"
 
 ### Registry server (`server/`)
 
-A standalone Go HTTP service backed by PostgreSQL.
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/vaults` | — | List packs |
-| `GET` | `/api/v1/vaults/{slug}` | — | Pack metadata |
-| `GET` | `/api/v1/vaults/{slug}/bundle` | — | Full bundle (JSON) |
-| `POST` | `/api/v1/vaults` | `X-Upload-Secret` | Upload / replace a pack |
-| `DELETE` | `/api/v1/vaults/{slug}` | `X-Upload-Secret` | Delete a pack |
-| `GET` | `/healthz` | — | Health check |
+A small Go service backed by PostgreSQL. Self-hosting is one command:
 
 ```bash
 cd server
-psql "$DATABASE_URL" -f internal/db/schema.sql
-cp .env.example .env        # then edit it
-go run .
+cp .env.example .env        # set POSTGRES_PASSWORD and UPLOAD_SECRET
+docker compose up -d --build
+loom publish ./my-pack --registry http://localhost:8080 --secret "$UPLOAD_SECRET"
 ```
 
-**Configuration** (see `server/.env.example`):
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | — (required) | PostgreSQL connection URL |
-| `PORT` | `8080` | HTTP port |
-| `UPLOAD_SECRET` | unset | Secret for publish/delete, **min 16 chars**. If unset the registry is read-only |
-| `CORS_ORIGINS` | unset | Allowed browser origins; unset sends no CORS headers |
-| `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy so rate limits use `X-Forwarded-For` |
-| `MAX_BODY_BYTES` | `8388608` | Request body cap |
-| `RATE_LIMIT_READ_PER_MIN` / `RATE_LIMIT_WRITE_PER_MIN` | `120` / `10` | Per-IP limits |
-
-**Security behaviour**
-
-- **Fails closed.** With no `UPLOAD_SECRET`, `POST` and `DELETE` return `503`; they are never open.
-- The secret is compared in constant time and is case-sensitive; failed attempts count against the write rate limit.
-- Uploads are validated: slug, semantic version, UUID, file types, sizes, and file paths (no `..`, absolute paths, backslashes, or unusual characters).
-- Database errors are logged, never returned to clients.
-- `loom install` independently rejects unsafe paths and slugs, so a malicious registry cannot write outside the pack directory.
+Highlights: writes fail closed without `UPLOAD_SECRET`, per-IP rate limits, strict upload validation, non-root read-only container, self-applying schema. Configuration, TLS, backups, upgrades and the API are documented in [`server/README.md`](server/README.md).
 
 ---
 
@@ -798,12 +771,7 @@ Packages with unit tests include `parser`, `resolve` (including multi-parent), `
 
 ### Registry integration tests
 
-The registry's PostgreSQL tests are skipped unless `TEST_DATABASE_URL` points at a database whose name contains `test` (the tests wipe its tables):
-
-```bash
-docker run --rm -d --name loom-pg -p 55432:5432 -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=loom_test postgres:16
-cd server && TEST_DATABASE_URL='postgres://postgres:pw@localhost:55432/loom_test?sslmode=disable' go test ./...
-```
+The registry's PostgreSQL tests are skipped unless `TEST_DATABASE_URL` is set — see [`server/README.md`](server/README.md#tests).
 
 ### Contributing
 
@@ -822,6 +790,7 @@ cd server && TEST_DATABASE_URL='postgres://postgres:pw@localhost:55432/loom_test
 | [`docs/LOOM_LANGUAGE.md`](docs/LOOM_LANGUAGE.md) | Complete DSL reference — fields, inheritance, `from()`, packs, contracts |
 | [`docs/LOOM_COMMAND.md`](docs/LOOM_COMMAND.md) | Every CLI command with flags and examples |
 | [`docs/neovim-lsp.md`](docs/neovim-lsp.md) | Neovim LSP configuration |
+| [`server/README.md`](server/README.md) | Running the registry: Docker, TLS, backups, API |
 | [`loomlocker/DESIGN.md`](loomlocker/DESIGN.md) | LoomLocker architecture, crypto, and HTTP API |
 | [`Lumine/README.md`](Lumine/README.md) | VS Code extension features |
 | [`TRACKER.md`](TRACKER.md) | What is done, what is next, and what depends on what |

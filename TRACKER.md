@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–104 done; next PL-106)
+**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–105 done; next PL-106)
 
 ---
 
@@ -23,7 +23,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | Epic | Goal | Progress |
 |---|---|---|
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
-| **E1** Trust & Safety | Secure registry, tested core, working install path | 4 / 10 |
+| **E1** Trust & Safety | Secure registry, tested core, working install path | 5 / 10 |
 | **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 0 / 5 |
 | **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
@@ -73,7 +73,7 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-102 | Registry hardening: body size cap, per-IP rate limits, input validation (slug/version/paths/sizes), CORS off by default, server timeouts + graceful shutdown, generic 500s. Also client-side: `loom install` rejects unsafe paths/slugs | DONE | P0 | M | PL-101 |
 | PL-103 | Registry tests: handlers behind a `Store` interface (fake store), Postgres integration tests (schema, upsert/replace, atomicity, uniqueness, cascade), CI job with a Postgres service. Found + fixed: nil `tags` violated NOT NULL; file order was locale-dependent | DONE | P0 | M | PL-101 |
 | PL-104 | **Registry hosting decision: self-host first.** No built-in default URL; `loom install`/`publish` explain how to configure one; `[registry] url` in `loom.toml` now works; URL validated; upload secret never sent over plain HTTP to a remote host | DONE | P0 | S | — |
-| PL-105 | Dockerfile + `docker-compose.yml` (server + Postgres), auto-apply schema, deploy notes — this makes self-hosting (PL-104) a one-command job | TODO | P0 | M | PL-102, PL-104 |
+| PL-105 | Registry Docker deployment: multi-stage distroless image (20 MB, non-root, read-only), `docker-compose.yml` (server + Postgres, DB not published), self-applying idempotent schema (`AUTO_MIGRATE`, advisory-locked), `healthcheck` subcommand, CI smoke job, `server/README.md` (TLS, backup/restore, upgrade) | DONE | P0 | M | PL-102, PL-104 |
 | PL-106 | End-to-end tests over `testdata/valid` and `testdata/invalid` (currently empty): every validation rule has a passing and a failing fixture | TODO | P0 | L | PL-004 |
 | PL-107 | Unit tests for `loader`, `lock`, `installer` (conflict + lock paths), `deps` edge cases, `contract`, `audit`, `doctor` | TODO | P1 | L | PL-106 |
 | PL-108 | Migration path for old syntax: friendly, specific error when a file uses `+=`, `-=`, bare `:` or `extends`, pointing at the `:=` / `from()` fix (a `loom migrate` command was dropped as a design decision — re-open only if needed) | TODO | P1 | M | PL-106 |
@@ -167,7 +167,7 @@ Only start after E1 and E4 are done.
 ## Recommended sequence
 
 1. ~~PL-101 → PL-102 → PL-103, PL-104~~ — registry secured, tested, hosting decided (done).
-2. **PL-105** — Docker one-command registry (makes self-hosting easy).
+2. ~~PL-105~~ — Docker one-command registry (done).
 3. **PL-106 → PL-107 → PL-108** — test net, then friendly old-syntax errors.
 4. **PL-201 → PL-203** — bring Lumine in line with the language.
 5. **PL-303 + PL-305** — first tagged release.
@@ -188,6 +188,6 @@ Only start after E1 and E4 are done.
 
 ## Known risks
 
-- Self-hosting a registry is a manual step until PL-105 (Docker) lands, so `loom install` has no out-of-the-box source of packs.
+- No public registry exists; every team must self-host one (PL-105 makes that a single command). Revisit if adoption needs a shared public one.
 - Core packages are mostly untested (PL-106, PL-107); refactors are risky until they are.
 - Lumine and the Go parser can drift apart (PL-203 addresses this with shared fixtures).
