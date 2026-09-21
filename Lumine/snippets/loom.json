@@ -4,19 +4,19 @@
     "scope": "loom",
     "body": [
       "prompt ${1:PromptName} {",
-      "  summary:",
+      "  summary :=",
       "    ${2:Brief description.}",
       "",
-      "  persona:",
+      "  persona :=",
       "    ${3:You are a...}",
       "",
-      "  objective:",
+      "  objective :=",
       "    ${4:Describe the task.}",
       "",
-      "  constraints:",
+      "  constraints :=",
       "    - ${5:First constraint.}",
       "",
-      "  format:",
+      "  format :=",
       "    - ${6:Output section.}",
       "}"
     ],
@@ -54,7 +54,7 @@
     "scope": "loom",
     "body": [
       "block ${1:BlockName} {",
-      "  constraints:",
+      "  constraints :=",
       "    - ${2:First constraint.}",
       "}"
     ],
@@ -65,14 +65,12 @@
     "scope": "loom",
     "body": [
       "overlay ${1:OverlayName} {",
-      "  // Use := with from() to merge parent values (v2 style)",
+      "  // Blocks and overlays ADD their list items to the prompt they are applied to.",
       "  constraints :=",
-      "    from(parent[*]) and {",
-      "      - ${2:Additional constraint.}",
-      "    }",
+      "    - ${2:Additional constraint.}",
       "}"
     ],
-    "description": "New overlay declaration (v2 style)"
+    "description": "New overlay declaration"
   },
   "use block": {
     "prefix": "use",
@@ -102,6 +100,17 @@
       "  }"
     ],
     "description": "Named variant block"
+  },
+  "env block": {
+    "prefix": "env",
+    "scope": "loom",
+    "body": [
+      "  env ${1:prod} {",
+      "    ${2:constraints} :=",
+      "      - ${3:Environment-specific rule.}",
+      "  }"
+    ],
+    "description": "Environment block (applied with --env)"
   },
   "contract block": {
     "prefix": "contract",

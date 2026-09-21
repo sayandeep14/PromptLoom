@@ -1,12 +1,25 @@
 {
   "name": "lumine",
-  "displayName": "Lumine — PromptLoom DSL",
-  "description": "Syntax highlighting, IntelliSense, and diagnostics for .loom prompt files",
-  "version": "0.1.0",
+  "displayName": "Lumine \u2014 PromptLoom DSL",
+  "description": "Syntax highlighting, IntelliSense, diagnostics and v1\u2192v2 quick fixes for .loom prompt files",
+  "version": "0.2.0",
   "publisher": "sayandeepgiri",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Programming Languages", "Linters", "Formatters", "Snippets"],
-  "keywords": ["loom", "prompts", "llm", "ai", "dsl"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters",
+    "Snippets"
+  ],
+  "keywords": [
+    "loom",
+    "prompts",
+    "llm",
+    "ai",
+    "dsl"
+  ],
   "repository": "https://github.com/sayandeepgiri/lumine",
   "main": "./dist/extension.js",
   "activationEvents": [
@@ -17,12 +30,21 @@
     "languages": [
       {
         "id": "loom",
-        "aliases": ["Loom", "PromptLoom DSL"],
-        "extensions": [".prompt.loom", ".block.loom", ".overlay.loom", ".vars.loom", ".loom"],
+        "aliases": [
+          "Loom",
+          "PromptLoom DSL"
+        ],
+        "extensions": [
+          ".prompt.loom",
+          ".block.loom",
+          ".overlay.loom",
+          ".vars.loom",
+          ".loom"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/loom-mixed.svg",
-          "dark":  "./icons/loom-mixed.svg"
+          "dark": "./icons/loom-mixed.svg"
         }
       }
     ],
@@ -104,7 +126,11 @@
         },
         "loom.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Trace Language Server protocol communication"
         }
@@ -115,7 +141,9 @@
     "build": "node build.js",
     "watch": "node build.js --watch",
     "vscode:prepublish": "node build.js --minify",
-    "package": "vsce package"
+    "package": "vsce package",
+    "test": "node test/run.js",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

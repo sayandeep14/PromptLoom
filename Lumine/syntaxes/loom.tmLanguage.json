@@ -15,6 +15,8 @@
     { "include": "#from-expression" },
     { "include": "#from-and-keyword" },
     { "include": "#field-declaration" },
+    { "include": "#contract-key" },
+    { "include": "#legacy-operator" },
     { "include": "#variable-interpolation" },
     { "include": "#list-bullet" },
     { "include": "#braces" }
@@ -101,10 +103,29 @@
       "match": "\\band\\b(?=\\s*\\{)"
     },
     "field-declaration": {
-      "match": "^\\s+(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with|required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\\s*(:=|\\+=|-=|:)",
+      "comment": "v2: the only field operator is :=",
+      "match": "^\\s+(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with|required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\\s*(:=)",
       "captures": {
         "1": { "name": "support.type.field-name.loom" },
         "2": { "name": "keyword.operator.field.loom" }
+      }
+    },
+    "contract-key": {
+      "comment": "contract / capabilities keys legitimately use a colon",
+      "match": "^\\s+(required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\\s*(:)(?!=)",
+      "captures": {
+        "1": { "name": "support.type.field-name.loom" },
+        "2": { "name": "keyword.operator.field.loom" }
+      }
+    },
+    "legacy-operator": {
+      "comment": "v1 syntax, reported as an error/warning by the language server",
+      "match": "^\\s+(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with|required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\\s*(\\+=|-=)|^\\s+(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with)\\s*(:)(?!=)",
+      "captures": {
+        "1": { "name": "support.type.field-name.loom" },
+        "2": { "name": "invalid.deprecated.operator.loom" },
+        "3": { "name": "support.type.field-name.loom" },
+        "4": { "name": "invalid.deprecated.operator.loom" }
       }
     },
     "variable-interpolation": {

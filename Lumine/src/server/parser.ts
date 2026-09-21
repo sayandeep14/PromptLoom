@@ -38,6 +38,19 @@ export interface VariantBlock {
   range: Range;
 }
 
+/** `env <name> { ... }` — environment-specific field overrides (same shape as a variant). */
+export interface EnvBlock {
+  name: string;
+  nameRange: Range;
+  fields: FieldOp[];
+  range: Range;
+}
+
+/** The v1 keyword `extends`, recorded so it can be reported (v2 uses `inherits`). */
+export interface LegacyExtends {
+  range: Range;
+}
+
 export interface ContractBlock {
   fields: FieldOp[];
   range: Range;
@@ -63,6 +76,9 @@ export interface LoomNode {
   fields: FieldOp[];
   vars: VarEntry[];
   variants: VariantBlock[];
+  envBlocks: EnvBlock[];
+  /** Set when the declaration used `extends` instead of `inherits` */
+  legacyExtends?: LegacyExtends;
   contract?: ContractBlock;
   capabilities?: CapabilitiesBlock;
   range: Range;
@@ -126,7 +142,7 @@ function finishField(fc: FieldCollector, lastLine: number, lastLineLen: number):
 
 // ─── Regexes ──────────────────────────────────────────────────────────────────
 
-const PROMPT_RE      = /^prompt\s+([a-zA-Z0-9_-]+)(?:\s+inherits\s+((?:[a-zA-Z0-9_./-]+)(?:\s*,\s*[a-zA-Z0-9_./-]+)*))?\s*\{?/;
+const PROMPT_RE      = /^prompt\s+([a-zA-Z0-9_-]+)(?:\s+(inherits|extends)\s+((?:[a-zA-Z0-9_./-]+)(?:\s*,\s*[a-zA-Z0-9_./-]+)*))?\s*\{?/;
 const BLOCK_RE       = /^block\s+([a-zA-Z0-9_-]+)\s*\{?/;
 const OVERLAY_RE     = /^overlay\s+([a-zA-Z0-9_-]+)\s*\{?/;
 
@@ -134,6 +150,7 @@ const USE_RE         = /^(\s+)use\s+([a-zA-Z0-9_./-]+)/;
 const VAR_RE         = /^(\s+)var\s+([a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"/;
 const SLOT_RE        = /^(\s+)slot\s+([a-zA-Z0-9_-]+)(?:\s*\{([^}]*)\})?/;
 const VARIANT_RE     = /^(\s+)variant\s+([a-zA-Z0-9_-]+)/;
+const ENV_RE         = /^(\s+)env\s+([a-zA-Z0-9_-]+)/;
 const CONTRACT_RE    = /^(\s+)contract\s*\{?/;
 const CAPABILITIES_RE = /^(\s+)capabilities\s*\{?/;
 const FIELD_OP_RE    = /^(\s+)(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with|required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\s*(:=|\+=|-=|:)/;
@@ -321,6 +338,24 @@ function parseNodeBody(lines: string[], startLine: number, node: LoomNode, error
       continue;
     }
 
+    // env block (same body shape as a variant)
+    const envm = line.match(ENV_RE);
+    if (envm) {
+      const eName = envm[2];
+      const eNameIdx = line.indexOf(eName, line.indexOf('env') + 3);
+      const env: EnvBlock = {
+        name: eName,
+        nameRange: rng(i, eNameIdx, i, eNameIdx + eName.length),
+        fields: [],
+        range: rng(i, 0, i, line.length),
+      };
+      const endLine = parseFieldsOnly(lines, i + 1, 2, env.fields, errors);
+      env.range = rng(i, 0, endLine, lines[endLine]?.length ?? 0);
+      node.envBlocks.push(env);
+      i = endLine + 1;
+      continue;
+    }
+
     // contract block
     const cm = line.match(CONTRACT_RE);
     if (cm) {
@@ -387,8 +422,9 @@ export function parseLoomDocument(text: string, _uri: string): ParseResult {
     if (!pm && !bm && !om) { i++; continue; }
 
     const kind: LoomNode['kind'] = pm ? 'prompt' : bm ? 'block' : 'overlay';
-    const rawName = pm ? pm[1] : bm ? bm![1] : om![1];
-    const rawParentsStr = pm ? pm[2] : undefined;
+    const rawName = pm ? pm[1] : bm ? (bm as RegExpMatchArray)[1] : (om as RegExpMatchArray)[1];
+    const parentsKeyword = pm ? pm[2] : undefined;      // "inherits" | "extends"
+    const rawParentsStr = pm ? pm[3] : undefined;
 
     const nameIdx = line.indexOf(rawName);
 
@@ -430,9 +466,15 @@ export function parseLoomDocument(text: string, _uri: string): ParseResult {
       fields: [],
       vars: [],
       variants: [],
+      envBlocks: [],
       range: rng(i, 0, i, line.length),    // updated below
       bodyRange: rng(bodyStartLine, 0, bodyStartLine, 0),
     };
+
+    if (parentsKeyword === 'extends') {
+      const kwIdx = line.indexOf('extends', nameIdx + rawName.length);
+      if (kwIdx >= 0) node.legacyExtends = { range: rng(i, kwIdx, i, kwIdx + 'extends'.length) };
+    }
 
     const closingLine = parseNodeBody(lines, bodyStartLine, node, errors);
     node.range = rng(i, 0, closingLine, lines[closingLine]?.length ?? 0);

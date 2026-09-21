@@ -321,7 +321,7 @@ prompt CodeAssistant inherits BaseEngineer {
 
 Activate at the CLI: `loom weave CodeAssistant --variant strict`
 
-Variants only affect the fields they declare; all other resolved fields are unchanged.
+Variants only affect the fields they declare; all other resolved fields are unchanged. Inside a variant (and inside an `env` block) `:=` replaces the field, and `from(parent[N])` / `from(parent[*]) and { … }` are evaluated against the prompt's parents — note that this takes the **parent's** items, not the prompt's own.
 
 ---
 

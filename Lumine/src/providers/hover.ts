@@ -36,21 +36,31 @@ const FIELD_DOCS: Record<string, { type: 'scalar' | 'list'; desc: string }> = {
 };
 
 const OP_DOCS: Record<string, { title: string; body: string }> = {
-  ':': {
-    title: '`:` — define',
-    body:  'Sets the field value. When a parent also defines this field, this is an advisory set — prefer `:=` to make an explicit override.',
-  },
   ':=': {
-    title: '`:=` — override',
-    body:  'Unconditionally replaces any inherited value. Use this when a hard override is intended.',
+    title: '`:=` — set',
+    body:  'The only field operator in v2. Sets the field; an inherited value is replaced.\n\n' +
+           'Extend a parent\'s **list** with `from(parent[0]) and { - item }`. ' +
+           'In a **block** or **overlay**, list items are *added* to the prompt automatically.',
+  },
+  ':': {
+    title: '`:` — key',
+    body:  'In `contract` and `capabilities` blocks a key is written `key:` followed by a list.\n\n' +
+           '> ⚠️ On any other field this is v1 syntax — write `field :=` instead. ' +
+           'Use the quick fix (**Ctrl/Cmd+.**) to convert it.',
   },
   '+=': {
-    title: '`+=` — append',
-    body:  'For **list fields**: extends the inherited list with new items.\nFor **scalar fields**: appends text to the inherited value separated by a blank line.',
+    title: '`+=` — removed in v2',
+    body:  '> ⛔ `+=` is not valid in v2.\n\n' +
+           '- child prompt: `field :=` then `from(parent[0]) and { … }`\n' +
+           '- block / overlay: `field :=` (list items are added automatically)\n' +
+           '- prompt without a parent: `field :=`\n\n' +
+           'Use the quick fix (**Ctrl/Cmd+.**) for the mechanical cases.',
   },
   '-=': {
-    title: '`-=` — remove',
-    body:  'For **list fields only**: removes items matching the provided strings from the inherited list.\n\n> ⚠️ Not valid on scalar fields (`summary`, `persona`, `context`, `objective`, `notes`).',
+    title: '`-=` — removed in v2',
+    body:  '> ⛔ `-=` is not valid in v2 and has no direct replacement.\n\n' +
+           'Write the list you want with `:=`. To keep only some parent items, select them: ' +
+           '`parent[0].constraints[1..3]`.',
   },
 };
 
@@ -108,7 +118,7 @@ function fieldHover(fieldName: string, op: string): Hover {
   const opDoc = OP_DOCS[op];
   const lines = [
     `**\`${fieldName}\`** *(${info.type} field)*`,
-    `Operator: \`${op}\` — ${opDoc?.title.split('—')[1].trim() ?? op}`,
+    `Operator: \`${op}\` — ${opDoc?.title.split('—')[1]?.trim() ?? op}`,
     '',
     info.desc,
   ];

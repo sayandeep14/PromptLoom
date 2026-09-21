@@ -45,11 +45,11 @@ const CAPABILITIES_FIELDS = [
   { name: 'forbidden', doc: 'Prohibited LLM capabilities.' },
 ] as const;
 
+// v2 has exactly one field operator. contract / capabilities keys are the exception:
+// they are written `key:` followed by a list.
 const OP_DETAIL: Record<string, string> = {
-  ':':  'define — set the field value',
-  ':=': 'override — unconditionally replace any inherited value',
-  '+=': '⚠ deprecated — use := from(parent[*]) and { ... } instead',
-  '-=': '⚠ deprecated — no direct v2 replacement',
+  ':=': 'set the field (replaces any inherited value; use from(parent[..]) to extend)',
+  ':':  'key — items follow on the next lines',
 };
 
 // ─── Context detection ────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ function getEnclosingContext(lines: string[], lineIdx: number, charIdx: number):
           const before = text.slice(0, j).trimEnd();
           if (/\bcontract\s*$/.test(before))                      return 'contract-body';
           if (/\bcapabilities\s*$/.test(before))                  return 'capabilities-body';
-          if (/\bvariant\s+[a-zA-Z0-9_-]+\s*$/.test(before))     return 'variant-body';
+          if (/\b(variant|env)\s+[a-zA-Z0-9_-]+\s*$/.test(before)) return 'variant-body';
           if (/^(prompt|block|overlay)\s+/.test(before.trimStart())) return 'node-body';
           return 'node-body';
         }
@@ -189,11 +189,11 @@ function variantBodyCompletions(): CompletionItem[] {
 }
 
 function contractFieldCompletions(): CompletionItem[] {
-  return fieldItems(CONTRACT_FIELDS, [':', ':=', '+=', '-='], '- $0');
+  return fieldItems(CONTRACT_FIELDS, [':'], '- $0');
 }
 
 function capabilitiesFieldCompletions(): CompletionItem[] {
-  return fieldItems(CAPABILITIES_FIELDS, [':', ':=', '+=', '-='], '- $0');
+  return fieldItems(CAPABILITIES_FIELDS, [':'], '- $0');
 }
 
 function promptNameCompletions(registry: LoomRegistry): CompletionItem[] {

@@ -192,8 +192,9 @@ export function validateDocument(
     }
 
     // ── 6. -=  on scalar field ────────────────────────────────────────────
-    checkScalarRemove(node.fields, diags);
-    for (const v of node.variants) checkScalarRemove(v.fields, diags);
+    checkScalarRemove(node.kind, node.name, node.fields, diags);
+    for (const v of node.variants) checkScalarRemove('variant', v.name, v.fields, diags);
+    for (const e of node.envBlocks) checkScalarRemove('env', e.name, e.fields, diags);
 
     // ── 7. Duplicate var/slot names within a node ─────────────────────────
     const seenVars = new Map<string, number>();
@@ -216,20 +217,144 @@ export function validateDocument(
   // ── 9. Unknown field names (scans raw text for field-like lines) ─────────
   checkUnknownFields(text, nodes, diags);
 
-  // ── 10. Warning diagnostics ───────────────────────────────────────────────
+  // ── 10. v1 syntax: +=  -=  bare ':'  extends ─────────────────────────────
+  checkLegacySyntax(nodes, text, registry, diags);
+
+  // ── 11. Warning diagnostics ───────────────────────────────────────────────
   validateWarnings(nodes, registry, config, diags);
 
   return diags;
 }
 
+// ─── v1 syntax ────────────────────────────────────────────────────────────────
+// v2 has exactly ONE field operator, ':='. The messages below match `loom inspect`
+// (internal/validate) word for word, so editor and CLI never disagree.
+
+/** Diagnostic codes, also used by the quick fixes. */
+export const LEGACY_CODES = {
+  append:  'legacy-append',
+  remove:  'legacy-remove',
+  colon:   'legacy-colon',
+  extends: 'legacy-extends',
+} as const;
+
+type BodyKind = 'prompt' | 'block' | 'overlay' | 'variant' | 'env';
+
+function appendMessage(kind: BodyKind, name: string, field: string, isScalar: boolean, parents: number): string {
+  const head = `${kind} "${name}" field "${field}": '+=' is not valid in v2 (the only operator is ':=').`;
+  if (kind === 'variant' || kind === 'env') {
+    if (isScalar) {
+      return `${head}\n  A scalar field cannot be appended to; replace its value with ':=' and write the full text.`;
+    }
+    if (parents === 0) {
+      return `${head}\n  Write the complete list for this ${kind} with ':=':\n    ${field} :=\n      - your item`;
+    }
+    return `${head}\n  Write the complete list with ':=', or start from the parent's list ` +
+      `(note: this takes the PARENT's items, not this prompt's own):\n    ${field} :=\n      from(parent[0]) and {\n        - your item\n      }`;
+  }
+  if (kind !== 'prompt') {
+    if (isScalar) {
+      return `${head}\n  A scalar field cannot be appended to; replace its value with ':=' and write the full text.`;
+    }
+    return `${head}\n  Blocks and overlays already ADD their list items to the prompt, so write:\n    ${field} :=\n      - your item`;
+  }
+  if (isScalar) {
+    return `${head}\n  A scalar field cannot be appended to; replace its value with ':=' and write the full text\n` +
+      `  (or copy the parent's with  ${field} :=\n    from(parent[0])  and edit from there).`;
+  }
+  if (parents === 0) {
+    return `${head}\n  This prompt has no parent to append to. Write the whole list with ':=':\n    ${field} :=\n      - your item`;
+  }
+  const src = parents > 1 ? 'parent[*]' : 'parent[0]';
+  const note = parents > 1 ? ' (use from(parent[N]) to take just one parent\'s items)' : '';
+  return `${head}\n  To extend the inherited list, write:${note}\n    ${field} :=\n      from(${src}) and {\n        - your item\n      }`;
+}
+
+function checkLegacyFields(
+  kind: BodyKind,
+  name: string,
+  fields: FieldOp[],
+  parents: number,
+  inherited: Set<string>,
+  diags: Diagnostic[],
+): void {
+  for (const f of fields) {
+    if (f.fieldName === 'tags') continue; // tags use their own inline syntax
+    const isScalar = SCALAR_FIELDS.has(f.fieldName);
+    if (f.op === '+=') {
+      diags.push({ ...mkError(f.nameRange, appendMessage(kind, name, f.fieldName, isScalar, parents)), code: LEGACY_CODES.append });
+    } else if (f.op === '-=') {
+      if (isScalar) continue; // reported by the dedicated scalar rule
+      diags.push({
+        ...mkError(f.nameRange,
+          `${kind} "${name}" field "${f.fieldName}": '-=' is not valid in v2 and has no direct replacement.\n` +
+          `  Write the list you want with ':=' instead. To keep only some parent items, select them:\n` +
+          `    ${f.fieldName} :=\n      parent[0].${f.fieldName}[1..3] and {\n        - an extra item\n      }`),
+        code: LEGACY_CODES.remove,
+      });
+    } else if (f.op === ':') {
+      const message = inherited.has(f.fieldName)
+        ? `${kind} "${name}" redefines inherited field "${f.fieldName}" with ':' instead of ':=' — use an explicit operator to clarify intent`
+        : `${kind} "${name}" field "${f.fieldName}" uses ':' — v2 uses ':='. Change "${f.fieldName}:" to "${f.fieldName} :="`;
+      diags.push({ ...mkWarning(f.nameRange, message), code: LEGACY_CODES.colon });
+    }
+  }
+}
+
+/** Field names defined by any ancestor. Parents may live in this file OR in another one. */
+function ancestorFieldNames(node: LoomNode, registry: LoomRegistry, inFile: Map<string, LoomNode>): Set<string> {
+  const out = new Set<string>();
+  if (node.kind !== 'prompt') return out;
+  const seen = new Set<string>([node.name]);
+  const queue = [...node.parents];
+  while (queue.length > 0) {
+    const name = queue.shift()!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const local = localNameOf(name);
+    const found =
+      inFile.get(name) ?? registry.lookupPrompt(name)?.node ??
+      (local ? inFile.get(local) ?? registry.lookupPrompt(local)?.node : undefined);
+    if (!found || found.kind !== 'prompt') continue;
+    for (const f of found.fields) out.add(f.fieldName);
+    queue.push(...found.parents);
+  }
+  return out;
+}
+
+function checkLegacySyntax(nodes: LoomNode[], text: string, registry: LoomRegistry, diags: Diagnostic[]): void {
+  const inFile = new Map<string, LoomNode>();
+  for (const n of nodes) if (!inFile.has(n.name)) inFile.set(n.name, n);
+  const lines = text.split(/\r?\n/);
+
+  for (const node of nodes) {
+    if (node.legacyExtends) {
+      const declLine = (lines[node.legacyExtends.range.start.line] ?? '').trim();
+      diags.push({
+        ...mkError(
+          node.legacyExtends.range,
+          `'extends' is not valid — use 'inherits': "${declLine.replace('extends', 'inherits')}"`,
+        ),
+        code: LEGACY_CODES.extends,
+      });
+    }
+    const parents = node.parents.length;
+    const inherited = ancestorFieldNames(node, registry, inFile);
+    checkLegacyFields(node.kind, node.name, node.fields, parents, inherited, diags);
+    for (const v of node.variants) checkLegacyFields('variant', v.name, v.fields, parents, new Set(), diags);
+    for (const e of node.envBlocks) checkLegacyFields('env', e.name, e.fields, parents, new Set(), diags);
+    // contract / capabilities blocks legitimately use `key:` — never checked here.
+  }
+}
+
 // ─── Sub-checks ───────────────────────────────────────────────────────────────
 
-function checkScalarRemove(fields: FieldOp[], diags: Diagnostic[]): void {
+function checkScalarRemove(kind: string, name: string, fields: FieldOp[], diags: Diagnostic[]): void {
   for (const f of fields) {
     if (f.op === '-=' && SCALAR_FIELDS.has(f.fieldName)) {
       diags.push(mkError(
         f.nameRange,
-        `"-=" operator is not allowed on scalar field "${f.fieldName}" — only list fields support remove`,
+        `${kind} "${name}": operator '-=' is not supported on scalar field "${f.fieldName}"`,
       ));
     }
   }
@@ -394,41 +519,6 @@ function validateWarnings(
         diags.push(mkWarning(
           node.nameRange,
           `Inheritance depth ${depth} exceeds max (${vc.max_inheritance_depth})`,
-        ));
-      }
-    }
-
-    // ── Ambiguous `:` on inherited field ──────────────────────────────────
-    if (node.parents.length > 0) {
-      // Collect union of field names from all parents
-      const parentFields = new Set<string>();
-      for (const parentName of node.parents) {
-        const parentEntry = registry.lookupPrompt(parentName);
-        if (parentEntry) {
-          for (const f of parentEntry.node.fields) parentFields.add(f.fieldName);
-        }
-      }
-      for (const field of node.fields) {
-        if (field.op === ':' && parentFields.has(field.fieldName)) {
-          diags.push(mkWarning(
-            field.nameRange,
-            `Using ":" on inherited field "${field.fieldName}" — use ":=" to override`,
-          ));
-        }
-      }
-    }
-
-    // ── Check #11: deprecated += / -= operators ───────────────────────────
-    for (const field of node.fields) {
-      if (field.op === '+=') {
-        diags.push(mkWarning(
-          field.nameRange,
-          `'+=' is deprecated in v2 — use ':= from(parent[*]) and { ... }' instead`,
-        ));
-      } else if (field.op === '-=') {
-        diags.push(mkWarning(
-          field.nameRange,
-          `'-=' is deprecated in v2 and has no direct replacement`,
         ));
       }
     }

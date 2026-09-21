@@ -13,6 +13,8 @@ import {
   Range,
   DidChangeWatchedFilesNotification,
   FileChangeType,
+  CodeAction,
+  CodeActionKind,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as fs from 'fs';
@@ -33,7 +35,8 @@ import { getCompletions }      from '../providers/completion';
 import { getHover }            from '../providers/hover';
 import { getDefinition }       from '../providers/definition';
 import { getReferences }       from '../providers/references';
-import { formatNodes }         from './formatter';
+import { formatText }          from './formatter';
+import { computeQuickFixes, fixAllEdits } from './quickfix';
 import { getTomlCompletions, getTomlHover } from '../providers/toml';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -66,6 +69,9 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       definitionProvider: true,
       referencesProvider: true,
       documentFormattingProvider: true,
+      codeActionProvider: {
+        codeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.SourceFixAll],
+      },
     },
   };
 });
@@ -224,23 +230,55 @@ connection.onReferences(params => getReferences(params, documents, registry));
 
 connection.onDocumentFormatting((params): TextEdit[] => {
   const doc = documents.get(params.textDocument.uri);
-  if (!doc || doc.uri.endsWith('.vars.loom')) return [];
+  if (!doc || doc.uri.endsWith('.vars.loom') || doc.uri.endsWith('loom.toml')) return [];
 
   const text = doc.getText();
-  const { nodes, errors } = parseLoomDocument(text, doc.uri);
-  if (errors.length > 0) return [];
-
-  const formatted = formatNodes(nodes);
+  const formatted = formatText(text);
   if (formatted === text) return [];
 
   const lastLine = doc.lineCount - 1;
-  const lastChar = doc.getText().split('\n').pop()?.length ?? 0;
+  const lastChar = text.split('\n').pop()?.length ?? 0;
   const fullRange: Range = {
     start: { line: 0, character: 0 },
     end:   { line: lastLine, character: lastChar },
   };
 
   return [TextEdit.replace(fullRange, formatted)];
+});
+
+// ─── Code actions (v1 -> v2 quick fixes) ─────────────────────────────────────
+
+connection.onCodeAction((params): CodeAction[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || doc.uri.endsWith('.vars.loom') || doc.uri.endsWith('loom.toml')) return [];
+
+  const fixes = computeQuickFixes(doc.getText(), parseLoomDocument(doc.getText(), doc.uri).nodes);
+  if (fixes.length === 0) return [];
+
+  const overlaps = (a: Range, b: Range) =>
+    !(a.end.line < b.start.line || b.end.line < a.start.line);
+
+  const actions: CodeAction[] = [];
+  for (const fix of fixes) {
+    if (!overlaps(fix.anchor, params.range)) continue;
+    const diagnostics = params.context.diagnostics.filter(d => d.code === fix.code && overlaps(d.range, fix.anchor));
+    actions.push({
+      title: fix.title,
+      kind: CodeActionKind.QuickFix,
+      diagnostics,
+      isPreferred: true,
+      edit: { changes: { [doc.uri]: fix.edits } },
+    });
+  }
+
+  if (fixes.length > 1 || actions.length > 0) {
+    actions.push({
+      title: `Fix all v1 syntax in this file (${fixes.length})`,
+      kind: CodeActionKind.SourceFixAll,
+      edit: { changes: { [doc.uri]: fixAllEdits(fixes) } },
+    });
+  }
+  return actions;
 });
 
 // ─── Document Symbols ─────────────────────────────────────────────────────────
@@ -279,6 +317,11 @@ function nodeToSymbol(node: LoomNode): DocumentSymbol {
       s.children = v.fields.map(fieldToSymbol);
       return s;
     }),
+    ...node.envBlocks.map(e => {
+      const s = DocumentSymbol.create(`env ${e.name}`, '', SymbolKind.EnumMember, e.range, e.nameRange);
+      s.children = e.fields.map(fieldToSymbol);
+      return s;
+    }),
   ];
 
   if (node.contract) {
@@ -299,7 +342,7 @@ function nodeToSymbol(node: LoomNode): DocumentSymbol {
 }
 
 function fieldToSymbol(f: FieldOp): DocumentSymbol {
-  return DocumentSymbol.create(`${f.fieldName}${f.op}`, '', SymbolKind.Field, f.range, f.nameRange);
+  return DocumentSymbol.create(`${f.fieldName} ${f.op}`, '', SymbolKind.Field, f.range, f.nameRange);
 }
 
 function varToSymbol(v: VarEntry): DocumentSymbol {

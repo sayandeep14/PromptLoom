@@ -8,13 +8,13 @@ Full IDE support for the [Loom](https://github.com/sayandeepgiri/loom) prompt-en
 
 ### Syntax Highlighting
 
-Semantic color coding for all Loom constructs: `prompt`, `block`, `overlay` declarations, field operators (`:` `:=` `+=` `-=`), `{{ variable }}` tokens, list bullets, and sub-blocks (`variant`, `contract`, `capabilities`).
+Semantic color coding for all Loom constructs: `prompt`, `block`, `overlay` declarations, the field operator `:=` (legacy `+=`, `-=` and a bare `:` are highlighted as deprecated), `{{ variable }}` tokens, list bullets, and sub-blocks (`variant`, `contract`, `capabilities`).
 
 ### IntelliSense Completions
 
 - **Top-level keywords** — `prompt`, `block`, `overlay` with snippet bodies
-- **Body keywords** — `use`, `var`, `slot`, `variant`, `contract`, `capabilities`
-- **All field names** with each valid operator (`summary:`, `instructions+=`, etc.)
+- **Body keywords** — `use`, `var`, `slot`, `variant`, `env`, `contract`, `capabilities`
+- **All field names** with the one v2 operator (`summary :=`, `instructions :=`, …); `contract` / `capabilities` keys complete as `key:`
 - **Cross-file prompt names** after `inherits`
 - **Cross-file block names** after `use`
 - **Variable names** inside `{{ }}` tokens — local and global
@@ -23,8 +23,8 @@ Semantic color coding for all Loom constructs: `prompt`, `block`, `overlay` decl
 ### Hover Documentation
 
 Hover over any token to see:
-- Field descriptions and which operators are valid
-- Operator semantics (define / override / append / remove)
+- Field descriptions
+- The `:=` operator, and migration advice when you hover a legacy `+=`, `-=` or `:`
 - Prompt details: parent, fields defined, which prompts inherit it
 - Block details: fields, which prompts use it
 - Variable details: type (var/slot), default value, required status
@@ -38,11 +38,15 @@ Hover over any token to see:
 | Unknown parent prompt | `inherits NonExistent` |
 | Unknown block reference | `use NonExistent` |
 | Inheritance cycle | `A → B → A` |
-| Invalid field name | `typo:` |
+| Invalid field name | `typo :=` |
+| **`+=` or `-=`** (v1 syntax, removed in v2) | `instructions +=` — the message prints the exact v2 rewrite |
 | `-=` on scalar field | `summary -=` |
+| **`extends`** (v1 keyword) | `prompt B extends A` — use `inherits` |
 | Duplicate var/slot name | Declaring the same name twice |
 | Duplicate prompt/block name | Same name in multiple files |
 | Undefined `{{ variable }}` | Token with no matching declaration |
+
+The same rules apply inside `block`, `overlay`, `variant` and `env` bodies. `contract` and `capabilities` keys (`required_sections:`, `allowed:`, …) legitimately use a colon and are never flagged. Messages match `loom inspect` word for word.
 
 **Warnings** (yellow squiggles, configurable via `loom.toml`):
 | Check | Config key |
@@ -52,7 +56,7 @@ Hover over any token to see:
 | Missing `contract` block | `require_contract = true` |
 | Empty `context` field | `warn_on_empty_context = true` |
 | Inheritance chain too deep | `warn_on_deep_inheritance = true` |
-| Ambiguous `:` on inherited field | always |
+| **Bare `:` instead of `:=`** | `persona:` — use `persona :=` |
 | Block uses undeclared variable | always |
 | Slot with no required/default | always |
 
@@ -62,13 +66,30 @@ Hover over any token to see:
 - **Find All References** (`Shift+F12`) — find every `inherits`, `use`, and `{{ }}` reference across the workspace
 - **Document Symbols** — Outline panel shows all prompts, blocks, overlays, vars, fields, and variants in the current file
 
+### Quick Fixes (v1 → v2)
+
+Press **Ctrl/Cmd+.** on a v1-syntax diagnostic:
+
+| Diagnostic | Fix |
+|---|---|
+| `persona:` | `persona :=` |
+| `prompt B extends A` | `prompt B inherits A` |
+| `instructions +=` in a child prompt | `instructions :=` + `from(parent[0]) and { … }` (or `parent[*]` with several parents) |
+| `constraints +=` in a block/overlay, or in a prompt without a parent | `constraints :=` |
+
+**Fix all v1 syntax in this file** applies every fix at once (also available as the `source.fixAll` code action).
+
+No automatic fix is offered where the meaning cannot be preserved — `-=`, `+=` on a scalar field, `+=` on `format`, and `+=` inside `variant`/`env` blocks. The diagnostic's message explains the manual rewrite.
+
 ### Auto-Formatter
 
-**Format Document** (`Shift+Alt+F`) produces canonical Loom output matching `loom fmt`:
-- Body elements in canonical order: vars → use → fields → variants → contract → capabilities
-- Consistent 2-space / 4-space indentation
-- Blank lines between element groups, no trailing blank before `}`
+**Format Document** (`Shift+Alt+F`) normalises whitespace only, so it can never lose content:
+- trailing whitespace removed, tabs become two spaces, blank lines collapsed
+- operator spacing: `persona:=` → `persona :=`
+- comments, `env` blocks, `tags`, all parents of `inherits A, B`, and the order of your body elements are left exactly as written
 - Enable **Format on Save** via `loom.formatOnSave`
+
+> The formatter no longer reorders body elements. Earlier versions rebuilt the file from the parse tree, which deleted comments, `env` blocks and every parent after the first.
 
 ### CLI Commands
 
@@ -132,6 +153,19 @@ Distinct icons in the File Explorer for each Loom file type (requires activating
 ## `loom.toml` Support
 
 Lumine provides completions and hover documentation when editing `loom.toml`. Type `[` to get section header completions, then start a new line inside a section to see all available keys with their types, defaults, and descriptions.
+
+---
+
+## Development
+
+```bash
+npm install
+npm run build        # bundle the extension and the language server
+npm run typecheck    # tsc over src/ and test/
+npm test             # unit tests (Node's built-in runner)
+```
+
+The tests also run the extension over the fixtures in the repository's `testdata/` directory — the same ones the Go CLI is tested with — so the editor and `loom inspect` cannot drift apart. If a Go toolchain is available, one test builds `loom` and checks that quick-fixed output passes `loom inspect`.
 
 ---
 

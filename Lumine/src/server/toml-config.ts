@@ -84,7 +84,7 @@ export function parseToml(text: string): LoomConfig {
     const rawVal = line.slice(eqIdx + 1).trim();
     const strVal = rawVal.replace(/^"(.*)"$/, '$1'); // strip quotes
 
-    const v = cfg.validation as Record<string, unknown>;
+    const v = cfg.validation as unknown as Record<string, unknown>;
 
     switch (key) {
       case 'require_objective':

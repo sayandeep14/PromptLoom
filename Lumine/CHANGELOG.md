@@ -4,6 +4,30 @@ All notable changes to Lumine are documented here.
 
 ---
 
+## [0.2.0] — 2026-09-21
+
+Lumine now speaks **v2 only**: `:=` is the one field operator, matching `loom inspect`.
+
+### Added
+- **Quick fixes** (Ctrl/Cmd+.) and a *Fix all v1 syntax* code action: bare `:` → `:=`, `extends` → `inherits`, `+=` in a child prompt → `:= from(parent[0]) and { … }`, `+=` in blocks/overlays/parentless prompts → `:=`
+- `env` blocks are parsed (their fields were previously mis-attributed to the prompt) and appear in the Outline
+- `env` snippet; `env` bodies get field completions
+- Test suite (`npm test`) including a parity check against the Go fixtures in `testdata/`, and `npm run typecheck`
+
+### Changed
+- `+=` and `-=` are now **errors** whose message prints the exact v2 rewrite (previously "deprecated" warnings); `extends` is an error; a bare `:` is a warning with the replacement
+- The checks also cover `block`, `overlay`, `variant` and `env` bodies; `contract`/`capabilities` keys keep their colon and are never flagged
+- Inherited-field detection now finds parents defined in the **same file** and in ancestors, not just direct parents in other files
+- Completions offer only `:=` (and `key:` inside `contract`/`capabilities`); hover documents `:=` and gives migration advice for legacy operators
+- Grammar highlights legacy operators as deprecated; snippets emit v2 syntax (the overlay snippet no longer suggests `from(parent[*])`, which is invalid in overlays)
+- Scalar `-=` message now matches the CLI
+
+### Fixed
+- **Format Document deleted content.** It rebuilt the file from the parse tree, dropping comments, `env` blocks, `tags`, and every parent after the first in `inherits A, B`. It now only normalises whitespace (and no longer reorders body elements)
+- `tsc` type errors in the parser and TOML config reader
+
+---
+
 ## [0.1.0] — 2026-05-05
 
 Initial release with full IDE support for the Loom DSL.
