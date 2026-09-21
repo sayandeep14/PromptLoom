@@ -26,3 +26,4 @@ libs/loomj/target/
 # Superseded docs (kept locally only; see TRACKER.md)
 docs/TOOL_REFERENCE.md
 docs/PACKMAKER_DESIGN.md
+/dist/

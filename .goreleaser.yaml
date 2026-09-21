@@ -1,0 +1,90 @@
+# GoReleaser configuration — builds the `loom` and `loomlocker` binaries for every platform,
+# archives them with checksums, and publishes a GitHub Release.
+#   release:   push a tag like v4.3.0  (see .github/workflows/release.yml)
+#   try it:    goreleaser release --snapshot --clean --skip=publish     (writes ./dist)
+version: 2
+project_name: loom
+
+git:
+  # The VS Code extension is released from its own tags (lumine-vX.Y.Z); never confuse them
+  # with CLI versions when picking the current tag or building the changelog.
+  ignore_tags:
+    - "lumine-*"
+
+builds:
+  - id: loom
+    main: ./cmd/loom
+    binary: loom
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/sayandeepgiri/promptloom/internal/cli.version={{ .Version }}
+
+  - id: loomlocker
+    dir: loomlocker
+    main: ./cmd/loomlocker
+    binary: loomlocker
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/sayandeepgiri/promptloom/loomlocker/cli.version={{ .Version }}
+
+archives:
+  - id: default
+    ids: [loom, loomlocker]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "loom_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - docs/LOOM_COMMAND.md
+      - docs/LOOM_LANGUAGE.md
+      # not under loomlocker/: that path would collide with the loomlocker binary
+      - src: loomlocker/DESIGN.md
+        dst: docs/LOOMLOCKER_DESIGN.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^docs?(\(.+\))?:'
+      - '^chore(\(.+\))?:'
+      - '^test(\(.+\))?:'
+
+release:
+  github:
+    owner: sayandeep14
+    name: PromptLoom
+  prerelease: auto
+  name_template: "loom {{ .Version }}"
+  header: |
+    ## Install
+
+    Download the archive for your platform below, unpack it, and put `loom` (and optionally
+    `loomlocker`) on your `PATH`. Verify the download against `checksums.txt`
+    (`sha256sum -c checksums.txt --ignore-missing`).
+
+    ```bash
+    loom --version
+    ```

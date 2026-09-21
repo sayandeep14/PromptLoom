@@ -103,6 +103,16 @@ You write small, focused `.loom` files. PromptLoom parses, validates, resolves, 
 
 ### Install
 
+**Download a release** (macOS, Linux, Windows; amd64 and arm64) from the
+[Releases page](https://github.com/sayandeep14/PromptLoom/releases), unpack it, and put `loom`
+(and optionally `loomlocker`) on your `PATH`. Check the download with `checksums.txt`, then:
+
+```bash
+loom --version
+```
+
+**Or build from source:**
+
 ```bash
 git clone https://github.com/sayandeep14/PromptLoom.git
 cd PromptLoom

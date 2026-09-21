@@ -25,7 +25,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
 | **E1** Trust & Safety | Secure registry, tested core, working install path | 9 / 14 |
 | **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 2 / 5 |
-| **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
+| **E3** Docs & Release | Accurate docs, release binaries, packaging | 1 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
 | **E5** Agentic Mode | run / refine / decide / quest, `.lmscr` | 0 / 5 |
 | **E6** LoomLocker Hardening | Tests, Windows, libraries verified end-to-end | 4 / 5 |
@@ -110,7 +110,7 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 |---|---|---|---|---|---|
 | PL-301 | Audit `docs/LOOM_COMMAND.md` and `docs/LOOM_LANGUAGE.md` against the code: every command and flag exists; every example runs | TODO | P1 | M | PL-106 |
 | PL-302 | Add missing commands to `LOOM_COMMAND.md` (`install` dependency behaviour, `execute`, any added since) and remove references to removed ones | TODO | P1 | S | PL-301 |
-| PL-303 | GoReleaser (or equivalent): tagged release builds for macOS/Linux/Windows, checksums, GitHub Release notes | TODO | P0 | M | PL-004, PL-305 |
+| PL-303 | **Release pipeline for the CLI.** `.goreleaser.yaml` + `release.yml`: on a `v*` tag it tests, builds `loom` and `loomlocker` for linux/darwin/windows × amd64/arm64 (12 static binaries, version stamped via ldflags), archives them (tar.gz; zip on Windows) with docs, writes `checksums.txt`, and creates the GitHub Release with generated notes. Verified locally with a snapshot build: all 6 checksums OK, archives extract, binaries run and report the stamped version. Found + fixed: an archive containing both a `loomlocker/` docs directory and a `loomlocker` binary could not be extracted on macOS/Linux; the extension's `lumine-*` tags confused GoReleaser's current-tag detection. Lumine releases no longer claim GitHub's "Latest" badge and keep a fixed link via a rolling `lumine-latest` release. **Not yet tagged** — pick a version and push `vX.Y.Z` | DONE | P0 | M | PL-004, PL-305 |
 | PL-304 | Homebrew tap and Scoop manifest; `go install` instructions verified | TODO | P2 | M | PL-303 |
 | PL-305 | Windows/portability. `syscall.Stdin` replaced by `os.Stdin.Fd()`; CI now cross-builds `loom`, `loomlocker` and the registry for linux/darwin/windows × amd64/arm64 (all 6 verified). **Remaining:** run the *tests* on a Windows runner (the e2e/integration tests assume a POSIX shell and a binary without `.exe`) | IN PROGRESS | P1 | M | PL-004 |
 | PL-306 | Shell completions (`loom completion bash\|zsh\|fish\|powershell`) and `loom doctor` self-check of the install | TODO | P2 | S | — |

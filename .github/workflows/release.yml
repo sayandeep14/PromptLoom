@@ -1,0 +1,43 @@
+# Releases the loom CLI and loomlocker.
+#
+#   git tag v4.3.0 && git push origin v4.3.0
+#
+# Runs the tests, then GoReleaser builds every platform, writes checksums.txt and creates the
+# GitHub Release with generated notes. (Lumine, the VS Code extension, has its own workflow and
+# its own tags: lumine-vX.Y.Z.) Use "Run workflow" to do a dry run that publishes nothing.
+name: Release CLI
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # GoReleaser needs the history for the changelog
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Test
+        run: go vet ./... && go test ./...
+      - name: GoReleaser (dry run)
+        if: github.ref_type != 'tag'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish
+      - name: GoReleaser
+        if: github.ref_type == 'tag'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

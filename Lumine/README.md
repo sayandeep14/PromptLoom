@@ -136,7 +136,7 @@ Distinct icons in the File Explorer for each Loom file type (requires activating
 
 **From a downloaded `.vsix`** (no Marketplace account needed):
 
-1. Download `lumine-latest.vsix` from the [latest release](https://github.com/sayandeep14/PromptLoom/releases/latest) (or `lumine-<version>.vsix` for a specific version).
+1. Download [`lumine-latest.vsix`](https://github.com/sayandeep14/PromptLoom/releases/download/lumine-latest/lumine-latest.vsix) (or `lumine-<version>.vsix` from a [versioned release](https://github.com/sayandeep14/PromptLoom/releases?q=lumine-v)).
 2. Install it, either way:
    - **VS Code UI:** open the Extensions view (`Ctrl/Cmd+Shift+X`) → the `…` menu at the top → **Install from VSIX…** → pick the file.
    - **Terminal:** `code --install-extension lumine-latest.vsix`
