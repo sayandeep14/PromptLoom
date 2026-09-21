@@ -32,6 +32,7 @@ services:
       DATABASE_URL: postgres://registry:${POSTGRES_PASSWORD}@db:5432/registry?sslmode=disable
       AUTO_MIGRATE: "1"
       UPLOAD_SECRET: ${UPLOAD_SECRET:?set UPLOAD_SECRET in .env (openssl rand -hex 32)}
+      UPLOAD_TOKENS: ${UPLOAD_TOKENS:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-}
       MAX_BODY_BYTES: ${MAX_BODY_BYTES:-8388608}

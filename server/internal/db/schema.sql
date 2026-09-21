@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS vaults (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Ownership: the publisher identity that first published the pack. Only the owner (or an admin)
+-- may replace or delete it. Empty for packs that predate ownership: admins only.
+ALTER TABLE vaults ADD COLUMN IF NOT EXISTS owner TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS vault_files (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     vault_id    UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,

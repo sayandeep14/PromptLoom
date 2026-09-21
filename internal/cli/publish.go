@@ -298,7 +298,7 @@ func uploadToRegistry(registryURL, secret string, bundle uploadBundle) error {
 				msg += "\n    - " + d
 			}
 			if resp.StatusCode == http.StatusServiceUnavailable {
-				msg += "\n  hint: this registry is read-only until its operator sets UPLOAD_SECRET"
+				msg += "\n  hint: this registry is read-only until its operator sets UPLOAD_SECRET or UPLOAD_TOKENS"
 			}
 			return fmt.Errorf("%s", msg)
 		}

@@ -44,6 +44,8 @@ registry.example.com {
 
 Then set `TRUST_PROXY=1` in `.env` so per-IP rate limits use the address the proxy reports. Set it **only** when a proxy is in front; otherwise clients could spoof their IP.
 
+With `TRUST_PROXY=1` the registry also reads `X-Forwarded-Proto`; when the proxy says `https` every response carries `Strict-Transport-Security` (HSTS, two years, subdomains included), so browsers stop trying plain HTTP for that host. Make sure the proxy **overwrites** `X-Forwarded-For` and `X-Forwarded-Proto` rather than passing client-supplied values (Caddy and nginx's `proxy_set_header` do). Without `TRUST_PROXY`, HSTS is sent only when the registry itself terminates TLS.
+
 `loom publish` refuses to send the upload secret over plain `http://` to anything but `localhost`, so use `https://` for a remote registry.
 
 ## Configuration
@@ -51,7 +53,8 @@ Then set `TRUST_PROXY=1` in `.env` so per-IP rate limits use the address the pro
 | Variable | Default | Purpose |
 |---|---|---|
 | `POSTGRES_PASSWORD` | required (Compose) | Password for the bundled database |
-| `UPLOAD_SECRET` | required (Compose) | Secret for publish/delete (`X-Upload-Secret`), min 16 chars. Unset ⇒ read-only registry |
+| `UPLOAD_SECRET` | required (Compose) | Admin secret(s) for publish/delete (`X-Upload-Secret`), min 16 chars each, comma-separated for rotation. The admin can manage every pack |
+| `UPLOAD_TOKENS` | empty | Publisher identities `name=secret,name=secret`. Each publisher owns what it first published. Neither variable set ⇒ read-only registry |
 | `BIND_ADDR` / `HOST_PORT` | `127.0.0.1` / `8080` | Where Compose publishes the registry |
 | `CORS_ORIGINS` | empty | Allowed browser origins; empty sends no CORS headers |
 | `TRUST_PROXY` | empty | `1` behind a reverse proxy |
@@ -121,3 +124,41 @@ TEST_DATABASE_URL='postgres://postgres:pw@localhost:55432/loom_test?sslmode=disa
 ```
 
 The database name must contain `test`; the integration tests wipe its tables.
+
+
+## Who may change a pack
+
+Every write is authenticated with `X-Upload-Secret`, and the secret tells the registry **who** is writing:
+
+- `UPLOAD_SECRET` is the **admin**: it can replace or delete any pack.
+- Each `name=secret` pair in `UPLOAD_TOKENS` is a **publisher**. The first time a publisher publishes a slug, the pack is theirs (`owner` appears in `GET /api/v1/vaults` and `/vaults/{slug}`). Only that publisher, or the admin, can replace or delete it; anyone else gets `403`.
+- Ownership is enforced inside the database statement, so two publishers racing for a new slug cannot both win.
+- Packs published before ownership existed have no owner and can be changed by the admin only. The admin can hand one over by setting its owner in SQL: `UPDATE vaults SET owner = 'alice' WHERE slug = 'kit';`
+- An admin replacing a pack does not take it over.
+
+```bash
+UPLOAD_SECRET=$(openssl rand -hex 32)
+UPLOAD_TOKENS=alice=$(openssl rand -hex 32),bob=$(openssl rand -hex 32)
+```
+
+The schema change (`owner` column) is applied by `AUTO_MIGRATE=1` (Compose enables it) or by running `internal/db/schema.sql`; it is idempotent and safe on an existing database.
+
+### Rotating a secret
+
+Several secrets can be valid for the same identity, so rotation needs no downtime:
+
+1. Add the new secret next to the old one: `UPLOAD_TOKENS=alice=OLD,alice=NEW` (or `UPLOAD_SECRET=OLD,NEW` for the admin) and restart.
+2. Switch the publisher over to `NEW`.
+3. Remove `OLD` and restart. It stops working immediately.
+
+Every configured secret is checked on every request, in constant time and with no early exit, so timing reveals neither which secret was closest nor how many exist. A secret can belong to one identity only (the server refuses to start otherwise), and configuration errors never print secrets.
+
+## Request log
+
+Each request writes one line to the log:
+
+```
+access ip=203.0.113.7 who=alice POST "/api/v1/vaults" status=200 bytes=31 dur=12ms
+```
+
+`who` is the publisher for authenticated writes and `-` otherwise. Headers, query strings and bodies are never logged (so secrets cannot leak into logs), and the path is quoted so a hostile URL cannot forge extra lines. Failed logins appear as `status=401` and are rate limited per IP.

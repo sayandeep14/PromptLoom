@@ -28,8 +28,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	if cfg.UploadSecret == "" {
-		log.Printf("warn: UPLOAD_SECRET is not set — publish and delete are DISABLED (read-only registry)")
+	if len(cfg.Tokens) == 0 {
+		log.Printf("warn: neither UPLOAD_SECRET nor UPLOAD_TOKENS is set — publish and delete are DISABLED (read-only registry)")
 	}
 	if len(cfg.CORSOrigins) == 1 && cfg.CORSOrigins[0] == "*" {
 		log.Printf("warn: CORS_ORIGINS=* allows any website to call this API from a browser")

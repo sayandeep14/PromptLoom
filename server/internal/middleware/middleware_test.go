@@ -1,6 +1,10 @@
 package middleware
 
 import (
+	"bytes"
+	"crypto/tls"
+	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -178,5 +182,131 @@ func TestChainOrder(t *testing.T) {
 	do(Chain(ok200, mk("a"), mk("b")), "GET", "/", nil, "")
 	if strings.Join(order, "") != "ab" {
 		t.Errorf("got order %v, want a then b", order)
+	}
+}
+
+func whoAmI(w http.ResponseWriter, r *http.Request) {
+	id := IdentityFrom(r)
+	fmt.Fprintf(w, "%s admin=%v", id.Name, id.Admin)
+}
+
+func TestAuthenticateIdentifiesThePublisher(t *testing.T) {
+	h := Authenticate([]Credential{
+		{Name: "admin", Secret: "admin-secret-0123456", Admin: true},
+		{Name: "alice", Secret: "alice-secret-0123456"},
+		{Name: "bob", Secret: "bob-secret-012345678"},
+	})(http.HandlerFunc(whoAmI))
+	for secret, want := range map[string]string{
+		"admin-secret-0123456": "admin admin=true",
+		"alice-secret-0123456": "alice admin=false",
+		"bob-secret-012345678": "bob admin=false",
+	} {
+		rec := do(h, "POST", "/", map[string]string{SecretHeader: secret}, "")
+		if rec.Code != 200 || rec.Body.String() != want {
+			t.Errorf("%s…: %d %q, want %q", secret[:5], rec.Code, rec.Body, want)
+		}
+	}
+	for _, bad := range []string{"", "alice-secret-012345", "alice-secret-0123456 ", "ALICE-SECRET-0123456"} {
+		if got := do(h, "POST", "/", map[string]string{SecretHeader: bad}, "").Code; got != 401 {
+			t.Errorf("%q: %d, want 401", bad, got)
+		}
+	}
+}
+
+// Rotation: while both the old and the new secret are configured either works; once the old one
+// is removed only the new one does.
+func TestSecretRotation(t *testing.T) {
+	old := Credential{Name: "alice", Secret: "old-secret-0123456789"}
+	next := Credential{Name: "alice", Secret: "new-secret-0123456789"}
+	code := func(h http.Handler, s string) int {
+		return do(h, "POST", "/", map[string]string{SecretHeader: s}, "").Code
+	}
+
+	both := Authenticate([]Credential{old, next})(http.HandlerFunc(whoAmI))
+	if code(both, old.Secret) != 200 || code(both, next.Secret) != 200 {
+		t.Error("during rotation both secrets must work")
+	}
+	after := Authenticate([]Credential{next})(http.HandlerFunc(whoAmI))
+	if code(after, old.Secret) != 401 || code(after, next.Secret) != 200 {
+		t.Error("once the old secret is removed it must stop working")
+	}
+	if rec := do(both, "POST", "/", map[string]string{SecretHeader: old.Secret}, ""); rec.Body.String() != "alice admin=false" {
+		t.Errorf("both secrets are the same publisher: %q", rec.Body)
+	}
+}
+
+func TestAuthenticateFailsClosedWithNoCredentials(t *testing.T) {
+	h := Authenticate(nil)(ok200)
+	if got := do(h, "POST", "/", map[string]string{SecretHeader: "anything"}, "").Code; got != 503 {
+		t.Errorf("%d, want 503", got)
+	}
+}
+
+func TestAccessLogSaysWhoAndNeverLogsSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.New(&buf, "", 0)
+	const secret = "alice-secret-0123456"
+	chain := Chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		w.Write([]byte("hello"))
+	}), AccessLog(logger.Printf, false), Authenticate([]Credential{{Name: "alice", Secret: secret}}))
+
+	do(chain, "POST", "/api/v1/vaults?token="+secret, map[string]string{SecretHeader: secret}, `{"password":"hunter2"}`)
+	do(chain, "GET", "/api/v1/vaults", nil, "") // unauthenticated
+
+	out := buf.String()
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("one line per request, got:\n%s", out)
+	}
+	if !strings.Contains(lines[0], "who=alice") || !strings.Contains(lines[0], "POST") || !strings.Contains(lines[0], "status=201") || !strings.Contains(lines[0], "bytes=5") {
+		t.Errorf("first line: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], "who=-") || !strings.Contains(lines[1], "status=401") {
+		t.Errorf("an unauthenticated request is logged as such: %s", lines[1])
+	}
+	for _, leak := range []string{secret, "hunter2", "token="} {
+		if strings.Contains(out, leak) {
+			t.Errorf("the log contains %q:\n%s", leak, out)
+		}
+	}
+}
+
+func TestAccessLogCannotBeForgedThroughThePath(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.New(&buf, "", 0)
+	h := AccessLog(logger.Printf, false)(ok200)
+	req := httptest.NewRequest("GET", "/x", nil)
+	req.URL.Path = "/x\naccess ip=1.2.3.4 who=admin POST \"/api\" status=200"
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got := strings.Count(strings.TrimSpace(buf.String()), "\n"); got != 0 {
+		t.Errorf("a newline in the path produced extra log lines:\n%s", buf.String())
+	}
+}
+
+func TestHSTSOnlyOverHTTPS(t *testing.T) {
+	plain := do(SecurityHeaders(false)(ok200), "GET", "/", nil, "")
+	if plain.Header().Get("Strict-Transport-Security") != "" {
+		t.Error("HSTS over plain HTTP is meaningless and must not be sent")
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.TLS = &tls.ConnectionState{}
+	rec := httptest.NewRecorder()
+	SecurityHeaders(false)(ok200).ServeHTTP(rec, req)
+	if got := rec.Header().Get("Strict-Transport-Security"); !strings.Contains(got, "max-age=") || !strings.Contains(got, "includeSubDomains") {
+		t.Errorf("direct TLS: %q", got)
+	}
+
+	// behind a proxy: only when the proxy is trusted and says https
+	xf := map[string]string{"X-Forwarded-Proto": "https"}
+	if do(SecurityHeaders(true)(ok200), "GET", "/", xf, "").Header().Get("Strict-Transport-Security") == "" {
+		t.Error("trusted proxy said https")
+	}
+	if do(SecurityHeaders(false)(ok200), "GET", "/", xf, "").Header().Get("Strict-Transport-Security") != "" {
+		t.Error("an untrusted client must not be able to switch HSTS on by sending a header")
+	}
+	if do(SecurityHeaders(true)(ok200), "GET", "/", map[string]string{"X-Forwarded-Proto": "http"}, "").Header().Get("Strict-Transport-Security") != "" {
+		t.Error("proxy said http")
 	}
 }

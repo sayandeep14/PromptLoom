@@ -12,8 +12,17 @@ import (
 	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
+// whoTest reads the caller from a test header: "admin" is an admin, anything else a publisher.
+func whoTest(r *http.Request) models.Identity {
+	name := r.Header.Get("X-Test-User")
+	if name == "" {
+		name = "admin"
+	}
+	return models.Identity{Name: name, Admin: name == "admin"}
+}
+
 func router(st Store) http.Handler {
-	a := New(st)
+	a := New(st, whoTest)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/vaults", a.ListVaults)
 	mux.HandleFunc("GET /api/v1/vaults/{slug}", a.GetVault)
@@ -235,5 +244,75 @@ func TestStoreErrorsAreHiddenAndLogged(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "password authentication failed") {
 		t.Error("the real error should be logged server-side")
+	}
+}
+
+func reqAs(h http.Handler, user, method, path, body string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.Header.Set("X-Test-User", user)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	return rec
+}
+
+// One shared secret used to let anybody overwrite or delete any pack.
+func TestPacksBelongToTheirPublisher(t *testing.T) {
+	st := newFake()
+	h := router(st)
+	pack := mustJSON(t, validPack("kit"))
+
+	if rec := reqAs(h, "alice", "POST", "/api/v1/vaults", pack); rec.Code != 200 {
+		t.Fatalf("alice publishes: %d %s", rec.Code, rec.Body)
+	}
+	// the listing and the details say who owns it
+	if rec := reqAs(h, "alice", "GET", "/api/v1/vaults/kit", ""); !strings.Contains(rec.Body.String(), `"owner":"alice"`) {
+		t.Errorf("owner missing from the pack details: %s", rec.Body)
+	}
+	if rec := reqAs(h, "bob", "GET", "/api/v1/vaults", ""); !strings.Contains(rec.Body.String(), `"owner":"alice"`) {
+		t.Errorf("owner missing from the list: %s", rec.Body)
+	}
+
+	// bob cannot replace it...
+	changed := validPack("kit")
+	changed.Version = "9.9.9"
+	rec := reqAs(h, "bob", "POST", "/api/v1/vaults", mustJSON(t, changed))
+	if rec.Code != 403 || !strings.Contains(rec.Body.String(), "another publisher") {
+		t.Errorf("bob replacing alice's pack: %d %s", rec.Code, rec.Body)
+	}
+	if st.packs["kit"].Version != "1.0.0" {
+		t.Error("the pack was changed by a non-owner")
+	}
+	// ...or delete it
+	if rec := reqAs(h, "bob", "DELETE", "/api/v1/vaults/kit", ""); rec.Code != 403 {
+		t.Errorf("bob deleting alice's pack: %d", rec.Code)
+	}
+	if _, ok := st.packs["kit"]; !ok {
+		t.Fatal("the pack was deleted by a non-owner")
+	}
+
+	// alice can update her own pack (and it stays hers)
+	if rec := reqAs(h, "alice", "POST", "/api/v1/vaults", mustJSON(t, changed)); rec.Code != 200 || st.packs["kit"].Version != "9.9.9" {
+		t.Errorf("owner update: %d", rec.Code)
+	}
+	if st.owners["kit"] != "alice" {
+		t.Errorf("owner changed to %q", st.owners["kit"])
+	}
+	// an admin can manage any pack without taking it over
+	if rec := reqAs(h, "admin", "POST", "/api/v1/vaults", pack); rec.Code != 200 || st.owners["kit"] != "alice" {
+		t.Errorf("admin overwrite: %d, owner %q", rec.Code, st.owners["kit"])
+	}
+	// the owner deletes it; deleting again stays idempotent
+	if rec := reqAs(h, "alice", "DELETE", "/api/v1/vaults/kit", ""); rec.Code != 200 {
+		t.Errorf("owner delete: %d", rec.Code)
+	}
+	if _, ok := st.packs["kit"]; ok {
+		t.Error("the pack is still there")
+	}
+	if rec := reqAs(h, "alice", "DELETE", "/api/v1/vaults/kit", ""); rec.Code != 200 {
+		t.Errorf("deleting a missing pack: %d", rec.Code)
+	}
+	// the slug is free again for anyone
+	if rec := reqAs(h, "bob", "POST", "/api/v1/vaults", pack); rec.Code != 200 || st.owners["kit"] != "bob" {
+		t.Errorf("bob takes the free slug: %d, owner %q", rec.Code, st.owners["kit"])
 	}
 }

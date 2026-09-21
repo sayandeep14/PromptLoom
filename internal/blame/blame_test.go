@@ -121,7 +121,7 @@ func TestTruncateAndCapitalizeAreRuneSafe(t *testing.T) {
 }
 
 func TestRelativizeAndOrigin(t *testing.T) {
-	if relativize("/p/prompts/A.loom", "/p") != "prompts/A.loom" || relativize("/x/y", "") != "/x/y" {
+	if relativize(filepath.Join("/p", "prompts", "A.loom"), "/p") != filepath.Join("prompts", "A.loom") || relativize("/x/y", "") != "/x/y" {
 		t.Error("relativize")
 	}
 	if got := fieldsToBlame("constraints"); len(got) != 1 || got[0] != "constraints" {

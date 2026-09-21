@@ -10,7 +10,11 @@ import (
 )
 
 func testCfg(secret string) *config.Config {
-	return &config.Config{Port: "0", UploadSecret: secret, MaxBodyBytes: 4096, ReadRPM: 1000, WriteRPM: 1000}
+	c := &config.Config{Port: "0", MaxBodyBytes: 4096, ReadRPM: 1000, WriteRPM: 1000}
+	if secret != "" {
+		c.Tokens = []config.Token{{Name: "admin", Secret: secret, Admin: true}}
+	}
+	return c
 }
 
 func call(h http.Handler, method, path, secret, body string) *httptest.ResponseRecorder {

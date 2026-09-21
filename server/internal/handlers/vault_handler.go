@@ -17,17 +17,25 @@ type Store interface {
 	ListVaults(ctx context.Context) ([]models.ListItem, error)
 	GetVault(ctx context.Context, slug string) (*models.Vault, error)
 	GetBundle(ctx context.Context, slug string) (*models.Bundle, error)
-	UpsertVault(ctx context.Context, b *models.Bundle) error
-	DeleteVault(ctx context.Context, slug string) error
+	// UpsertVault creates the pack for who, or replaces it if who owns it (or is an admin). It
+	// returns models.ErrNotOwner when the pack belongs to someone else.
+	UpsertVault(ctx context.Context, b *models.Bundle, who models.Identity) error
+	// DeleteVault removes a pack under the same ownership rule. deleted is false when there was
+	// no such pack.
+	DeleteVault(ctx context.Context, slug string, who models.Identity) (deleted bool, err error)
 }
+
+// WhoFunc tells the handlers who is making a write request (set by the auth middleware).
+type WhoFunc func(*http.Request) models.Identity
 
 // API bundles the HTTP handlers with the store they use.
 type API struct {
 	Store Store
+	Who   WhoFunc
 }
 
-// New returns an API backed by s.
-func New(s Store) *API { return &API{Store: s} }
+// New returns an API backed by s. who reports the authenticated publisher of a write request.
+func New(s Store, who WhoFunc) *API { return &API{Store: s, Who: who} }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -126,7 +134,11 @@ func (a *API) UploadVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.Store.UpsertVault(r.Context(), &bundle); err != nil {
+	if err := a.Store.UpsertVault(r.Context(), &bundle, a.Who(r)); err != nil {
+		if errors.Is(err, models.ErrNotOwner) {
+			writeError(w, http.StatusForbidden, "pack "+bundle.Slug+" belongs to another publisher; only its owner can replace it")
+			return
+		}
 		serverError(w, r, err)
 		return
 	}
@@ -140,7 +152,13 @@ func (a *API) DeleteVault(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := a.Store.DeleteVault(r.Context(), slug); err != nil {
+	// Deleting a pack that is not there is not an error: DELETE stays idempotent.
+	_, err := a.Store.DeleteVault(r.Context(), slug, a.Who(r))
+	if errors.Is(err, models.ErrNotOwner) {
+		writeError(w, http.StatusForbidden, "pack "+slug+" belongs to another publisher; only its owner can delete it")
+		return
+	}
+	if err != nil {
 		serverError(w, r, err)
 		return
 	}

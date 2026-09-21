@@ -16,5 +16,9 @@ func (PG) GetVault(ctx context.Context, slug string) (*models.Vault, error) {
 func (PG) GetBundle(ctx context.Context, slug string) (*models.Bundle, error) {
 	return GetBundle(ctx, slug)
 }
-func (PG) UpsertVault(ctx context.Context, b *models.Bundle) error { return UpsertVault(ctx, b) }
-func (PG) DeleteVault(ctx context.Context, slug string) error      { return DeleteVault(ctx, slug) }
+func (PG) UpsertVault(ctx context.Context, b *models.Bundle, who models.Identity) error {
+	return UpsertVault(ctx, b, who)
+}
+func (PG) DeleteVault(ctx context.Context, slug string, who models.Identity) (bool, error) {
+	return DeleteVault(ctx, slug, who)
+}

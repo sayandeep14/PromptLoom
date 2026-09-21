@@ -143,8 +143,9 @@ func TestPromptsDir(t *testing.T) {
 	if got := PromptsDir(dir); got != filepath.Join(dir, "loom", "src", "prompts") {
 		t.Errorf("configured: %s", got)
 	}
-	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("[paths]\nprompts = \"/abs/prompts\"\n"), 0o644)
-	if got := PromptsDir(dir); got != "/abs/prompts" {
+	abs := filepath.Join(t.TempDir(), "abs", "prompts")
+	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("[paths]\nprompts = '"+abs+"'\n"), 0o644) // literal string: no escapes
+	if got := PromptsDir(dir); got != abs {
 		t.Errorf("absolute: %s", got)
 	}
 	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("not toml ["), 0o644)

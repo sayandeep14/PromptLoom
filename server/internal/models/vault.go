@@ -1,6 +1,19 @@
 package models
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// Identity is who is making a write request. Admin may manage every pack; everyone else only
+// the packs they published.
+type Identity struct {
+	Name  string
+	Admin bool
+}
+
+// ErrNotOwner is returned when a publisher tries to change a pack that belongs to someone else.
+var ErrNotOwner = errors.New("pack is owned by another publisher")
 
 // RelatedLibrary describes a library that pairs with a prompt pack.
 type RelatedLibrary struct {
@@ -17,6 +30,7 @@ type Vault struct {
 	Slug             string           `json:"slug"`
 	Description      string           `json:"description"`
 	Author           string           `json:"author"`
+	Owner            string           `json:"owner,omitempty"` // publisher identity, not the free-text author
 	Version          string           `json:"version"`
 	Tags             []string         `json:"tags"`
 	RelatedLibraries []RelatedLibrary `json:"relatedLibraries,omitempty"`
@@ -63,6 +77,7 @@ type ListItem struct {
 	Slug        string    `json:"slug"`
 	Description string    `json:"description"`
 	Author      string    `json:"author"`
+	Owner       string    `json:"owner,omitempty"`
 	Version     string    `json:"version"`
 	Tags        []string  `json:"tags"`
 	FileCount   int       `json:"file_count"`

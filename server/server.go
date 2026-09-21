@@ -19,16 +19,22 @@ import (
 // newRouter wires every route with its protections:
 //
 //	reads : rate limit
-//	writes: rate limit (stricter) → upload secret → body-size cap
+//	writes: rate limit (stricter) → upload secret (identifies the publisher) → body-size cap
+//
+// Every request is access-logged (no headers, queries or bodies) and HTTPS requests get HSTS.
 //
 // The rate limit sits before authentication so brute-forcing the secret is throttled.
 func newRouter(cfg *config.Config, st handlers.Store) http.Handler {
-	api := handlers.New(st)
+	api := handlers.New(st, mw.IdentityFrom)
 	mux := http.NewServeMux()
 
 	readLimit := mw.RateLimit(mw.NewLimiter(cfg.ReadRPM), cfg.TrustProxy)
 	writeLimit := mw.RateLimit(mw.NewLimiter(cfg.WriteRPM), cfg.TrustProxy)
-	requireSecret := mw.RequireSecret(cfg.UploadSecret)
+	creds := make([]mw.Credential, len(cfg.Tokens))
+	for i, t := range cfg.Tokens {
+		creds[i] = mw.Credential{Name: t.Name, Secret: t.Secret, Admin: t.Admin}
+	}
+	requireSecret := mw.Authenticate(creds)
 	maxBody := mw.MaxBody(cfg.MaxBodyBytes)
 
 	read := func(h http.HandlerFunc) http.Handler { return mw.Chain(h, readLimit) }
@@ -48,7 +54,7 @@ func newRouter(cfg *config.Config, st handlers.Store) http.Handler {
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
-	return mw.Chain(mux, mw.SecurityHeaders(), mw.CORS(cfg.CORSOrigins))
+	return mw.Chain(mux, mw.AccessLog(log.Printf, cfg.TrustProxy), mw.SecurityHeaders(cfg.TrustProxy), mw.CORS(cfg.CORSOrigins))
 }
 
 func startServer(cfg *config.Config, st handlers.Store) error {

@@ -64,7 +64,7 @@ func ResolveBundle(b *Bundle, cwd string) ([]Source, error) {
 				continue
 			}
 			rel, _ := filepath.Rel(cwd, m)
-			sources = append(sources, Source{Label: "File: " + rel, Content: string(data)})
+			sources = append(sources, Source{Label: "File: " + filepath.ToSlash(rel), Content: string(data)})
 		}
 	}
 	return sources, nil
