@@ -139,9 +139,10 @@ export function getCompletions(
     }
   }
 
-  // ── 4. from() expression completions (after := on a field line) ────────────
-  if (/^\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*:=\s*$/.test(lineUpTo)) {
-    return fromExprCompletions();
+  // ── 4. from() expression completions ────────────────────────────────────────
+  {
+    const from = fromContextCompletions(text, lines, li, lineUpTo, params.textDocument.uri);
+    if (from) return from;
   }
 
   // ── 5. Enclosing block context ──────────────────────────────────────────────
@@ -252,55 +253,114 @@ function varTokenCompletions(node: LoomNode | undefined, registry: LoomRegistry)
 }
 
 // ─── from() expression completions ───────────────────────────────────────────
+// Aware of the enclosing prompt (how many parents, and their names) and of the field being
+// written: a scalar field takes ONE parent (`from(parent[N])`), while a list field can take all
+// of them, a range, and extra items. The rules are the ones `loom inspect` enforces.
 
-function fromExprCompletions(): CompletionItem[] {
-  return [
-    {
-      label: 'from(parent[*])',
-      kind: CompletionItemKind.Function,
-      detail: 'All items from all parents (list fields only)',
-      documentation: md('Merges all items from every parent. Only valid on list fields.'),
-      insertText: 'from(parent[*])',
-      insertTextFormat: InsertTextFormat.Snippet,
-      sortText: 'a_from_all',
-    },
-    {
-      label: 'from(parent[0])',
-      kind: CompletionItemKind.Function,
-      detail: 'Items from first parent (scalar or list)',
-      documentation: md('Selects items from the first parent in the inherits list.'),
-      insertText: 'from(parent[${1:0}])',
-      insertTextFormat: InsertTextFormat.Snippet,
-      sortText: 'a_from_one',
-    },
-    {
-      label: 'from(parent[*]) and { ... }',
-      kind: CompletionItemKind.Function,
-      detail: 'Merge all parents then add new items',
-      documentation: md('Merges all parent items then appends new bullet items.'),
-      insertText: 'from(parent[*]) and {\n    - ${1:new item}\n  }',
-      insertTextFormat: InsertTextFormat.Snippet,
-      sortText: 'a_from_add',
-    },
-    {
-      label: 'from(parent[0..N])',
-      kind: CompletionItemKind.Function,
-      detail: 'Items from a range of parents',
-      documentation: md('Selects items from parents at index 0 through N (exclusive).'),
-      insertText: 'from(parent[${1:0}...${2:2}])',
-      insertTextFormat: InsertTextFormat.Snippet,
-      sortText: 'a_from_range',
-    },
-    {
-      label: 'from(ParentName)',
-      kind: CompletionItemKind.Function,
-      detail: 'Pull from a specific named parent',
-      documentation: md('Reference a parent by its exact name. Useful when you have multiple parents and need a specific one regardless of position.'),
-      insertText: 'from(${1:ParentName})',
-      insertTextFormat: InsertTextFormat.Snippet,
-      sortText: 'a_from_named',
-    },
-  ];
+const SCALAR_NAMES = new Set<string>(SCALAR_FIELDS.map(f => f.name));
+const LIST_NAMES = new Set<string>(LIST_FIELDS.map(f => f.name));
+
+/** The field whose value the cursor is inside, and whether it is a scalar. */
+function fieldAt(lines: string[], li: number): { name: string; scalar: boolean } | undefined {
+  for (let i = li; i >= 0; i--) {
+    const m = (lines[i] ?? '').match(/^(\s+)([a-zA-Z_][a-zA-Z0-9_-]*)\s*:=/);
+    if (m) return { name: m[2], scalar: SCALAR_NAMES.has(m[2]) };
+    if (/^\S/.test(lines[i] ?? '')) break;      // reached the node declaration
+  }
+  return undefined;
+}
+
+function fromContextCompletions(text: string, lines: string[], li: number, lineUpTo: string, uri: string): CompletionItem[] | undefined {
+  const field = fieldAt(lines, li);
+  const afterOp = /^\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*:=\s*$/.test(lineUpTo);
+  const afterAnd = /\band\s+$/.test(lineUpTo) && !!field;
+  const inFrom = /\bfrom\(\s*([A-Za-z0-9_.-]*)$/.exec(lineUpTo);
+  const inSubscript = /\bparent\[([0-9.*]*)$/.exec(lineUpTo);
+  const inFieldRef = /\bparent\[[0-9*]+(?:\.\.[0-9]+)?\]\.([a-z_]*)$/.exec(lineUpTo);
+  if (!afterOp && !afterAnd && !inFrom && !inSubscript && !inFieldRef) return undefined;
+
+  const { nodes } = parseLoomDocument(text, uri);
+  const node = nodes.find(n => n.range.start.line <= li && li <= n.range.end.line);
+  // from() only exists in prompts that have parents; anywhere else it would be an error
+  if (!node || node.kind !== 'prompt' || node.parents.length === 0 || !field) return [];
+
+  const parents = node.parents;
+  const scalar = field.scalar;
+
+  if (inFieldRef) {
+    // parent[N].<field>: the field of that parent to take (same kind as the field being written)
+    const names = scalar ? [...SCALAR_NAMES] : [...LIST_NAMES];
+    return names.map(n => ({
+      label: n,
+      kind: CompletionItemKind.Field,
+      detail: scalar ? 'scalar field' : 'list field',
+      sortText: n === field.name ? '0' : '1' + n,
+      insertText: scalar ? n : n + '[${1:*}]',
+      insertTextFormat: scalar ? InsertTextFormat.PlainText : InsertTextFormat.Snippet,
+    }));
+  }
+
+  if (inSubscript) {
+    const items: CompletionItem[] = parents.map((p, i) => ({
+      label: String(i),
+      kind: CompletionItemKind.EnumMember,
+      detail: `parent ${i}: ${p}`,
+      sortText: String(i),
+      insertText: `${i}]`,
+    }));
+    if (!scalar) {
+      items.unshift({ label: '*', kind: CompletionItemKind.EnumMember, detail: 'all parents', sortText: '_all', insertText: '*]' });
+      if (parents.length > 1) {
+        items.push({ label: `0..${parents.length}`, kind: CompletionItemKind.EnumMember, detail: 'a range of parents (end exclusive)', sortText: 'z_range', insertText: `0..${parents.length}]` });
+      }
+    }
+    return items;
+  }
+
+  if (inFrom) {
+    // from( ...: which parent(s) to take
+    const items: CompletionItem[] = [];
+    if (!scalar) items.push({ label: 'parent[*]', kind: CompletionItemKind.Function, detail: 'all parents', sortText: '0_all', insertText: 'parent[*]' });
+    parents.forEach((p, i) => {
+      items.push({ label: `parent[${i}]`, kind: CompletionItemKind.Function, detail: `parent ${i}: ${p}`, sortText: `1_${i}`, insertText: `parent[${i}]` });
+      items.push({ label: p, kind: CompletionItemKind.Class, detail: 'declared parent', sortText: `2_${i}`, insertText: p });
+    });
+    return items;
+  }
+
+  return fromExprCompletions(parents, scalar, field.name, afterAnd);
+}
+
+function fromExprCompletions(parents: string[], scalar: boolean, fieldName: string, afterAnd: boolean): CompletionItem[] {
+  const items: CompletionItem[] = [];
+  const add = (label: string, detail: string, documentation: string, insertText: string, sortText: string, snippet = false) =>
+    items.push({
+      label, kind: CompletionItemKind.Function, detail, documentation: md(documentation), insertText, sortText,
+      insertTextFormat: snippet ? InsertTextFormat.Snippet : InsertTextFormat.PlainText,
+    });
+
+  // one specific parent works for scalars and lists alike
+  parents.forEach((p, i) => {
+    add(`from(parent[${i}])`, `Items from parent ${i} (${p})`, `Takes this field from the parent at index ${i}: \`${p}\`.`, `from(parent[${i}])`, `b_one_${i}`);
+    add(`from(${p})`, `Items from ${p}`, `Takes this field from the declared parent \`${p}\` by name.`, `from(${p})`, `c_named_${i}`);
+  });
+  if (scalar) return items;     // a scalar takes exactly one parent: no [*], no ranges, no "and"
+
+  if (!afterAnd) {
+    add('from(parent[*])', 'All items from all parents', 'Merges the items of every parent. List fields only.', 'from(parent[*])', 'a_all');
+    add('from(parent[*]) and { ... }', 'All parents, then extra items', 'Keeps every parent item and adds your own.',
+      'from(parent[*]) and {\n    - ${1:new item}\n  }', 'a_all_add', true);
+    if (parents.length > 1) {
+      add(`from(parent[0..${parents.length}])`, 'A range of parents', 'Items from parents in a range; the end index is exclusive.',
+        'from(parent[${1:0}..${2:' + parents.length + '}])', 'd_range', true);
+    }
+    add(`parent[0].${fieldName}[1..3]`, 'A slice of one parent\'s list', 'Selects part of a parent\'s list: `parent[N].field[a..b]` (end exclusive).',
+      `parent[\${1:0}].${fieldName}[\${2:1}..\${3:3}]`, 'e_slice', true);
+  } else {
+    add('{ ... }', 'Extra items', 'Adds literal items after the parent items.', '{\n    - ${1:new item}\n  }', 'a_lit', true);
+    add('from(parent[*])', 'All items from all parents', 'Merges the items of every parent.', 'from(parent[*])', 'a_all');
+  }
+  return items;
 }
 
 // ─── Field item helpers ───────────────────────────────────────────────────────

@@ -12,9 +12,12 @@ interface PackEntry {
 }
 
 export class LoomRegistry {
-  private prompts  = new Map<string, RegistryEntry>();
-  private blocks   = new Map<string, RegistryEntry>();
-  private overlays = new Map<string, RegistryEntry>();
+  // A name can be defined in more than one file (that is a duplicate-name error, but the
+  // registry must still remember both, or removing/updating one file would erase the other's
+  // entry and hide the duplicate). Lookups return the first definition.
+  private prompts  = new Map<string, RegistryEntry[]>();
+  private blocks   = new Map<string, RegistryEntry[]>();
+  private overlays = new Map<string, RegistryEntry[]>();
 
   // Maps URI → names contributed by that file (for efficient removal)
   private uriIndex = new Map<string, { prompts: string[]; blocks: string[]; overlays: string[] }>();
@@ -30,17 +33,16 @@ export class LoomRegistry {
 
     const contributed = { prompts: [] as string[], blocks: [] as string[], overlays: [] as string[] };
 
+    const add = (map: Map<string, RegistryEntry[]>, node: LoomNode) => {
+      const list = map.get(node.name) ?? [];
+      // a file defining a name twice registers it once; the validator reports the repeat
+      if (!list.some(e => e.uri === uri)) list.push({ node, uri });
+      map.set(node.name, list);
+    };
     for (const node of nodes) {
-      if (node.kind === 'prompt') {
-        this.prompts.set(node.name, { node, uri });
-        contributed.prompts.push(node.name);
-      } else if (node.kind === 'block') {
-        this.blocks.set(node.name, { node, uri });
-        contributed.blocks.push(node.name);
-      } else {
-        this.overlays.set(node.name, { node, uri });
-        contributed.overlays.push(node.name);
-      }
+      if (node.kind === 'prompt') { add(this.prompts, node); contributed.prompts.push(node.name); }
+      else if (node.kind === 'block') { add(this.blocks, node); contributed.blocks.push(node.name); }
+      else { add(this.overlays, node); contributed.overlays.push(node.name); }
     }
 
     this.uriIndex.set(uri, contributed);
@@ -53,9 +55,13 @@ export class LoomRegistry {
   removeFile(uri: string): void {
     const idx = this.uriIndex.get(uri);
     if (idx) {
-      idx.prompts.forEach(n  => this.prompts.delete(n));
-      idx.blocks.forEach(n   => this.blocks.delete(n));
-      idx.overlays.forEach(n => this.overlays.delete(n));
+      const drop = (map: Map<string, RegistryEntry[]>, name: string) => {
+        const rest = (map.get(name) ?? []).filter(e => e.uri !== uri);
+        if (rest.length > 0) map.set(name, rest); else map.delete(name);
+      };
+      idx.prompts.forEach(n  => drop(this.prompts, n));
+      idx.blocks.forEach(n   => drop(this.blocks, n));
+      idx.overlays.forEach(n => drop(this.overlays, n));
       this.uriIndex.delete(uri);
     }
     this.globalVarsByUri.delete(uri);
@@ -63,9 +69,9 @@ export class LoomRegistry {
 
   // ─── Lookups ───────────────────────────────────────────────────────────────
 
-  lookupPrompt(name: string):  RegistryEntry | undefined { return this.prompts.get(name);  }
-  lookupBlock(name: string):   RegistryEntry | undefined { return this.blocks.get(name);   }
-  lookupOverlay(name: string): RegistryEntry | undefined { return this.overlays.get(name); }
+  lookupPrompt(name: string):  RegistryEntry | undefined { return this.prompts.get(name)?.[0];  }
+  lookupBlock(name: string):   RegistryEntry | undefined { return this.blocks.get(name)?.[0];   }
+  lookupOverlay(name: string): RegistryEntry | undefined { return this.overlays.get(name)?.[0]; }
 
   allPromptNames():  string[] { return [...this.prompts.keys()];  }
   allBlockNames():   string[] { return [...this.blocks.keys()];   }
@@ -88,7 +94,7 @@ export class LoomRegistry {
       if (visited.has(current)) continue;
       visited.add(current);
       chain.push(current);
-      const node = this.prompts.get(current)?.node;
+      const node = this.prompts.get(current)?.[0]?.node;
       if (node) {
         for (const p of (node.parents ?? (node.parent ? [node.parent] : []))) {
           if (!visited.has(p)) queue.push(p);
@@ -112,7 +118,7 @@ export class LoomRegistry {
     const pack = this.packs.get(slug);
     if (!pack) return [];
     return [...this.prompts.entries()]
-      .filter(([, e]) => e.uri.startsWith(pack.dirUri))
+      .filter(([, es]) => es.some(e => e.uri.startsWith(pack.dirUri)))
       .map(([n]) => n);
   }
 
@@ -120,7 +126,7 @@ export class LoomRegistry {
     const pack = this.packs.get(slug);
     if (!pack) return [];
     return [...this.blocks.entries()]
-      .filter(([, e]) => e.uri.startsWith(pack.dirUri))
+      .filter(([, es]) => es.some(e => e.uri.startsWith(pack.dirUri)))
       .map(([n]) => n);
   }
 
@@ -139,9 +145,9 @@ export class LoomRegistry {
 
   allNodes(): RegistryEntry[] {
     return [
-      ...this.prompts.values(),
-      ...this.blocks.values(),
-      ...this.overlays.values(),
+      ...[...this.prompts.values()].flat(),
+      ...[...this.blocks.values()].flat(),
+      ...[...this.overlays.values()].flat(),
     ];
   }
 
@@ -154,7 +160,7 @@ export class LoomRegistry {
       if (visited.has(current)) return false;  // already confirmed safe
       onPath.add(current);
       visited.add(current);
-      const node = this.prompts.get(current)?.node;
+      const node = this.prompts.get(current)?.[0]?.node;
       if (node) {
         const parents = node.parents ?? (node.parent ? [node.parent] : []);
         for (const p of parents) {

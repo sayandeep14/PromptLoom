@@ -1,0 +1,3 @@
+rule: from-and-on-scalar
+error: prompt "C" field "persona": 'and' cannot be used on scalar fields
+error: prompt "D" field "persona": 'and' cannot be used on scalar fields

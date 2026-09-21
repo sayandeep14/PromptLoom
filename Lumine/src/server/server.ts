@@ -306,8 +306,8 @@ function nodeToSymbol(node: LoomNode): DocumentSymbol {
     node.kind === 'block'   ? SymbolKind.Module :
                               SymbolKind.Interface;
 
-  const detail = node.kind === 'prompt' && node.parent
-    ? `inherits ${node.parent}` : node.kind;
+  const detail = node.kind === 'prompt' && node.parents.length > 0
+    ? `inherits ${node.parents.join(', ')}` : node.kind;
 
   const children: DocumentSymbol[] = [
     ...node.vars.map(varToSymbol),

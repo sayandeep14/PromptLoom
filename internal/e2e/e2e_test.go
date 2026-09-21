@@ -55,7 +55,7 @@ var allRules = []string{
 	// validate: errors
 	"unknown-parent", "unknown-block", "inheritance-cycle", "unknown-field", "duplicate-var",
 	"duplicate-variant", "variant-unknown-field", "remove-on-scalar", "from-all-on-scalar",
-	"from-index-out-of-range", "from-range-out-of-range", "from-not-a-parent", "from-unknown-field",
+	"from-and-on-scalar", "from-index-out-of-range", "from-range-out-of-range", "from-not-a-parent", "from-unknown-field",
 	"block-from-expr", "block-unknown-field", "overlay-unknown-field", "undeclared-variable",
 	// validate: warnings
 	"error-append-removed", "error-append-no-parent", "error-append-scalar", "error-append-in-block",

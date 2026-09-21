@@ -359,6 +359,24 @@ export function getHover(
     }
   }
 
+  // ── 3a. parent[N] inside a from() expression: say which parent that is ──────
+  {
+    const node = nodes.find(n => n.kind === 'prompt' && n.range.start.line <= li && li <= n.range.end.line);
+    if (node) {
+      const re = /\bparent\[(\d+)(?:\.\.(\d+))?\]/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(line)) !== null) {
+        if (ci < m.index || ci > m.index + m[0].length) continue;
+        const from = parseInt(m[1], 10);
+        const to = m[2] !== undefined ? parseInt(m[2], 10) : from + 1;
+        const names = node.parents.slice(from, to);
+        return hover(
+          `**\`${m[0]}\`** — ${names.length ? names.map(n => `\`${n}\``).join(', ') : 'no such parent'}\n\n` +
+          `\`${node.name}\` inherits ${node.parents.map((p, k) => `\`${p}\` (${k})`).join(', ')}`);
+      }
+    }
+  }
+
   // ── 3b. `from` keyword hover ──────────────────────────────────────────────
   {
     if (word === 'from' && line.includes('from(')) {
@@ -368,7 +386,9 @@ export function getHover(
         'Syntax forms:',
         '- `from(parent[*])` — all items from all parents *(list fields only)*',
         '- `from(parent[N])` — items from the Nth parent (0-indexed)',
-        '- `from(parent[N...M])` — items from parents N through M',
+        '- `from(parent[N..M])` — items from parents N up to (not including) M',
+        '- `from(ParentName)` — items from a declared parent, by name',
+        '- `parent[N].field[a..b]` — a slice of one field of one parent',
         '- `from(parent[*]) and { - item }` — merge all parents then add new items',
         '',
         '> `from(parent[*])` is an error on scalar fields — use `from(parent[N])` instead.',

@@ -29,6 +29,24 @@ function getWordAt(line: string, ci: number): { word: string; start: number } | 
   return { word: line.slice(start, end), start };
 }
 
+/**
+ * The parent a `from(Name)` or `parent[N]` under the cursor refers to (its name), or undefined
+ * when the cursor is not on one. `parent[0..2]` resolves to its first parent.
+ */
+export function fromTargetAt(line: string, ci: number, parents: string[]): string | undefined {
+  const named = /\bfrom\(\s*(?!parent\b)([A-Za-z_][A-Za-z0-9_.-]*)\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = named.exec(line)) !== null) {
+    const start = m.index + m[0].indexOf(m[1]);
+    if (ci >= start && ci <= start + m[1].length) return m[1];
+  }
+  const indexed = /\bparent\[(\d+)(?:\.\.\d+)?\]/g;
+  while ((m = indexed.exec(line)) !== null) {
+    if (ci >= m.index && ci <= m.index + m[0].length) return parents[parseInt(m[1], 10)];
+  }
+  return undefined;
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function getDefinition(
@@ -106,6 +124,18 @@ export function getDefinition(
       const entry = registry.lookupBlock(word);
       if (entry) return Location.create(entry.uri, entry.node.nameRange);
       return null;
+    }
+  }
+
+  // ── 3b. from(ParentName) and parent[N] inside a from() expression ─────────────
+  {
+    const node = nodes.find(n => n.kind === 'prompt' && n.range.start.line <= li && li <= n.range.end.line);
+    if (node) {
+      const target = fromTargetAt(line, ci, node.parents);
+      if (target !== undefined) {
+        const entry = registry.lookupPrompt(target) ?? registry.lookupPrompt(target.slice(target.lastIndexOf('.') + 1));
+        return entry ? Location.create(entry.uri, entry.node.nameRange) : null;
+      }
     }
   }
 

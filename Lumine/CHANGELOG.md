@@ -4,6 +4,29 @@ All notable changes to Lumine are documented here.
 
 ---
 
+## [Unreleased]
+
+Lumine now reports **the same diagnostics as `loom inspect`**, with the same wording, and understands `from()`.
+
+### Added
+- **Every rule of `loom inspect`** that does not need a render: load errors (missing `{`, unknown top-level token, bad `var`/`slot`/`variant`, `use`/`var`/… outside a prompt, unterminated body), unknown parents / blocks / fields (with a *Did you mean* hint), inheritance cycles (`A -> B -> A`), duplicate names / variables / variants (also across files), undeclared `{{ variables }}`, and the configurable warnings (missing objective/format, empty context, inheritance depth, kind mismatch, required slots, `tags` with an operator)
+- **`from()` type and bounds checking**: `parent[N]` / `parent[N..M]` out of range, `from(Name)` that is not a declared parent, unknown field in `parent[0].field[...]`, `[*]` or `and` or a `{ - item }` block on a *scalar* field, and syntax errors inside the expression. Checked in the prompt body, variants and env blocks
+- A warning when a prompt writes a list field that one of its `use`d blocks also defines (the prompt's own list replaces the block's items)
+- **`from()`-aware completion**: knows the prompt's parents and whether the field is a scalar or a list (a scalar is offered only single-parent forms), completes inside `from(`, `parent[`, and `parent[N].`, and after `and`
+- Go to definition and hover for `from(ParentName)` and `parent[N]` / `parent[N..M]`
+- `from(pack.Name)`, `from(Name)` and `parent[N].field[a..b]` are highlighted, and `and` when it joins `from()` units
+- Bare `slot name` (without braces) is accepted, as in `loom`
+- The parity suite runs the extension over **every** invalid fixture of the Go suite, plus provider tests (completion, hover, definition, references) and an end-to-end LSP test for outline, hover, definition, references and completion
+
+### Fixed
+- **Completion inserted `from(parent[0...2])`** (three dots) and the grammar and hover described the same wrong range syntax; the language uses `..` (end exclusive)
+- **Two files defining the same name erased each other** in the workspace index, so editing or closing one hid the duplicate and could produce false *unknown parent* / *unknown block* errors in others
+- *Find references* on a prompt missed every prompt that lists it as its second or later parent, and did not work when invoked from a later parent in `inherits A, B`
+- The outline showed only the first parent of a multi-parent prompt
+- Diagnostics are no longer produced from a half-parsed file: like `loom inspect`, nothing else is checked until load errors are fixed
+
+---
+
 ## [0.2.0] — 2026-09-21
 
 Lumine now speaks **v2 only**: `:=` is the one field operator, matching `loom inspect`.

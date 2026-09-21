@@ -179,3 +179,76 @@ test('built language server: diagnostics, quick fixes, fix-all and formatting ov
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('built language server: symbols, hover, definition, references and completion over real LSP', async (t) => {
+  if (!fs.existsSync(SERVER)) { t.skip('dist/server.js not built'); return; }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumine-lsp2-'));
+  const write = (rel: string, text: string) => {
+    const f = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, text);
+    return 'file://' + f;
+  };
+  write('loom.toml', '[project]\nname = "t"\nversion = "0"\n');
+  const baseUri = write('prompts/Base.prompt.loom', 'prompt Base {\n  persona :=\n    p\n\n  instructions :=\n    - a\n}\n');
+  const otherUri = write('prompts/Other.prompt.loom', 'prompt Other {\n  instructions :=\n    - b\n}\n');
+  write('blocks/Guard.block.loom', 'block Guard {\n  constraints :=\n    - safe\n}\n');
+  const childText = [
+    'prompt Child inherits Base, Other {',   // 0
+    '  use Guard',                             // 1
+    '  var lang = "go"',                       // 2
+    '',                                        // 3
+    '  persona :=',                            // 4
+    '    from(parent[1]) in {{ lang }}',       // 5
+    '',                                        // 6
+    '  instructions := ',                      // 7
+    '}',                                       // 8
+    '',
+  ].join('\n');
+  const childUri = write('prompts/Child.prompt.loom', childText);
+
+  const client = new LspClient(SERVER);
+  try {
+    await client.request('initialize', {
+      processId: process.pid, rootUri: 'file://' + dir,
+      workspaceFolders: [{ uri: 'file://' + dir, name: 'p' }], capabilities: {},
+    });
+    client.notify('initialized', {});
+    for (const [uri, text] of [[baseUri, fs.readFileSync(baseUri.slice(7), 'utf8')], [otherUri, fs.readFileSync(otherUri.slice(7), 'utf8')], [childUri, childText]]) {
+      client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'loom', version: 1, text } });
+    }
+    await client.waitFor('textDocument/publishDiagnostics', p => p.uri === childUri);
+    const at = (line: number, character: number) => ({ textDocument: { uri: childUri }, position: { line, character } });
+
+    // outline: both parents are listed, and the children are the declared things
+    const symbols: any[] = await client.request('textDocument/documentSymbol', { textDocument: { uri: childUri } });
+    assert.equal(symbols.length, 1);
+    assert.equal(symbols[0].name, 'Child');
+    assert.equal(symbols[0].detail, 'inherits Base, Other', 'multi-parent prompts list every parent');
+    assert.deepEqual(symbols[0].children.map((c: any) => c.name).sort(), ['instructions :=', 'lang', 'persona :=']);
+
+    // hover on parent[1] names the second parent
+    const h = await client.request('textDocument/hover', at(5, 10));
+    assert.match(h.contents.value, /`Other`/);
+
+    // definition: a later parent, from(...) by index, and a use
+    const def = async (line: number, ch: number) => client.request('textDocument/definition', at(line, ch));
+    assert.ok((await def(0, 30)).uri.endsWith('Other.prompt.loom'), 'second parent in inherits');
+    assert.ok((await def(5, 10)).uri.endsWith('Other.prompt.loom'), 'parent[1]');
+    assert.ok((await def(1, 8)).uri.endsWith('Guard.block.loom'), 'use Guard');
+
+    // references to Other found from a later parent
+    const refs: any[] = await client.request('textDocument/references', { ...at(0, 30), context: { includeDeclaration: false } });
+    assert.ok(refs.some(r => r.uri === childUri), JSON.stringify(refs));
+
+    // completion after `instructions := ` is aware of both parents and of the list type
+    const items: any[] = await client.request('textDocument/completion', at(7, '  instructions := '.length));
+    const labels = items.map(i => i.label);
+    assert.ok(labels.includes('from(parent[*])') && labels.includes('from(parent[1])') && labels.includes('from(Other)'), labels.join(', '));
+    assert.ok(!items.some(i => String(i.insertText).includes('...')), 'no three-dot ranges');
+  } finally {
+    await client.shutdown();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

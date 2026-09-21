@@ -334,6 +334,27 @@ func checkFromFields(n *ast.Node, fields []ast.FieldOperation) []Diagnostic {
 		}
 		isScalar := ast.ScalarFields[f.FieldName]
 
+		// A scalar holds one value: `and` would join several, and a literal block is a list.
+		if isScalar && len(f.FromExpr.Units) > 1 {
+			diags = append(diags, Diagnostic{
+				Sev: Error,
+				Message: fmt.Sprintf(
+					"prompt %q field %q: 'and' cannot be used on scalar fields — a scalar takes exactly one value; use a single from(parent[N])",
+					n.Name, f.FieldName,
+				),
+				Pos: f.FromExpr.Pos,
+			})
+		} else if isScalar && len(f.FromExpr.Units) == 1 && f.FromExpr.Units[0].Kind == ast.FromLiteral {
+			diags = append(diags, Diagnostic{
+				Sev: Error,
+				Message: fmt.Sprintf(
+					"prompt %q field %q: a { - item } block is a list and cannot be used on scalar fields — write the text directly",
+					n.Name, f.FieldName,
+				),
+				Pos: f.FromExpr.Pos,
+			})
+		}
+
 		for _, unit := range f.FromExpr.Units {
 			switch unit.Kind {
 			case ast.FromParentRef:

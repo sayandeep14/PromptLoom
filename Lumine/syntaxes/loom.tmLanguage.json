@@ -13,6 +13,8 @@
     { "include": "#slot-declaration" },
     { "include": "#subblock-keywords" },
     { "include": "#from-expression" },
+    { "include": "#from-named-parent" },
+    { "include": "#from-field-ref" },
     { "include": "#from-and-keyword" },
     { "include": "#field-declaration" },
     { "include": "#contract-key" },
@@ -90,17 +92,50 @@
       }
     },
     "from-expression": {
+      "comment": "from(parent[*]) / from(parent[N]) / from(parent[N..M]) — subscripts use two dots",
       "name": "meta.from-expression.loom",
-      "match": "\\b(from)\\((parent)(\\[(?:\\*|[0-9]+(?:\\.\\.\\.[0-9]+)?)\\])\\)",
+      "match": "\\b(from)\\s*(\\()\\s*(parent)(\\[)(\\*|[0-9]+(?:\\.\\.[0-9]+)?)(\\])\\s*(\\))",
       "captures": {
         "1": { "name": "keyword.control.from.loom" },
-        "2": { "name": "variable.language.parent.loom" },
-        "3": { "name": "meta.subscript.loom" }
+        "2": { "name": "punctuation.definition.parameters.begin.loom" },
+        "3": { "name": "variable.language.parent.loom" },
+        "4": { "name": "punctuation.definition.subscript.begin.loom" },
+        "5": { "name": "meta.subscript.loom constant.numeric.loom" },
+        "6": { "name": "punctuation.definition.subscript.end.loom" },
+        "7": { "name": "punctuation.definition.parameters.end.loom" }
+      }
+    },
+    "from-named-parent": {
+      "comment": "from(ParentName) / from(pack.ParentName)",
+      "name": "meta.from-expression.loom",
+      "match": "\\b(from)\\s*(\\()\\s*(?!parent\\b)([A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)?)\\s*(\\))",
+      "captures": {
+        "1": { "name": "keyword.control.from.loom" },
+        "2": { "name": "punctuation.definition.parameters.begin.loom" },
+        "3": { "name": "entity.name.type.parent.loom" },
+        "4": { "name": "punctuation.definition.parameters.end.loom" }
+      }
+    },
+    "from-field-ref": {
+      "comment": "parent[0].constraints[1..3] — one field of one parent",
+      "name": "meta.from-expression.loom",
+      "match": "\\b(parent)(\\[)(\\*|[0-9]+(?:\\.\\.[0-9]+)?)(\\])(\\.)([a-z_]+)(\\[)(\\*|[0-9]+(?:\\.\\.[0-9]+)?)(\\])",
+      "captures": {
+        "1": { "name": "variable.language.parent.loom" },
+        "2": { "name": "punctuation.definition.subscript.begin.loom" },
+        "3": { "name": "meta.subscript.loom constant.numeric.loom" },
+        "4": { "name": "punctuation.definition.subscript.end.loom" },
+        "5": { "name": "punctuation.accessor.loom" },
+        "6": { "name": "support.type.field-name.loom" },
+        "7": { "name": "punctuation.definition.subscript.begin.loom" },
+        "8": { "name": "meta.subscript.loom constant.numeric.loom" },
+        "9": { "name": "punctuation.definition.subscript.end.loom" }
       }
     },
     "from-and-keyword": {
+      "comment": "`and` joins from() units: ... and { - item }, ... and from(...)",
       "name": "keyword.operator.and.loom",
-      "match": "\\band\\b(?=\\s*\\{)"
+      "match": "(?<=\\)|\\]|^)\\s*\\band\\b(?=\\s*(?:\\{|from\\b|parent\\b|$))|\\band\\b(?=\\s*(?:\\{|from\\(|parent\\[))"
     },
     "field-declaration": {
       "comment": "v2: the only field operator is :=",

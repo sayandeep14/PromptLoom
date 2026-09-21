@@ -153,7 +153,7 @@ const VARIANT_RE     = /^(\s+)variant\s+([a-zA-Z0-9_-]+)/;
 const ENV_RE         = /^(\s+)env\s+([a-zA-Z0-9_-]+)/;
 const CONTRACT_RE    = /^(\s+)contract\s*\{?/;
 const CAPABILITIES_RE = /^(\s+)capabilities\s*\{?/;
-const FIELD_OP_RE    = /^(\s+)(summary|persona|context|objective|notes|kind|instructions|constraints|examples|format|todo|compatible_with|required_sections|forbidden_sections|must_include|must_not_include|allowed|forbidden)\s*(:=|\+=|-=|:)/;
+const FIELD_OP_RE    = /^(\s+)(?!(?:use|var|slot|variant|env|contract|capabilities|prompt|block|overlay|inherits)\b)([a-zA-Z_][a-zA-Z0-9_-]*)\s*(:=|\+=|-=|:)/;
 
 // ─── parseFieldsOnly ─────────────────────────────────────────────────────────
 // Used for variant / contract / capabilities bodies.

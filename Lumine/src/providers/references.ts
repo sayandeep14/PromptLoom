@@ -46,9 +46,11 @@ function findInheritsRefs(promptName: string, registry: LoomRegistry, documents:
 
     const { nodes } = parseLoomDocument(text, uri);
     for (const node of nodes) {
-      if (node.kind === 'prompt' && node.parent === promptName && node.parentRange) {
-        locs.push(Location.create(uri, node.parentRange));
-      }
+      if (node.kind !== 'prompt') continue;
+      // every parent of a multi-parent prompt counts, not just the first
+      node.parents.forEach((parent, i) => {
+        if (parent === promptName && node.parentRanges[i]) locs.push(Location.create(uri, node.parentRanges[i]));
+      });
     }
   }
 
@@ -177,8 +179,10 @@ export function getReferences(
 
   // ── 3. `inherits ParentName` — go find references to that prompt ──────────
   {
-    const before = line.slice(0, ws);
-    if (/\binherits\s+$/.test(before)) {
+    // any name of `inherits A, B, C` (before the opening brace)
+    const inheritsIdx = line.indexOf('inherits');
+    const braceIdx = line.indexOf('{');
+    if (inheritsIdx >= 0 && ws > inheritsIdx && (braceIdx < 0 || ws < braceIdx)) {
       return findInheritsRefs(word, registry, documents);
     }
   }
