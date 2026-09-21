@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
@@ -397,4 +398,41 @@ func assertField(t *testing.T, fields map[string]ast.FieldOperation, name string
 			t.Errorf("field %q value[%d]: expected %q, got %q", name, i, v, f.Value[i])
 		}
 	}
+}
+
+// Contract entries are quoted in the documentation; the quotes are not part of the phrase.
+func TestContractEntriesLoseTheirQuotes(t *testing.T) {
+	nodes := mustParse(t, "c.prompt.loom", `
+prompt P {
+  contract {
+    required_sections:
+      - Summary
+      - "Key Points"
+    must_include:
+      - 'Verdict'
+    must_not_include:
+      - "As an AI"
+      - LGTM
+      - "unbalanced
+  }
+
+  capabilities {
+    allowed:
+      - "read_code"
+    forbidden:
+      - delete_files
+  }
+}`)
+	c, caps := nodes[0].Contract, nodes[0].Capabilities
+	eq := func(name string, got, want []string) {
+		t.Helper()
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	eq("required_sections", c.RequiredSections, []string{"Summary", "Key Points"})
+	eq("must_include", c.MustInclude, []string{"Verdict"})
+	eq("must_not_include", c.MustNotInclude, []string{"As an AI", "LGTM", `"unbalanced`})
+	eq("allowed", caps.Allowed, []string{"read_code"})
+	eq("forbidden", caps.Forbidden, []string{"delete_files"})
 }

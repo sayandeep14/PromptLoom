@@ -4,6 +4,7 @@ package registry
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
@@ -82,30 +83,36 @@ func (r *Registry) LookupOverlay(name string) (*ast.Node, bool) {
 	return n, ok
 }
 
-// Prompts returns all registered prompts as an unordered slice.
+// Prompts returns all registered prompts sorted by name, so every command that lists or
+// iterates them produces stable, diff-friendly output.
 func (r *Registry) Prompts() []*ast.Node {
 	out := make([]*ast.Node, 0, len(r.prompts))
 	for _, n := range r.prompts {
 		out = append(out, n)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// Blocks returns all registered blocks as an unordered slice.
+// Blocks returns all registered blocks sorted by name, so every command that lists or
+// iterates them produces stable, diff-friendly output.
 func (r *Registry) Blocks() []*ast.Node {
 	out := make([]*ast.Node, 0, len(r.blocks))
 	for _, n := range r.blocks {
 		out = append(out, n)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// Overlays returns all registered overlays as an unordered slice.
+// Overlays returns all registered overlays sorted by name, so every command that lists or
+// iterates them produces stable, diff-friendly output.
 func (r *Registry) Overlays() []*ast.Node {
 	out := make([]*ast.Node, 0, len(r.overlays))
 	for _, n := range r.overlays {
 		out = append(out, n)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 

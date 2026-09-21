@@ -9,6 +9,7 @@ package namespacereg
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
@@ -115,6 +116,7 @@ func (nr *NamespaceRegistry) Slugs() []string {
 	for slug := range nr.packs {
 		out = append(out, slug)
 	}
+	sort.Strings(out)
 	return out
 }
 

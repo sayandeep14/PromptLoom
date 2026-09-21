@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +22,17 @@ import (
 	"github.com/sayandeep14/PromptLoom/internal/render"
 	"github.com/sayandeep14/PromptLoom/internal/resolve"
 )
+
+// Endpoints are variables so tests can point them at a local server.
+var (
+	geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
+	anthropicURL  = "https://api.anthropic.com/v1/messages"
+)
+
+// maxResponseBytes caps how much of a model reply is read.
+const maxResponseBytes = 8 << 20
+
+var modelNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`)
 
 // Result is the outcome of a single test run.
 type Result struct {
@@ -43,8 +56,10 @@ type Options struct {
 
 // RunAll runs tests for every prompt in the registry that has a contract.
 func RunAll(reg *registry.Registry, cfg *config.Config, cwd string, opts Options) []Result {
+	nodes := reg.Prompts()
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 	var results []Result
-	for _, node := range reg.Prompts() {
+	for _, node := range nodes {
 		results = append(results, Run(node.Name, reg, cfg, cwd, opts))
 	}
 	return results
@@ -87,6 +102,11 @@ func Run(name string, reg *registry.Registry, cfg *config.Config, cwd string, op
 	}
 	if model == "" {
 		model = "gemini-2.0-flash"
+	}
+
+	if !modelNameRe.MatchString(model) {
+		res.Err = fmt.Errorf("invalid model name %q", model)
+		return res
 	}
 
 	apiKey, err := resolveAPIKey(cfg)
@@ -161,10 +181,11 @@ func loadFixture(testsDir, name string) string {
 }
 
 func writeBaseline(testsDir, name, response string) error {
-	if err := os.MkdirAll(testsDir, 0755); err != nil {
+	path := filepath.Join(testsDir, name+".baseline.md")
+	// a namespaced prompt name ("team/Reviewer") maps to a sub-directory
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	path := filepath.Join(testsDir, name+".baseline.md")
 	return os.WriteFile(path, []byte(response), 0644)
 }
 
@@ -203,8 +224,10 @@ func callModel(provider, model, apiKey, systemPrompt, userInput string, timeout 
 	switch strings.ToLower(provider) {
 	case "anthropic":
 		return callAnthropic(model, apiKey, systemPrompt, userInput, timeout)
-	default:
+	case "", "gemini":
 		return callGemini(model, apiKey, systemPrompt, userInput, timeout)
+	default:
+		return "", fmt.Errorf("unknown provider %q in [testing] (supported: gemini, anthropic)", provider)
 	}
 }
 
@@ -245,10 +268,9 @@ type geminiResponse struct {
 }
 
 func callGemini(model, apiKey, systemPrompt, userInput string, timeout time.Duration) (string, error) {
-	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		model, apiKey,
-	)
+	// The key travels in a header, never in the URL: Go's HTTP errors include the full URL,
+	// so a key in the query string would be printed on any network failure.
+	url := fmt.Sprintf("%s/%s:generateContent", geminiBaseURL, model)
 
 	req := geminiRequest{
 		SystemInstruction: &geminiContent{
@@ -275,21 +297,16 @@ func callGemini(model, apiKey, systemPrompt, userInput string, timeout time.Dura
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", apiKey)
 
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, status, err := do(httpReq, apiKey)
 	if err != nil {
 		return "", err
 	}
 
 	var gemResp geminiResponse
 	if err := json.Unmarshal(respBody, &gemResp); err != nil {
-		return "", fmt.Errorf("failed to parse Gemini response: %w", err)
+		return "", fmt.Errorf("Gemini returned HTTP %d with a response that is not JSON: %s", status, snippet(respBody))
 	}
 
 	if gemResp.Error != nil {
@@ -329,7 +346,7 @@ type anthropicResponse struct {
 }
 
 func callAnthropic(model, apiKey, systemPrompt, userInput string, timeout time.Duration) (string, error) {
-	url := "https://api.anthropic.com/v1/messages"
+	url := anthropicURL
 
 	req := anthropicRequest{
 		Model:     model,
@@ -356,20 +373,14 @@ func callAnthropic(model, apiKey, systemPrompt, userInput string, timeout time.D
 	httpReq.Header.Set("x-api-key", apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, status, err := do(httpReq, apiKey)
 	if err != nil {
 		return "", err
 	}
 
 	var antResp anthropicResponse
 	if err := json.Unmarshal(respBody, &antResp); err != nil {
-		return "", fmt.Errorf("failed to parse Anthropic response: %w", err)
+		return "", fmt.Errorf("Anthropic returned HTTP %d with a response that is not JSON: %s", status, snippet(respBody))
 	}
 
 	if antResp.Error != nil {
@@ -386,6 +397,49 @@ func callAnthropic(model, apiKey, systemPrompt, userInput string, timeout time.D
 		}
 	}
 	return "", fmt.Errorf("Anthropic response contained no text block")
+}
+
+// do sends the request and returns the (size-limited) body and status. Any error is scrubbed
+// of the API key and the URL before it can reach a terminal or a CI log.
+func do(req *http.Request, apiKey string) ([]byte, int, error) {
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("request to %s failed: %s", req.URL.Host, redact(errorText(err), apiKey))
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("reading the response from %s: %s", req.URL.Host, redact(err.Error(), apiKey))
+	}
+	return body, resp.StatusCode, nil
+}
+
+// errorText unwraps *url.Error so the message does not repeat the request URL.
+func errorText(err error) string {
+	type unwrapper interface{ Unwrap() error }
+	if u, ok := err.(unwrapper); ok && u.Unwrap() != nil {
+		return u.Unwrap().Error()
+	}
+	return err.Error()
+}
+
+func redact(s, key string) string {
+	if key != "" {
+		s = strings.ReplaceAll(s, key, "***")
+	}
+	return s
+}
+
+// snippet returns the start of a body for an error message.
+func snippet(b []byte) string {
+	t := strings.TrimSpace(string(b))
+	if len(t) > 200 {
+		t = t[:200] + "…"
+	}
+	if t == "" {
+		return "(empty body)"
+	}
+	return t
 }
 
 const defaultStub = `Please review the following code snippet for issues:

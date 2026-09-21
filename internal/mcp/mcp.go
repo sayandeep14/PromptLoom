@@ -3,6 +3,8 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sayandeep14/PromptLoom/internal/ast"
@@ -62,13 +64,23 @@ func GenerateAll(reg *registry.Registry) (*Manifest, []string, error) {
 	var tools []Tool
 	var allWarnings []string
 
-	for _, node := range reg.Prompts() {
+	// Stable order: the manifest is meant to be committed and diffed.
+	nodes := reg.Prompts()
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
+
+	seen := map[string]string{}
+	for _, node := range nodes {
 		rp, err := resolve.Resolve(node.Name, reg)
 		if err != nil {
 			allWarnings = append(allWarnings, node.Name+": resolve error: "+err.Error())
 			continue
 		}
 		tool, warnings := buildTool(node.Name, node, rp)
+		if other, dup := seen[tool.Name]; dup {
+			allWarnings = append(allWarnings, fmt.Sprintf("%s: tool name %q is already used by %s; skipped", node.Name, tool.Name, other))
+			continue
+		}
+		seen[tool.Name] = node.Name
 		tools = append(tools, tool)
 		allWarnings = append(allWarnings, warnings...)
 	}
@@ -85,7 +97,7 @@ func buildTool(name string, node *ast.Node, rp *ast.ResolvedPrompt) (Tool, []str
 	var warnings []string
 
 	tool := Tool{
-		Name:        toKebab(name),
+		Name:        toolName(name),
 		Description: rp.Summary,
 		InputSchema: InputSchema{
 			Type:       "object",
@@ -128,6 +140,30 @@ func buildTool(name string, node *ast.Node, rp *ast.ResolvedPrompt) (Tool, []str
 	}
 
 	return tool, warnings
+}
+
+// toolName makes a prompt name a valid MCP tool name ([a-z0-9_-] only): namespaced names such
+// as "team/Reviewer" would otherwise carry a "/" that clients reject.
+func toolName(s string) string {
+	var b strings.Builder
+	sep := byte(0) // pending separator: '_' if the run contained one, else '-'
+	for _, r := range toKebab(s) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			if sep != 0 && b.Len() > 0 {
+				b.WriteByte(sep)
+			}
+			sep = 0
+			b.WriteRune(r)
+		case r == '_':
+			sep = '_'
+		default: // '-', '/', '.', spaces, anything else
+			if sep == 0 {
+				sep = '-'
+			}
+		}
+	}
+	return b.String()
 }
 
 func toKebab(s string) string {

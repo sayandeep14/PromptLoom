@@ -32,10 +32,21 @@ func Add(cwd, message, prompt, author, body string) (string, error) {
 		return "", fmt.Errorf("create journal dir: %w", err)
 	}
 
+	// Single-line values only: a newline in the message, prompt or author would inject extra
+	// front-matter fields or break the "# title" line.
+	message, prompt, author = oneLine(message), oneLine(prompt), oneLine(author)
+
 	now := time.Now()
 	slug := makeSlug(message)
-	filename := fmt.Sprintf("%s_%s.md", now.Format("2006-01-02"), slug)
-	path := filepath.Join(dir, filename)
+	base := fmt.Sprintf("%s_%s", now.Format("2006-01-02"), slug)
+	// Never overwrite an earlier entry: two notes with the same title on the same day get -2, -3, ...
+	path := filepath.Join(dir, base+".md")
+	for n := 2; ; n++ {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			break
+		}
+		path = filepath.Join(dir, fmt.Sprintf("%s-%d.md", base, n))
+	}
 
 	var b strings.Builder
 	b.WriteString("---\n")
@@ -52,10 +63,24 @@ func Add(cwd, message, prompt, author, body string) (string, error) {
 		b.WriteString(body + "\n")
 	}
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	// O_EXCL: if another process created the same name in the meantime, fail instead of overwriting.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("write journal entry: %w", err)
+	}
+	if _, err := f.WriteString(b.String()); err != nil {
+		f.Close()
+		return "", fmt.Errorf("write journal entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
 		return "", fmt.Errorf("write journal entry: %w", err)
 	}
 	return path, nil
+}
+
+// oneLine collapses any run of whitespace (including newlines) into a single space.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // List returns all journal entries from the journal directory, newest first.
@@ -83,8 +108,11 @@ func List(cwd string) ([]Entry, error) {
 		out = append(out, entry)
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Date.After(out[j].Date)
+	sort.SliceStable(out, func(i, j int) bool {
+		if !out[i].Date.Equal(out[j].Date) {
+			return out[i].Date.After(out[j].Date)
+		}
+		return out[i].File > out[j].File // deterministic for entries written in the same second
 	})
 	return out, nil
 }
@@ -178,7 +206,7 @@ func makeSlug(s string) string {
 	}
 	slug := strings.Trim(b.String(), "-")
 	if len(slug) > 40 {
-		slug = slug[:40]
+		slug = strings.Trim(slug[:40], "-")
 	}
 	if slug == "" {
 		slug = "entry"

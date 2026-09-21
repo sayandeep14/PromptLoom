@@ -80,59 +80,66 @@ func parseLine(line string, lineNum int) (Rule, error) {
 		return Rule{}, fmt.Errorf("no backtick-delimited token found")
 	}
 
-	r := Rule{Package: tokens[0][1], Line: lineNum}
+	// Replace every `token` by a placeholder, then walk the words:
+	//   `pkg`  [match `glob`]  [except match `glob` | except `file`]
+	words := strings.Fields(backtickRE.ReplaceAllString(rest, "SLOT"))
+	next := 0 // index of the next backtick token
+	take := func() string { v := tokens[next][1]; next++; return v }
 
-	// Strip the package token from rest for further parsing.
-	rest = strings.TrimSpace(backtickRE.ReplaceAllString(rest, "SLOT"))
-	// Re-extract keywords by scanning remaining tokens.
-	keywords := strings.Fields(rest)
-	// Re-match full token list (index 0 = package, rest = match/except).
-	allTokens := make([]string, len(tokens))
-	for i, t := range tokens {
-		allTokens[i] = t[1]
+	if len(words) == 0 || words[0] != "SLOT" {
+		return Rule{}, fmt.Errorf("expected a backtick-quoted package after 'export'")
 	}
+	r := Rule{Package: take(), Line: lineNum}
 
-	// Parse keyword pattern:
-	//   [match `glob`] [except [match `glob` | `file`]]
-	// We operate on the original line for simplicity.
-	lower := strings.ToLower(line)
-	matchIdx := strings.Index(lower, " match `")
-	exceptMatchIdx := strings.Index(lower, " except match `")
-	exceptFileIdx := strings.Index(lower, " except `")
-
-	if matchIdx >= 0 && (exceptMatchIdx < 0 || matchIdx < exceptMatchIdx) {
-		// There is a match clause before any except.
-		// Find which backtick token it is.
-		// The 'match' keyword precedes the second backtick token.
-		if len(allTokens) >= 2 {
-			r.MatchGlob = allTokens[1]
-		}
-	}
-
-	if exceptMatchIdx >= 0 {
-		// except match `glob`
-		for i, kw := range keywords {
-			if kw == "except" && i+1 < len(keywords) && keywords[i+1] == "match" {
-				// Find the corresponding token.
-				offset := 2 // after package + optional match glob
-				if r.MatchGlob != "" {
-					offset = 3
-				}
-				if offset < len(allTokens) {
-					r.ExceptGlob = allTokens[offset-1]
-					// Re-find: exceptGlob is last backtick token when using except match.
-					r.ExceptGlob = allTokens[len(allTokens)-1]
-				}
-				break
+	for i := 1; i < len(words); i++ {
+		switch strings.ToLower(words[i]) {
+		case "match":
+			if i+1 >= len(words) || words[i+1] != "SLOT" {
+				return Rule{}, fmt.Errorf("`match` must be followed by a backtick-quoted glob")
 			}
+			if r.MatchGlob != "" {
+				return Rule{}, fmt.Errorf("more than one `match` clause")
+			}
+			r.MatchGlob = take()
+			i++
+		case "except":
+			if i+1 < len(words) && strings.ToLower(words[i+1]) == "match" {
+				if i+2 >= len(words) || words[i+2] != "SLOT" {
+					return Rule{}, fmt.Errorf("`except match` must be followed by a backtick-quoted glob")
+				}
+				if r.ExceptGlob != "" {
+					return Rule{}, fmt.Errorf("more than one `except match` clause")
+				}
+				r.ExceptGlob = take()
+				i += 2
+			} else {
+				if i+1 >= len(words) || words[i+1] != "SLOT" {
+					return Rule{}, fmt.Errorf("`except` must be followed by a backtick-quoted file name or `match`")
+				}
+				if r.ExceptFile != "" {
+					return Rule{}, fmt.Errorf("more than one `except` clause")
+				}
+				r.ExceptFile = take()
+				i++
+			}
+		default:
+			// A typo ("mach", "excpet") or a stray value: silently ignoring it would export
+			// MORE than the author meant.
+			w := words[i]
+			if w == "SLOT" {
+				w = "`" + tokens[next][1] + "`"
+			}
+			return Rule{}, fmt.Errorf("unexpected word %s (expected `match` or `except` followed by a backtick-quoted value)", quoteWord(w))
 		}
-		_ = exceptFileIdx
-	} else if exceptFileIdx >= 0 {
-		// except `specific-file`
-		r.ExceptFile = allTokens[len(allTokens)-1]
 	}
-
 	return r, nil
+}
+
+func quoteWord(w string) string {
+	if strings.HasPrefix(w, "`") {
+		return w
+	}
+	return fmt.Sprintf("%q", w)
 }
 
 // Match returns the list of .loom file paths in baseDir that satisfy rule r.

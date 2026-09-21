@@ -396,7 +396,7 @@ func (p *parser) parseContract() (*ast.ContractBlock, error) {
 
 	block := &ast.ContractBlock{Pos: ast.Position{File: p.filename, Line: kw.Line, Col: kw.Col}}
 	for _, field := range fields {
-		values := stripBullets(field.Value)
+		values := unquoteAll(stripBullets(field.Value))
 		switch field.FieldName {
 		case "required_sections":
 			block.RequiredSections = append(block.RequiredSections, values...)
@@ -423,7 +423,7 @@ func (p *parser) parseCapabilities() (*ast.CapabilitiesBlock, error) {
 
 	block := &ast.CapabilitiesBlock{Pos: ast.Position{File: p.filename, Line: kw.Line, Col: kw.Col}}
 	for _, field := range fields {
-		values := stripBullets(field.Value)
+		values := unquoteAll(stripBullets(field.Value))
 		switch field.FieldName {
 		case "allowed":
 			block.Allowed = append(block.Allowed, values...)
@@ -485,6 +485,21 @@ func parseInlineMap(raw string) (map[string]string, error) {
 		out[key] = val
 	}
 	return out, nil
+}
+
+// unquoteAll removes one pair of surrounding quotes from each entry. Contract entries are
+// written quoted in the documentation (- "As an AI"); without this the quote characters
+// became part of the phrase, so it never matched and a forbidden phrase passed unnoticed.
+func unquoteAll(values []string) []string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		v = strings.TrimSpace(v)
+		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+			v = v[1 : len(v)-1]
+		}
+		out[i] = v
+	}
+	return out
 }
 
 func stripBullets(lines []string) []string {
