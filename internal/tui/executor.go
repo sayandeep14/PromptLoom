@@ -672,6 +672,14 @@ func checkSecretSlots(name string, reg *registry.Registry, vars map[string]strin
 }
 
 // RunWeave resolves and renders one or all prompts.
+// WeaveFailedError is returned by RunWeave --all when some prompts could not be rendered. The
+// output returned alongside it describes every prompt, so callers should print it.
+type WeaveFailedError struct{ Failed, Total int }
+
+func (e *WeaveFailedError) Error() string {
+	return fmt.Sprintf("%d of %d prompts failed to render", e.Failed, e.Total)
+}
+
 func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, error) {
 	reg, cfg, err := loader.Load(cwd)
 	if err != nil {
@@ -700,11 +708,12 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 			cache = LoadIncrementalCache(cwd)
 		}
 
-		woven, skipped := 0, 0
+		woven, skipped, failed := 0, 0, 0
 		for _, p := range prompts {
 			if missing := requiredPromptVars(p, baseVars); len(missing) > 0 {
 				b.WriteString(fmt.Sprintf("  %s  %s: missing values for %s\n",
 					ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), strings.Join(missing, ", ")))
+				failed++
 				continue
 			}
 			rp, err := resolve.ResolveWithOptions(p.Name, reg, resolve.Options{
@@ -716,11 +725,13 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 			if err != nil {
 				b.WriteString(fmt.Sprintf("  %s  %s: %v\n",
 					ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
+				failed++
 				continue
 			}
 			if len(rp.UnresolvedTokens) > 0 {
 				b.WriteString(fmt.Sprintf("  %s  %s: unresolved variables: %s\n",
 					ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), strings.Join(rp.UnresolvedTokens, ", ")))
+				failed++
 				continue
 			}
 
@@ -736,6 +747,7 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 			if err != nil {
 				b.WriteString(fmt.Sprintf("  %s  %s: %v\n",
 					ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
+				failed++
 				continue
 			}
 			dest := filepath.Join(outDir, format.DefaultFileName(p.Name))
@@ -771,8 +783,12 @@ func RunWeave(name string, all bool, opts WeaveOptions, cwd string) (string, err
 				MutedStyle.Render(fmt.Sprintf("%d", skipped))))
 		} else {
 			b.WriteString(fmt.Sprintf("  %s rendered to %s\n",
-				PromptNameStyle.Render(fmt.Sprintf("%d prompts", len(prompts))),
+				PromptNameStyle.Render(fmt.Sprintf("%d of %d prompts", woven, len(prompts))),
 				PathStyle.Render(outDir)))
+		}
+		if failed > 0 {
+			// The output above says which prompts failed; the error makes the exit code say so too.
+			return b.String(), &WeaveFailedError{Failed: failed, Total: len(prompts)}
 		}
 		return b.String(), nil
 	}
@@ -1786,6 +1802,17 @@ func runDiffAllAgainstDist(reg *registry.Registry, cfg *config.Config, opts Diff
 			}
 		}
 
+		// A prompt that needs variable values (its own slot, or one inherited) renders with
+		// {{placeholders}} here, while its dist file was woven with real values: the two can
+		// never match, so comparing them would report it stale forever.
+		if rp, err := resolve.Resolve(p.Name, reg); err == nil && len(rp.UnresolvedTokens) > 0 {
+			b.WriteString(fmt.Sprintf("  %s  %s  %s\n",
+				MutedStyle.Render("—"),
+				PromptNameStyle.Render(p.Name),
+				MutedStyle.Render("(skipped — needs values for "+strings.Join(rp.UnresolvedTokens, ", ")+")")))
+			continue
+		}
+
 		out, changed, err := runDiffOneAgainstDist(p.Name, reg, cfg, opts, cwd)
 		if err != nil {
 			b.WriteString(fmt.Sprintf("  %s  %s: %v\n", ErrorStyle.Render("✗"), PromptNameStyle.Render(p.Name), err))
@@ -2498,7 +2525,7 @@ func WatchWeave(opts WeaveOptions, cwd string) error {
 			elapsed := time.Since(start)
 			ts := MutedStyle.Render("[" + time.Now().Format("15:04:05") + "]")
 			if rebuildErr != nil {
-				fmt.Printf("  %s  %s  rebuild failed: %v\n", ts, ErrorStyle.Render("✗"), rebuildErr)
+				fmt.Printf("  %s  %s  rebuild failed: %v\n%s", ts, ErrorStyle.Render("✗"), rebuildErr, out)
 			} else {
 				fmt.Printf("  %s  rebuilt in %dms\n%s\n", ts, elapsed.Milliseconds(), out)
 			}

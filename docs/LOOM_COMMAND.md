@@ -32,7 +32,7 @@ Global flag available on every command:
 | [Project Setup](#project-setup) | `init`, `start`, `thread` |
 | [Rendering](#rendering) | `weave`, `cast`, `copy` |
 | [Validation & Inspection](#validation--inspection) | `inspect`, `trace`, `unravel`, `contract` |
-| [Code Quality](#code-quality) | `doctor`, `smells`, `stats`, `minimize` |
+| [Code Quality](#code-quality) | `doctor`, `smells`, `stats`, `minimize`, `audit` |
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
@@ -254,6 +254,8 @@ loom weave --all [flags]
 | `--watch` | Re-render automatically whenever a source file changes. Requires `--all`. |
 | `--incremental` | Skip prompts whose resolved hash hasn't changed since the last render. Requires `--all`. Speeds up large libraries. |
 | `--interactive` | Launch the guided prompt assembly wizard in the TUI |
+| `--from <dir>` | Weave every prompt found in an arbitrary source directory (for example a pack's `source/` folder) instead of the current project. Only `--format`, `--variant`, `--env` and `--stdout` apply in this mode; variables, overlays and context are not applied |
+| `--to <dir>` | With `--from`: the output directory. Defaults to `<from>/../compiled/` |
 
 **Output formats**
 
@@ -382,7 +384,19 @@ When you want to copy a rendered prompt to your clipboard as fast as possible.
 loom copy <PromptName> [flags]
 ```
 
-**Flags** — identical to `loom cast`. See above.
+**Flags** — the same as `loom cast`, except that the destination is always the clipboard (there is no `--to`):
+
+| Flag | Description |
+|---|---|
+| `--format <fmt>` | Same format options as `loom weave` |
+| `--set <key=value>` | Set a variable. Repeatable. |
+| `--slot <key=value>` | Alias for `--set` |
+| `--vars <file.toml>` | Load variables from a TOML file |
+| `--profile <name>` | Load a named variable profile from `loom.toml` |
+| `--variant <name>` | Apply a named variant |
+| `--overlay <name>` | Apply an overlay. Repeatable. |
+| `--with <spec>` | Attach live context (`file:path`, `dir:path`, `git:diff`, `git:staged`, `stdin`) |
+| `--context <name>` | Load a named context bundle from `contexts/<name>.context` |
 
 **Examples**
 
@@ -713,6 +727,51 @@ loom minimize --threshold 0.75 --apply
 ```
 
 ---
+
+### `loom audit`
+
+**What it does**
+
+Scans the *resolved* text of prompts for instructions that are risky to ship: references to hardcoded secrets, safety or policy bypasses, destructive commands with no confirmation step, direct production-environment references, PII fields with no privacy qualifier, instructions that remove a user confirmation gate, and urgency instructions with no safety qualifier. Each finding names the field, the offending text, why it is flagged, and a suggested fix.
+
+Telling the model *not* to do something risky is not a finding: "never skip the tests" passes, "skip the tests" does not.
+
+**Why it exists**
+
+Prompts run with real permissions (agents, MCP tools, deploy assistants). A line like "ignore the confirmation prompt" is a security bug, and it is easy to inherit from a parent prompt or block without noticing. `audit` checks the final, inherited result rather than each file in isolation.
+
+**When to use it**
+
+Before deploying prompts that drive tools or agents, and in CI alongside `loom inspect` and `loom doctor`.
+
+**Syntax**
+
+```
+loom audit [Name] [--all]
+```
+
+With no name, every prompt is audited.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--all` | Audit every prompt (the default when no name is given) |
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| `0` | No findings |
+| `1` | At least one high-risk finding |
+| `2` | Medium-risk findings only |
+
+**Examples**
+
+```bash
+loom audit
+loom audit DeployAssistant
+```
 
 ## Git & History
 
@@ -1476,6 +1535,10 @@ loom install <vault-name> [--registry <url>]
 
 **Registry resolution.** There is **no built-in default registry**. The URL comes from, in order: `--registry`, `$LOOM_REGISTRY_URL`, `LOOM_REGISTRY_URL` in `loom/.loom.env`, then `[registry] url` in `loom.toml`. If none is set, the command explains how to configure one. `http://` is accepted for `localhost`; for any other host a warning is printed, since packs would be downloaded unencrypted.
 
+**Dependencies.** A pack lists the packs it needs in `.dependency.loom` (one per line, e.g. `go-foundation>=1.0.0`; the file format is in [LOOM_LANGUAGE.md](LOOM_LANGUAGE.md#dependencyloom)). `loom install` installs the pack, then every dependency it declares, then theirs, and prints transitive packs with a `↳` marker. Each pack is installed once even if several packs depend on it, and a pack already installed at a version that satisfies every constraint is not downloaded again. The exact versions installed are recorded in `loompack.lock`.
+
+If two packs require incompatible versions of the same dependency, every conflict is printed with the constraints that clash and who required each one, and the command exits with an error; nothing is resolved automatically, so edit the constraints (or the lock) and run it again.
+
 **Safety.** Before writing anything, the installer rejects packs whose slug or file paths are unsafe (absolute paths, `..`, backslashes), so a malicious registry cannot write outside `loompack/<slug>/`.
 
 **Examples**
@@ -1620,15 +1683,15 @@ loom import old-prompts/ --dir --force
 
 **What it does**
 
-Starts the PromptLoom Language Server Protocol server on `stdin/stdout`. The LSP server powers the Lumine VS Code extension — providing syntax highlighting, diagnostics, code completion, hover documentation, and go-to-definition for `.loom` files.
+Starts the PromptLoom Language Server Protocol server on `stdin/stdout`. The server provides diagnostics, code completion, hover documentation, go-to-definition and a document outline for `.loom` files, for any editor with an LSP client (a Neovim setup is in [neovim-lsp.md](neovim-lsp.md)). The Lumine VS Code extension ships its own language server and does not use `loom lsp`.
 
 **Why it exists**
 
-The LSP protocol is the standard way for editors to communicate with language tooling. `loom lsp` is what the VS Code extension (and any other LSP client) connects to.
+The LSP protocol is the standard way for editors to communicate with language tooling. `loom lsp` is what editors other than VS Code connect to.
 
 **When to use it**
 
-You typically don't run this manually. The Lumine extension invokes it automatically when you open a `.loom` file. You might run it manually to debug LSP communication or to integrate with a different editor.
+You typically don't run this manually; your editor's LSP client starts it. Run it by hand only to debug LSP communication.
 
 **Syntax**
 
@@ -1945,6 +2008,7 @@ loom execute ship --unlock
 | `loom smells [Name]` | Heuristic quality issues |
 | `loom stats [Name]` | Per-field token estimates |
 | `loom minimize` | Find and remove duplicate content |
+| `loom audit [Name]` | Scan resolved prompts for dangerous instructions |
 | `loom blame <Name>` | Git attribution per field item |
 | `loom changelog [Name]` | Prompt-centric git history |
 | `loom diff` | Field-aware diff between prompts or against dist |
@@ -1969,7 +2033,7 @@ loom execute ship --unlock
 | `loom publish <dir>` | Publish a pack to the registry |
 | `loom mcp manifest [Name]` | Generate an MCP tool manifest |
 | `loom import [file.md]` | Convert Markdown prompt to PromptLoom DSL |
-| `loom lsp` | Start the LSP server (used by the Lumine VS Code extension) |
+| `loom lsp` | Start the LSP server (for editors such as Neovim) |
 | `loom summarize <path>` | LLM-generated summary of a project or files |
 | `loom recipe list` | List built-in recipe templates |
 | `loom recipe apply <recipe>` | Scaffold a library from a built-in recipe |

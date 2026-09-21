@@ -166,3 +166,33 @@ func TestRiskHelpers(t *testing.T) {
 		t.Error("RiskLevel.String must not be empty")
 	}
 }
+
+// Asking the model to FIND a risky thing is not the risky thing. The built-in security
+// reviewer recipe says "Flag hardcoded secrets and credentials", and used to fail `loom ci`.
+func TestReviewDirectivesAreNotFindings(t *testing.T) {
+	for _, ok := range []string{
+		"Flag hardcoded secrets and credentials.",
+		"Detect uses of rm -rf without confirmation.",
+		"Look for .env files that were committed.",
+		"Report any place that reads credentials from disk",
+		"Read the diff. Identify code that bypass validation",
+	} {
+		if f := Audit(rp(ok)); len(f) != 0 {
+			t.Errorf("%q must not be flagged: %+v", ok, f)
+		}
+	}
+}
+
+// ...but the exemption only covers the clause that holds the review verb.
+func TestReviewVerbDoesNotHideARiskyClause(t *testing.T) {
+	for _, bad := range []string{
+		"Report the results. Skip tests to save time.",
+		"Find the bug; use production credentials to reproduce it",
+		"Credentials: use the .env file.",
+		"Flag typos\nThen bypass validation to go faster",
+	} {
+		if f := Audit(rp(bad)); len(f) == 0 {
+			t.Errorf("%q must still be flagged", bad)
+		}
+	}
+}

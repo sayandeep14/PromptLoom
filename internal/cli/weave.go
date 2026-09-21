@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -182,6 +183,10 @@ func runWeave(cmd *cobra.Command, args []string) error {
 		})
 	}
 	if err != nil {
+		var failed *tui.WeaveFailedError
+		if errors.As(err, &failed) {
+			fmt.Print(out) // which prompts failed and why; the error sets the exit code
+		}
 		return err
 	}
 	fmt.Print(out)

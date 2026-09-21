@@ -203,3 +203,50 @@ func TestNameHelpers(t *testing.T) {
 		t.Error("titleCase")
 	}
 }
+
+// Recipes must land where the project loads its sources from: with the layout `loom init`
+// creates ([paths] pointing into loom/src) they used to be written to ./prompts, where
+// nothing ever read them.
+func TestRecipeFollowsConfiguredPaths(t *testing.T) {
+	dir := t.TempDir()
+	cfg := strings.Replace(loomToml, `prompts  = "prompts"`, `prompts  = "loom/src/prompts"`, 1)
+	cfg = strings.Replace(cfg, `blocks   = "blocks"`, `blocks   = "loom/src/blocks"`, 1)
+	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte(cfg), 0o644)
+
+	res, err := Apply("reviewer", Options{Language: "Go"}, dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range res.Written {
+		if !strings.HasPrefix(w, "loom/src/") {
+			t.Errorf("%s was not written under the configured directories", w)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "prompts")); err == nil {
+		t.Error("nothing may be written to ./prompts when the project keeps its prompts elsewhere")
+	}
+	reg, _, err := loader.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reg.LookupPrompt("CodeReviewer"); !ok {
+		t.Error("the recipe's prompts must be visible to the loader")
+	}
+	// re-applying skips what is already there, using the same mapped paths
+	res, _ = Apply("reviewer", Options{Language: "Go"}, dir, false)
+	if len(res.Written) != 0 || len(res.Skipped) == 0 {
+		t.Errorf("%+v", res)
+	}
+}
+
+func TestMapDir(t *testing.T) {
+	dirs := map[string]string{"prompts": "loom/src/prompts", "blocks": "b", "overlays": "o"}
+	for in, want := range map[string]string{
+		"prompts/A.prompt.loom": "loom/src/prompts/A.prompt.loom", "blocks/B.block.loom": "b/B.block.loom",
+		"other/x": "other/x", "plain": "plain",
+	} {
+		if got := mapDir(in, dirs); got != want {
+			t.Errorf("mapDir(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

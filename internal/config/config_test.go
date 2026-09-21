@@ -133,3 +133,22 @@ func TestFindProjectRootFallsBackToASingleExample(t *testing.T) {
 		t.Error("no project anywhere")
 	}
 }
+
+func TestPromptsDir(t *testing.T) {
+	dir := t.TempDir()
+	if got := PromptsDir(dir); got != filepath.Join(dir, "prompts") {
+		t.Errorf("no config: %s", got)
+	}
+	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("[paths]\nprompts = \"loom/src/prompts\"\n"), 0o644)
+	if got := PromptsDir(dir); got != filepath.Join(dir, "loom", "src", "prompts") {
+		t.Errorf("configured: %s", got)
+	}
+	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("[paths]\nprompts = \"/abs/prompts\"\n"), 0o644)
+	if got := PromptsDir(dir); got != "/abs/prompts" {
+		t.Errorf("absolute: %s", got)
+	}
+	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("not toml ["), 0o644)
+	if got := PromptsDir(dir); got != filepath.Join(dir, "prompts") {
+		t.Errorf("broken config falls back: %s", got)
+	}
+}

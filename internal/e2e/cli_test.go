@@ -191,3 +191,37 @@ func TestCLIFmt(t *testing.T) {
 		}
 	})
 }
+
+// Commands that create prompt files must honour [paths] in loom.toml. Right after `loom init`
+// the prompts live under loom/src/prompts, and generated files used to land in ./prompts,
+// where `loom inspect` never looked.
+func TestGeneratedFilesLandWhereTheProjectLoadsThem(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if out, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatalf("init: %d\n%s", code, out)
+	}
+
+	if out, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer", "--language", "Go"); code != 0 {
+		t.Fatalf("recipe apply: %d\n%s", code, out)
+	}
+	os.WriteFile(filepath.Join(dir, "notes.md"), []byte("# My Helper\n\n## Persona\nYou help.\n\n## Instructions\n- Be kind\n"), 0o644)
+	if out, code := runLoom(t, bin, dir, "import", "notes.md"); code != 0 {
+		t.Fatalf("import: %d\n%s", code, out)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "prompts")); err == nil {
+		t.Error("nothing may be written to ./prompts in a project that keeps its prompts under loom/src")
+	}
+	for _, want := range []string{"loom/src/prompts/CodeReviewer.prompt.loom", "loom/src/prompts/Notes.prompt.loom", "loom/src/blocks/SecurityChecklist.block.loom"} {
+		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if out, code := runLoom(t, bin, dir, "trace", "CodeReviewer"); code != 0 {
+		t.Errorf("the recipe's prompts must be visible to the project: %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "list"); code != 0 || !strings.Contains(out, "Notes") {
+		t.Errorf("imported prompt must be listed: %d\n%s", code, out)
+	}
+}

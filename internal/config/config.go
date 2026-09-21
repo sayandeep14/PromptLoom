@@ -225,3 +225,17 @@ api_key_env   = "GEMINI_API_KEY"
 default_model = "gemini-2.5-flash"
 timeout_sec   = 30
 `
+
+// PromptsDir returns the absolute directory where the project at dir keeps its .prompt.loom
+// files: [paths] prompts from loom.toml, or "prompts" when there is no (readable) config.
+// Commands that create prompt files use it so the files land where `loom inspect` looks.
+func PromptsDir(dir string) string {
+	rel := "prompts"
+	if cfg, err := Load(dir); err == nil && cfg.Paths.Prompts != "" {
+		rel = cfg.Paths.Prompts
+	}
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	return filepath.Join(dir, rel)
+}

@@ -248,7 +248,7 @@ prompt BaseEngineer {
 }
 ```
 
-Override at the CLI: `loom weave BaseEngineer --var language=Go`
+Override at the CLI: `loom weave BaseEngineer --set language=Go`
 
 ### `slot` — required, must be supplied
 
@@ -434,7 +434,7 @@ The named prompt must be a declared parent in the `inherits` list.
 
 ## 10. Contracts
 
-A `contract` block declares assertions about the rendered output. The `loom weave --enforce-contract` flag checks these at render time.
+A `contract` block declares assertions about the rendered output. `loom check-output <Name> <file>` checks a model output against them, and `loom test` checks them against a live model response.
 
 ```
 prompt SummaryWriter {
@@ -861,7 +861,7 @@ That's the only operator in v2.
 | `loom weave <Name> --variant strict` | Apply a variant |
 | `loom weave <Name> --env prod` | Apply an env block |
 | `loom weave <Name> --overlay terse` | Apply an overlay |
-| `loom weave <Name> --var language=Go` | Override a variable |
+| `loom weave <Name> --set language=Go` | Override a variable |
 | `loom inspect` | Validate all files |
 | `loom trace <Name>` | Show inheritance chain and field sources |
 | `loom list` | List all known prompts and blocks |

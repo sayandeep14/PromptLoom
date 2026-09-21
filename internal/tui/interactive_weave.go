@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,7 +268,7 @@ func (m *wizardModel) writePromptFile() error {
 	}
 	b.WriteString("}\n")
 
-	outDir := filepath.Join(m.cwd, "prompts")
+	outDir := config.PromptsDir(m.cwd)
 	_ = os.MkdirAll(outDir, 0o755)
 	outPath := filepath.Join(outDir, m.promptName+".prompt.loom")
 	if err := os.WriteFile(outPath, []byte(b.String()), 0o644); err != nil {

@@ -7,6 +7,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -330,7 +331,7 @@ func RunImportREPL(path, name, outDir string, force bool, cwd string) (string, b
 		name = importer.NameFromPath(path)
 	}
 	if outDir == "" {
-		outDir = filepath.Join(cwd, "prompts")
+		outDir = config.PromptsDir(cwd)
 	} else if !filepath.IsAbs(outDir) {
 		outDir = filepath.Join(cwd, outDir)
 	}

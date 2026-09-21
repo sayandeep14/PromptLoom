@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	outDir := importOut
 	if outDir == "" {
-		outDir = filepath.Join(cwd, "prompts")
+		outDir = config.PromptsDir(cwd)
 	} else if !filepath.IsAbs(outDir) {
 		outDir = filepath.Join(cwd, outDir)
 	}

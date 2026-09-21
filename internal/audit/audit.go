@@ -132,6 +132,27 @@ var patterns = []pattern{
 	},
 }
 
+// reviewVerbs start a clause that asks the model to find or report something, as opposed to
+// do it.
+var reviewVerbs = []string{
+	"flag", "detect", "identify", "report", "look for", "check for", "scan for", "watch for",
+	"warn about", "warn of", "point out", "highlight", "find", "catch", "call out", "search for",
+}
+
+// isReviewDirective reports whether the clause of text that contains the match at pos (clauses
+// end at . ; ! ? or a line break) opens with, or has before the match, a review verb.
+func isReviewDirective(text string, pos int) bool {
+	start := strings.LastIndexAny(text[:pos], ".;!?\n") + 1
+	before := text[start:pos]
+	for _, v := range reviewVerbs {
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(v) + `\b`)
+		if re.MatchString(before) {
+			return true
+		}
+	}
+	return false
+}
+
 // Audit scans all resolved text fields of rp and returns a list of findings.
 func Audit(rp *ast.ResolvedPrompt) []Finding {
 	var findings []Finding
@@ -170,7 +191,13 @@ func Audit(rp *ast.ResolvedPrompt) []Finding {
 		lower := strings.ToLower(it.value)
 		for _, pat := range patterns {
 			for _, re := range pat.res {
-				if !re.MatchString(lower) {
+				loc := re.FindStringIndex(lower)
+				if loc == nil {
+					continue
+				}
+				// "Flag hardcoded credentials" tells a reviewer what to look for; it does not
+				// hand out credentials.
+				if isReviewDirective(lower, loc[0]) {
 					continue
 				}
 				// Check negation words — if any appear in the same text, skip.
