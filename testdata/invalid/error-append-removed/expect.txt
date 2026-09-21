@@ -1,0 +1,4 @@
+rule: error-append-removed
+error: '+=' is not valid in v2
+also: from(parent[0]) and {
+also: constraints :=

@@ -1,0 +1,3 @@
+rule: error-append-scalar
+error: '+=' is not valid in v2
+also: A scalar field cannot be appended to

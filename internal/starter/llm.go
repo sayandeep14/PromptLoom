@@ -32,7 +32,7 @@ Block syntax:
 Inside a prompt body:
   use BlockName            — apply a block
 
-Fields (use := to set, += to append, -= to remove):
+Fields (set every field with :=):
   kind           — role identifier, e.g. "code-reviewer"
   summary        — one-paragraph description of the prompt
   persona        — who the assistant is
@@ -61,35 +61,42 @@ Special blocks:
       - delete_files
   }
 
-Field operators:
-  :=   override (replace entire value)
-  +=   append to existing value
-  -=   remove item from list
+Field operator (there is exactly ONE):
+  :=   set the field. The value goes on the following indented lines.
+       Never use  +=  or  -=  or a bare  field:  — they are not valid.
 
 Inheritance rules:
-  - Child inherits all parent fields
-  - Use += to extend, := to replace
-  - Blocks applied with "use" merge their fields into the prompt
+  - A child inherits all parent fields; write a field with := to replace it.
+  - To EXTEND a parent's list, use from(parent[0]) and { ... } (lists only):
+        instructions :=
+          from(parent[0]) and {
+            - one more step
+          }
+    with several parents use from(parent[*]) to merge all of them.
+  - Scalar fields (persona, objective, context, summary, notes, kind) can only be
+    replaced, or copied with  persona :=  from(parent[0]).
+  - Blocks applied with "use" ADD their list items to the prompt (format is replaced).
 
 Example:
   block JavaConventions {
-    constraints:
+    constraints :=
       - Prefer immutable objects.
       - Use Optional instead of null returns.
   }
 
   prompt BaseEngineer {
-    kind := code-assistant
-    persona:
+    kind :=
+      code-assistant
+    persona :=
       You are a senior engineer.
-    objective:
+    objective :=
       Help the user write, review, and debug code.
-    instructions:
+    instructions :=
       - Read context before responding.
       - Explain your reasoning.
-    constraints:
+    constraints :=
       - Keep responses focused on the user's question.
-    format:
+    format :=
       - Analysis
       - Proposed Changes
   }
@@ -98,11 +105,15 @@ Example:
     use JavaConventions
     persona :=
       You are a senior Java engineer doing a thorough code review.
-    instructions +=
-      - Check for correctness, edge cases, and error handling.
-    format +=
-      - Issues Found
-      - Verdict
+    instructions :=
+      from(parent[0]) and {
+        - Check for correctness, edge cases, and error handling.
+      }
+    format :=
+      from(parent[0]) and {
+        - Issues Found
+        - Verdict
+      }
   }
 `
 

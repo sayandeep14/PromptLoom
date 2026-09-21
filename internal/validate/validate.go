@@ -167,25 +167,12 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 		}
 	}
 
-	// Deprecated operators: += and -= are v1 syntax; v2 uses := with from() expressions.
-	for _, f := range n.Fields {
-		switch f.Op {
-		case ast.OpAppend:
-			diags = append(diags, Diagnostic{
-				Sev:     Warning,
-				Message: fmt.Sprintf("prompt %q field %q: '+=' is deprecated in v2 — use ':= from(parent[*]) and { ... }' instead", n.Name, f.FieldName),
-				Pos:     f.Pos,
-			})
-		case ast.OpRemove:
-			if !ast.ScalarFields[f.FieldName] { // scalar -=  is already an error above
-				diags = append(diags, Diagnostic{
-					Sev:     Warning,
-					Message: fmt.Sprintf("prompt %q field %q: '-=' is deprecated in v2 and has no direct replacement — flag for manual resolution", n.Name, f.FieldName),
-					Pos:     f.Pos,
-				})
-			}
-		}
+	// Legacy operators. v2 has exactly one field operator, ':='.
+	inherited := map[string]bool{}
+	if len(n.Parents) > 0 {
+		inherited = allAncestorFields(n.Parents, reg)
 	}
+	diags = append(diags, checkLegacyOperators("prompt", n.Name, n.Fields, len(n.Parents), inherited)...)
 
 	// Static validation of from() expressions.
 	diags = append(diags, checkFromExpressions(n)...)
@@ -235,7 +222,8 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 		})
 	}
 
-	// Ambiguous redefinition warning: using ':' on an inherited field.
+	// Redefining an inherited field with the legacy ':' (more specific than the generic
+	// bare-colon warning, which is skipped for these fields).
 	if len(n.Parents) > 0 {
 		inheritedFields := allAncestorFields(n.Parents, reg)
 		for _, f := range n.Fields {
@@ -390,6 +378,7 @@ func checkFromExpressions(n *ast.Node) []Diagnostic {
 
 func checkBlock(n *ast.Node, _ *registry.Registry) []Diagnostic {
 	var diags []Diagnostic
+	diags = append(diags, checkLegacyOperators("block", n.Name, n.Fields, 0, nil)...)
 
 	for _, f := range n.Fields {
 		if f.FieldName == "tags" {
@@ -433,6 +422,7 @@ func checkBlock(n *ast.Node, _ *registry.Registry) []Diagnostic {
 
 func checkOverlay(n *ast.Node) []Diagnostic {
 	var diags []Diagnostic
+	diags = append(diags, checkLegacyOperators("overlay", n.Name, n.Fields, 0, nil)...)
 	for _, f := range n.Fields {
 		if f.FieldName == "tags" {
 			diags = append(diags, Diagnostic{
@@ -460,6 +450,69 @@ func checkOverlay(n *ast.Node) []Diagnostic {
 		}
 	}
 	return diags
+}
+
+// ---- legacy operators ----
+
+// checkLegacyOperators reports the v1 operators. v2 has exactly one field operator,
+// ':='. '+=' and '-=' are errors (each message contains the rewrite to paste in);
+// a bare ':' still works but earns a warning with the exact replacement.
+// kind is "prompt", "block" or "overlay"; parents is the number of declared parents;
+// inherited holds field names an ancestor defines (reported separately for bare ':').
+func checkLegacyOperators(kind, name string, fields []ast.FieldOperation, parents int, inherited map[string]bool) []Diagnostic {
+	var diags []Diagnostic
+	for _, f := range fields {
+		if f.FieldName == "tags" {
+			continue // tags use their own inline syntax
+		}
+		isScalar := ast.ScalarFields[f.FieldName]
+		switch f.Op {
+		case ast.OpAppend:
+			diags = append(diags, Diagnostic{Sev: Error, Pos: f.Pos,
+				Message: appendMessage(kind, name, f.FieldName, isScalar, parents)})
+		case ast.OpRemove:
+			if isScalar {
+				continue // reported by the dedicated scalar rule
+			}
+			diags = append(diags, Diagnostic{Sev: Error, Pos: f.Pos, Message: fmt.Sprintf(
+				"%s %q field %q: '-=' is not valid in v2 and has no direct replacement.\n"+
+					"  Write the list you want with ':=' instead. To keep only some parent items, select them:\n"+
+					"    %s :=\n      parent[0].%s[1..3] and {\n        - an extra item\n      }",
+				kind, name, f.FieldName, f.FieldName, f.FieldName)})
+		case ast.OpDefine:
+			if inherited[f.FieldName] {
+				continue // the more specific "redefines inherited field" warning covers it
+			}
+			diags = append(diags, Diagnostic{Sev: Warning, Pos: f.Pos, Message: fmt.Sprintf(
+				"%s %q field %q uses ':' — v2 uses ':='. Change \"%s:\" to \"%s :=\"",
+				kind, name, f.FieldName, f.FieldName, f.FieldName)})
+		}
+	}
+	return diags
+}
+
+func appendMessage(kind, name, field string, isScalar bool, parents int) string {
+	head := fmt.Sprintf("%s %q field %q: '+=' is not valid in v2 (the only operator is ':=').", kind, name, field)
+	switch {
+	case kind != "prompt":
+		if isScalar {
+			return head + "\n  A scalar field cannot be appended to; replace its value with ':=' and write the full text."
+		}
+		return head + fmt.Sprintf("\n  Blocks and overlays already ADD their list items to the prompt, so write:\n    %s :=\n      - your item", field)
+	case isScalar:
+		return head + "\n  A scalar field cannot be appended to; replace its value with ':=' and write the full text\n" +
+			"  (or copy the parent's with  " + field + " :=\n    from(parent[0])  and edit from there)."
+	case parents == 0:
+		return head + fmt.Sprintf("\n  This prompt has no parent to append to. Write the whole list with ':=':\n    %s :=\n      - your item", field)
+	default:
+		src := "parent[0]"
+		note := ""
+		if parents > 1 {
+			src = "parent[*]"
+			note = " (use from(parent[N]) to take just one parent's items)"
+		}
+		return head + fmt.Sprintf("\n  To extend the inherited list, write:%s\n    %s :=\n      from(%s) and {\n        - your item\n      }", note, field, src)
+	}
 }
 
 // ---- helpers ----

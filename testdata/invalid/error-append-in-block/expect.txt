@@ -1,0 +1,4 @@
+rule: error-append-in-block
+error: block "B" field "constraints": '+=' is not valid in v2
+error: overlay "O" field "instructions": '+=' is not valid in v2
+also: already ADD their list items

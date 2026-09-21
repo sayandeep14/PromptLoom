@@ -1,2 +1,0 @@
-rule: warn-append-deprecated
-warning: '+=' is deprecated in v2

@@ -1,0 +1,3 @@
+rule: warn-bare-colon
+warning: Change "persona:" to "persona :="
+warning: Change "instructions:" to "instructions :="

@@ -260,8 +260,8 @@ func (m *wizardModel) writePromptFile() error {
 	if len(m.useBlocks) > 0 {
 		b.WriteByte('\n')
 	}
-	b.WriteString("  persona:\n    You are a helpful assistant.\n\n")
-	b.WriteString("  instructions:\n    - Respond clearly and concisely.\n\n")
+	b.WriteString("  persona :=\n    You are a helpful assistant.\n\n")
+	b.WriteString("  instructions :=\n    - Respond clearly and concisely.\n\n")
 	if m.variant != "" {
 		b.WriteString("  variant " + m.variant + " {\n  }\n\n")
 	}

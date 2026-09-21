@@ -77,11 +77,11 @@ func runThreadPrompt(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintf(&sb, "prompt %s {\n", name)
 	}
-	sb.WriteString("  summary:\n    \n\n")
-	sb.WriteString("  persona:\n    \n\n")
-	sb.WriteString("  objective:\n    \n\n")
-	sb.WriteString("  constraints:\n    - \n\n")
-	sb.WriteString("  format:\n    - \n}\n")
+	sb.WriteString("  summary :=\n    \n\n")
+	sb.WriteString("  persona :=\n    \n\n")
+	sb.WriteString("  objective :=\n    \n\n")
+	sb.WriteString("  constraints :=\n    - \n\n")
+	sb.WriteString("  format :=\n    - \n}\n")
 
 	return writeScaffold(dest, sb.String())
 }
@@ -103,7 +103,7 @@ func runThreadBlock(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("file already exists: %s", dest)
 	}
 
-	content := fmt.Sprintf("block %s {\n  constraints:\n    - \n}\n", name)
+	content := fmt.Sprintf("block %s {\n  constraints :=\n    - \n}\n", name)
 	return writeScaffold(dest, content)
 }
 
@@ -124,7 +124,7 @@ func runThreadOverlay(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("file already exists: %s", dest)
 	}
 
-	content := fmt.Sprintf("overlay %s {\n  // Add field overrides here.\n  // instructions +=\n  //   - Additional instruction\n}\n", name)
+	content := fmt.Sprintf("overlay %s {\n  // Add field overrides here.\n  // constraints :=\n  //   - Additional rule\n}\n", name)
 	return writeScaffold(dest, content)
 }
 

@@ -71,8 +71,10 @@ prompt BaseEngineer {
 prompt CodeReviewer inherits BaseEngineer {
   objective :=
     Review code for correctness and readability.
-  instructions +=
-    - Read the code carefully.
+  instructions :=
+    from(parent[0]) and {
+      - Read the code carefully.
+    }
   format :=
     - Summary
     - Issues Found
@@ -594,22 +596,133 @@ prompt B inherits A {
 
 // ---- Phase 7: deprecated operator warnings ----
 
-func TestDeprecatedAppendWarning(t *testing.T) {
+func firstError(diags []validate.Diagnostic, substr string) *validate.Diagnostic {
+	for i := range diags {
+		if diags[i].Sev == validate.Error && strings.Contains(diags[i].Message, substr) {
+			return &diags[i]
+		}
+	}
+	return nil
+}
+
+func countMentions(diags []validate.Diagnostic, substr string) int {
+	n := 0
+	for _, d := range diags {
+		if strings.Contains(d.Message, substr) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestAppendOperatorIsAnErrorWithTheExactFix(t *testing.T) {
 	reg := buildReg(t, map[string]string{
-		"a.loom": `
-prompt A {
-  instructions :=
-    - base item.
-}`,
-		"b.loom": `
-prompt B inherits A {
-  instructions +=
-    - extra item.
-}`,
+		"a.loom": "prompt A {\n  instructions :=\n    - base item.\n}",
+		"b.loom": "prompt B inherits A {\n  instructions +=\n    - extra item.\n}",
 	})
+	d := firstError(validate.Validate(reg, defaultCfg()), "'+=' is not valid in v2")
+	if d == nil {
+		t.Fatal("expected an error for '+='")
+	}
+	for _, want := range []string{"instructions :=", "from(parent[0]) and {"} {
+		if !strings.Contains(d.Message, want) {
+			t.Errorf("message should contain the rewrite %q:\n%s", want, d.Message)
+		}
+	}
+	if d.Pos.Line != 2 || d.Pos.File != "b.loom" {
+		t.Errorf("position should point at the offending line, got %v", d.Pos)
+	}
+}
+
+func TestAppendFixDependsOnTheSituation(t *testing.T) {
+	cases := []struct {
+		name string
+		srcs map[string]string
+		want []string
+		not  []string
+	}{
+		{"several parents", map[string]string{
+			"a.loom": "prompt A {\n  instructions :=\n    - a\n}\nprompt B {\n  instructions :=\n    - b\n}",
+			"c.loom": "prompt C inherits A, B {\n  instructions +=\n    - c\n}",
+		}, []string{"from(parent[*]) and {", "from(parent[N])"}, nil},
+		{"no parent", map[string]string{
+			"a.loom": "prompt A {\n  instructions +=\n    - a\n}",
+		}, []string{"no parent to append to", "instructions :="}, []string{"from("}},
+		{"scalar field", map[string]string{
+			"a.loom": "prompt A {\n  persona :=\n    x\n}",
+			"b.loom": "prompt B inherits A {\n  persona +=\n    more\n}",
+		}, []string{"scalar field cannot be appended"}, nil},
+		{"in a block", map[string]string{
+			"a.loom": "block B {\n  constraints +=\n    - x\n}",
+		}, []string{"already ADD their list items", "constraints :="}, []string{"from("}},
+		{"in an overlay", map[string]string{
+			"a.loom": "overlay O {\n  constraints +=\n    - x\n}",
+		}, []string{"already ADD their list items"}, nil},
+	}
+	for _, c := range cases {
+		d := firstError(validate.Validate(buildReg(t, c.srcs), defaultCfg()), "'+=' is not valid")
+		if d == nil {
+			t.Errorf("%s: expected an error", c.name)
+			continue
+		}
+		for _, w := range c.want {
+			if !strings.Contains(d.Message, w) {
+				t.Errorf("%s: message missing %q:\n%s", c.name, w, d.Message)
+			}
+		}
+		for _, w := range c.not {
+			if strings.Contains(d.Message, w) {
+				t.Errorf("%s: message must not contain %q:\n%s", c.name, w, d.Message)
+			}
+		}
+	}
+}
+
+func TestRemoveOperatorIsAnError(t *testing.T) {
+	reg := buildReg(t, map[string]string{
+		"a.loom": "prompt A {\n  constraints :=\n    - a\n    - b\n}",
+		"b.loom": "prompt B inherits A {\n  constraints -=\n    - b\n}",
+	})
+	d := firstError(validate.Validate(reg, defaultCfg()), "'-=' is not valid in v2")
+	if d == nil || !strings.Contains(d.Message, "no direct replacement") || !strings.Contains(d.Message, "parent[0].constraints[1..3]") {
+		t.Errorf("got %+v", d)
+	}
+	// On a scalar the dedicated rule reports it, once.
+	reg = buildReg(t, map[string]string{"a.loom": "prompt A {\n  summary :=\n    x\n}\nprompt B inherits A {\n  summary -=\n    x\n}"})
 	diags := validate.Validate(reg, defaultCfg())
-	if !hasWarning(diags, "'+=' is deprecated") {
-		t.Errorf("expected '+=' deprecation warning, got: %v", diags)
+	if got := countMentions(diags, "'-='"); got != 1 {
+		t.Errorf("'-=' on a scalar should be reported exactly once, got %d: %v", got, diags)
+	}
+}
+
+func TestBareColonWarnsOnceWithTheReplacement(t *testing.T) {
+	// not inherited
+	reg := buildReg(t, map[string]string{"a.loom": "prompt A {\n  persona:\n    x\n}"})
+	diags := validate.Validate(reg, defaultCfg())
+	if !hasWarning(diags, `Change "persona:" to "persona :="`) {
+		t.Errorf("expected the bare-colon warning: %v", diags)
+	}
+	// a child that has a parent but does not redefine an inherited field still gets it
+	reg = buildReg(t, map[string]string{
+		"a.loom": "prompt A {\n  persona :=\n    x\n}",
+		"b.loom": "prompt B inherits A {\n  objective:\n    y\n}",
+	})
+	if !hasWarning(validate.Validate(reg, defaultCfg()), `Change "objective:" to "objective :="`) {
+		t.Error("a bare ':' on a NEW field of a child prompt must warn too")
+	}
+	// redefining an inherited field: the specific message only, not two warnings
+	reg = buildReg(t, map[string]string{
+		"a.loom": "prompt A {\n  persona :=\n    x\n}",
+		"b.loom": "prompt B inherits A {\n  persona:\n    y\n}",
+	})
+	diags = validate.Validate(reg, defaultCfg())
+	if n := countMentions(diags, `"persona"`); n != 1 {
+		t.Errorf("expected a single warning for the redefinition, got %d: %v", n, diags)
+	}
+	// the modern operator is silent
+	reg = buildReg(t, map[string]string{"a.loom": "prompt A {\n  persona :=\n    x\n}"})
+	if hasWarning(validate.Validate(reg, defaultCfg()), "uses ':'") {
+		t.Error("':=' must not warn")
 	}
 }
 

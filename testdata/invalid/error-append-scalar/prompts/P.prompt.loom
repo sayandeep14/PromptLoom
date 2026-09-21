@@ -1,0 +1,9 @@
+prompt Base {
+  persona :=
+    base.
+}
+
+prompt Child inherits Base {
+  persona +=
+    more text.
+}

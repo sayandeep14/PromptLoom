@@ -1,0 +1,4 @@
+prompt Standalone {
+  instructions +=
+    - nothing to append to
+}

@@ -1,0 +1,57 @@
+package starter
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeepgiri/promptloom/internal/parser"
+	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeepgiri/promptloom/internal/resolve"
+	"github.com/sayandeepgiri/promptloom/internal/validate"
+)
+
+// The DSL reference is what the model imitates when generating a library, so its
+// example must be valid, warning-free v2, and the text must not teach legacy syntax.
+func TestDSLReferenceTeachesOnlyV2(t *testing.T) {
+	start := strings.Index(dslReference, "\nExample:\n")
+	if start < 0 {
+		t.Fatal("no Example section in dslReference")
+	}
+	var lines []string
+	for _, l := range strings.Split(dslReference[start+len("\nExample:\n"):], "\n") {
+		lines = append(lines, strings.TrimPrefix(l, "  "))
+	}
+	example := strings.Join(lines, "\n")
+
+	nodes, err := parser.Parse("example.loom", example)
+	if err != nil {
+		t.Fatalf("the example in the LLM prompt does not parse: %v\n%s", err, example)
+	}
+	reg := registry.New()
+	if err := reg.Register(nodes); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	for _, d := range validate.Validate(reg, cfg) {
+		t.Errorf("the example in the LLM prompt has a diagnostic: %s", d)
+	}
+	rp, err := resolve.Resolve("CodeReviewer", reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rp.Instructions) != 3 || len(rp.Format) != 4 {
+		t.Errorf("from(parent[0]) should extend the inherited lists: instructions=%v format=%v", rp.Instructions, rp.Format)
+	}
+
+	// The prose may mention the old operators only to forbid them.
+	lower := strings.ToLower(dslReference)
+	for _, phrase := range []string{"to append", "to remove", "use += to extend", "append to existing"} {
+		if strings.Contains(lower, phrase) {
+			t.Errorf("dslReference still teaches legacy syntax: %q", phrase)
+		}
+	}
+	if !strings.Contains(dslReference, "Never use  +=") {
+		t.Error("the reference should explicitly forbid += / -= / bare colon")
+	}
+}

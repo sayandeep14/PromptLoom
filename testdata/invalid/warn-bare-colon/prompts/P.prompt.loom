@@ -1,0 +1,7 @@
+prompt P {
+  persona:
+    old style.
+
+  instructions:
+    - old style item
+}

@@ -177,21 +177,21 @@ func appendGitignoreEntry(path, entry string) {
 func writeSampleFiles(srcDir string) error {
 	samples := map[string]string{
 		"prompts/BaseEngineer.prompt.loom": `prompt BaseEngineer {
-  summary:
+  summary :=
     General-purpose engineering assistant.
 
-  persona:
+  persona :=
     You are a senior software engineer who writes clear, maintainable, production-ready code.
 
-  objective:
+  objective :=
     Help the user solve software engineering tasks with correctness, clarity, and practical judgment.
 
-  constraints:
+  constraints :=
     - Do not hallucinate APIs.
     - Ask for missing information only when necessary.
     - Prefer simple solutions before complex ones.
 
-  format:
+  format :=
     - Summary
     - Analysis
     - Recommendation
@@ -201,10 +201,12 @@ func writeSampleFiles(srcDir string) error {
   objective :=
     Review the provided code for correctness, maintainability, readability, and production readiness.
 
-  instructions +=
-    - Read the code carefully.
-    - Identify correctness issues.
-    - Suggest practical improvements.
+  instructions :=
+    from(parent[0]) and {
+      - Read the code carefully.
+      - Identify correctness issues.
+      - Suggest practical improvements.
+    }
 
   format :=
     - Summary
@@ -214,7 +216,7 @@ func writeSampleFiles(srcDir string) error {
 }
 `,
 		"blocks/Conventions.block.loom": `block Conventions {
-  constraints:
+  constraints :=
     - Follow the language's official style guide.
     - Return errors explicitly; never swallow them silently.
     - Write tests alongside new code.
@@ -226,10 +228,12 @@ func writeSampleFiles(srcDir string) error {
   objective :=
     Generate useful, comprehensive tests for the provided code.
 
-  instructions +=
-    - Identify the behavior that needs to be tested.
-    - Cover success cases, failure cases, and edge cases.
-    - Prefer readable tests over overly clever tests.
+  instructions :=
+    from(parent[0]) and {
+      - Identify the behavior that needs to be tested.
+      - Cover success cases, failure cases, and edge cases.
+      - Prefer readable tests over overly clever tests.
+    }
 
   format :=
     - Test Strategy

@@ -765,25 +765,59 @@ Use explicit `slug.Name` notation whenever ambiguity is possible.
 
 ## 16. `loom inspect` Checks
 
-`loom inspect` validates all `.loom` files in your project and reports:
+`loom inspect` loads every `.loom` file, then reports (exit code 1 if there is any **error**). Every message includes the file and line.
 
-**Errors (exit 1):**
-- Undefined parent reference
-- Undefined block or overlay reference
-- Inheritance cycle (`A → B → A`)
-- Duplicate prompt/block names
-- Unknown field name
-- `from(parent[*])` on a scalar field (type error)
-- `from(parent[N])` where N ≥ number of declared parents (out-of-bounds)
-- Missing required `slot` value when `required: true`
+**Load errors** (nothing else is checked until these are fixed): syntax errors — missing `{` or `}`, unknown top-level keyword, bad `var`/`slot` declaration, malformed `from()` expression, `use`/`var`/`variant`/… outside a prompt — and **duplicate** prompt, block or overlay names.
 
-**Warnings:**
-- Multiple parents both define the same field and child has no `:=` (first-parent-wins applied)
-- Non-exported name referenced from outside its pack
-- Unresolved `{{ token }}` placeholder
-- Inheritance depth > 5 levels
+**Errors**
+- Unknown parent prompt (with a "Did you mean …?" suggestion), unknown block
+- Inheritance cycle (`A -> B -> A`)
+- Unknown field name (in a prompt, block, overlay or variant)
+- Duplicate `var`/`slot` name, duplicate variant name
+- Reference to an undeclared `{{ variable }}`
+- `from(parent[*])` on a scalar field; `parent[N]` / `parent[N..M]` out of range; `from(Name)` where `Name` is not a declared parent; `from()` naming an unknown field; `from()` inside a block
+- **`+=` or `-=`** — not valid in v2 (see [Migrating from v1 syntax](#migrating-from-v1-syntax)); `-=` on a scalar field
 
-Run: `loom inspect`
+**Warnings**
+- A bare `:` instead of `:=`
+- `tags :=` — tags use the inline form `tags: a, b`
+- Missing `objective` / `format` (when `require_objective` / `require_format` are on in `loom.toml`), empty `context`
+- Inheritance depth above `max_inheritance_depth` (default 3)
+- A prompt and a block that declare different `kind` values
+- A required `slot` is used (a value must be supplied when weaving)
+- A block or overlay uses a `{{ variable }}` (it must be declared by the prompt that uses it)
+
+**At weave time** (not visible to `inspect`): an unknown `--variant`, `--env` or `--overlay`; `parent[0].instructions[5]` when the parent has fewer items.
+
+### Migrating from v1 syntax
+
+| v1 | v2 |
+|---|---|
+| `persona:` | `persona :=` |
+| `instructions +=` in a prompt with a parent | `instructions :=` then `from(parent[0]) and { … }` |
+| `instructions +=` with several parents | `from(parent[*]) and { … }` (or `from(parent[N])` for one) |
+| `constraints +=` in a **block** or **overlay** | `constraints :=` — blocks and overlays add to lists automatically |
+| `instructions +=` in a prompt with no parent | `instructions :=` (there is nothing to append to) |
+| `persona +=` (scalar) | no equivalent — replace the value with `:=` |
+| `constraints -=` | no equivalent — write the list you want; select parent items with `parent[0].constraints[1..3]` |
+
+```
+# v1
+prompt CodeReviewer inherits BaseEngineer {
+  instructions +=
+    - Check for unchecked errors.
+}
+
+# v2
+prompt CodeReviewer inherits BaseEngineer {
+  instructions :=
+    from(parent[0]) and {
+      - Check for unchecked errors.
+    }
+}
+```
+
+The error message for each case prints the exact replacement for your prompt. Installed packs written in v1 syntax keep working; the checks above apply to your own project files.
 
 ---
 
