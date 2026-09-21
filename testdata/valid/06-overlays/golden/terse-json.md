@@ -7,6 +7,7 @@ You are a helper.
 Answer questions.
 
 ## Constraints
+- Be accurate.
 - Keep answers under 100 words.
 
 ## Output Format

@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–106 done; next PL-111 decision, then PL-107)
+**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (PL-101–106, PL-111 done; next PL-107, then PL-108)
 
 ---
 
@@ -23,7 +23,7 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | Epic | Goal | Progress |
 |---|---|---|
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
-| **E1** Trust & Safety | Secure registry, tested core, working install path | 6 / 12 |
+| **E1** Trust & Safety | Secure registry, tested core, working install path | 7 / 13 |
 | **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 0 / 5 |
 | **E3** Docs & Release | Accurate docs, release binaries, packaging | 0 / 6 |
 | **E4** Product Completeness | impact, sync, eval | 0 / 5 |
@@ -77,7 +77,8 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-106 | End-to-end fixture tests: 16 valid + 45 invalid projects in `testdata/` run through loader → validate → resolve → render, with golden outputs, exact two-way diagnostic matching, positions required, invariants (dedup, determinism), a rule-coverage guard, and built-binary CLI tests (see `testdata/README.txt`). Mutation-checked. Found + fixed: unterminated-body parse errors had no line number | DONE | P0 | L | PL-004 |
 | PL-107 | Unit tests for `loader`, `lock`, `installer` (conflict + lock paths), `deps` edge cases, `contract`, `audit`, `doctor` | TODO | P1 | L | PL-106 |
 | PL-108 | Migration path for old syntax: friendly, specific error when a file uses `+=`, `-=`, bare `:` or `extends`, pointing at the `:=` / `from()` fix (a `loom migrate` command was dropped as a design decision — re-open only if needed). **Note:** today the parser still *accepts* `:`, `+=`, `-=` with warnings, contrary to the docs; decide warn vs. error first (pinned by `warn-*` fixtures) | TODO | P1 | M | PL-106 |
-| PL-111 | **Decide `:=` semantics for list fields in blocks and overlays.** Today `:=` there *replaces* earlier content, so two blocks (or a block after a parent, or an overlay) silently drop each other's constraints; the legacy `:` appended. Options: blocks compose (append) and overlays choose per field, or add an explicit append form. Pinned by goldens in `05-blocks`, `06-overlays`, `12-mixed-file` (regenerate with `-update` after deciding) | TODO | P0 | M | PL-106 |
+| PL-111 | **`:=` in blocks/overlays now composes** (list fields add to existing items; `format` is last-writer-wins; prompt/variant/env `:=` still replace). Measured on the shipped `python-starter` pack: `PythonEngineer` lost 13 of 18 constraints before the change. Also fixed: de-duplication now runs as the final resolver step (it was skipped for prompts without parents and after variants/overlays/env). Documented in `LOOM_LANGUAGE.md`; unit tests in `resolve/composable_test.go` | DONE | P0 | M | PL-106 |
+| PL-113 | Follow-up to PL-111: a prompt that `use`s a block *and* writes its own list field replaces the block's items (its own fields apply last), with no way to say "block + mine". Consider warning in `loom inspect`, or an explicit `from(blocks)` form | TODO | P2 | S | PL-111 |
 | PL-112 | Bare `slot name` (no `{ }`) is rejected by the lexer although the LSP hover text documents it as valid; either accept it (required by default) or fix the docs/hover | TODO | P2 | S | PL-106 |
 | PL-109 | Run `gofmt -w` across the ~26 unformatted files and add a `gofmt -l` check to CI | TODO | P2 | S | PL-004 |
 | PL-110 | Registry follow-ups: TLS/HSTS guidance, per-pack ownership (today one shared secret can overwrite any pack), constant-time-safe secret rotation, request logging | TODO | P1 | M | PL-103 |
@@ -185,7 +186,8 @@ Only start after E1 and E4 are done.
 | 2026-05 | `loom migrate` cancelled — new packs use v2 from the start; old examples live in `examples/legacy/` |
 | 2026-09-21 | One tracker file (this one) replaces the scattered planning notes; language and command docs remain in `docs/` |
 | 2026-09-21 | Registry write endpoints fail closed (503) without `UPLOAD_SECRET`; the local dev secret must now be ≥16 chars |
-| 2026-09-21 | Fixture tests pin *current* behaviour, including the questionable parts (legacy operators only warn; `:=` in blocks replaces). Changing either is deliberate: update the fixtures in the same commit (PL-108, PL-111) |
+| 2026-09-21 | **Block/overlay list `:=` composes** (PL-111): chosen because 8 shipped prompts use 2–3 blocks that each set `constraints :=` and were losing all but the last block's rules; `format` excepted (single output shape). Reversible: one condition in `resolve.applyList` + regenerate goldens |
+| 2026-09-21 | Fixture tests pin *current* behaviour, including the questionable parts (legacy operators only warn; `:=` in blocks replaces). Changing either is deliberate: update the fixtures in the same commit (PL-108) |
 | 2026-09-21 | **Registry hosting: self-host first.** The hard-coded `registry.promptloom.dev` default is removed. A hosted default can be added later by setting one constant once a registry exists (revisit under PL-105/PL-303) |
 | 2026-09-21 | `docs/TOOL_REFERENCE.md` and `docs/PACKMAKER_DESIGN.md` removed from git as stale/contradictory; `docs/LOOM_COMMAND.md` and `docs/LOOM_LANGUAGE.md` are canonical |
 

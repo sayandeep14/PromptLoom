@@ -71,6 +71,11 @@ func ResolveWithOptions(name string, reg *registry.Registry, opts Options) (*ast
 		rp.AppliedEnv = opts.Env
 	}
 
+	// Final step of the resolver: drop exact repeats from every list field. This must
+	// run after blocks, variants, overlays and env blocks have all contributed, and it
+	// also covers prompts without parents (which return early from resolveNode).
+	deduplicateLists(rp)
+
 	// rp.Vars already accumulated depth-first by resolveNode.
 	rp.VarValues = effectiveVarValues(rp.Vars, opts.Variables)
 	rp.UnresolvedTokens = applyVariableSubstitution(rp)
@@ -598,8 +603,17 @@ func applyList(rp *ast.ResolvedPrompt, fo ast.FieldOperation, sourceName string,
 	}
 
 	switch fo.Op {
-	case ast.OpDefine:
-		if fromComposable {
+	case ast.OpDefine, ast.OpOverride:
+		// Blocks and overlays are composable: their list fields ADD to whatever is
+		// already resolved (parents, earlier blocks, the base prompt) so that mixing
+		// in several blocks never silently drops rules. Everywhere else (a prompt's own
+		// fields, variants, env blocks) `:=` replaces the value.
+		//
+		// Exception: `format` describes the single shape of the answer, so with `:=`
+		// the last writer wins (a "JSON only" overlay must replace, not extend, the
+		// base prompt's format). The legacy `:` operator keeps composing for all fields.
+		compose := fromComposable && !(fo.Op == ast.OpOverride && fo.FieldName == "format")
+		if compose {
 			existing := getList(rp, fo.FieldName)
 			setList(rp, fo.FieldName, append(existing, items...))
 			rp.ListSources[fo.FieldName] = append(rp.ListSources[fo.FieldName], contribs...)
@@ -607,9 +621,6 @@ func applyList(rp *ast.ResolvedPrompt, fo ast.FieldOperation, sourceName string,
 			setList(rp, fo.FieldName, items)
 			rp.ListSources[fo.FieldName] = contribs
 		}
-	case ast.OpOverride:
-		setList(rp, fo.FieldName, items)
-		rp.ListSources[fo.FieldName] = contribs
 	case ast.OpAppend:
 		existing := getList(rp, fo.FieldName)
 		setList(rp, fo.FieldName, append(existing, items...))

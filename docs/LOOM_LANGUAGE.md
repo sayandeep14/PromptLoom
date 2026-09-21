@@ -206,6 +206,22 @@ prompt GoCodeReviewer inherits BaseGoEngineer {
 
 Blocks are applied after parent resolution and before the prompt's own fields. Multiple blocks are applied in `use` order.
 
+### How blocks and overlays combine
+
+Blocks and overlays are *composable*: what they define is **added** to what the prompt already has, so mixing in several never silently drops rules.
+
+| Where the field is written | List fields (`instructions`, `constraints`, `examples`, …) | Scalar fields (`persona`, `objective`, …) |
+|---|---|---|
+| Inside a **block** or **overlay** | `:=` **adds** to the existing items | `:=` replaces |
+| In the **prompt's own** body | `:=` replaces | `:=` replaces |
+| In a **variant** or **env** block | `:=` replaces (use `from()` to extend) | `:=` replaces |
+
+Exception: **`format`** describes the single shape of the answer, so with `:=` the *last writer wins* — a "JSON only" overlay replaces the prompt's format instead of extending it.
+
+Order: parents → blocks (in `use` order) → the prompt's own fields → variant → overlays → env. After everything is applied, exact-duplicate list items are removed (first occurrence kept).
+
+Consequence to remember: if a prompt `use`s a block **and** writes its own `constraints :=`, its own list replaces the block's, because a prompt's own fields are applied last. To keep the block's rules, don't redefine that field in the prompt.
+
 ### Namespaced block usage
 
 ```
