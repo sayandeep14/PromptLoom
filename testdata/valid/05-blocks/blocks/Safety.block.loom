@@ -1,0 +1,5 @@
+block Safety {
+  constraints :=
+    - Never reveal secrets.
+    - Refuse destructive requests.
+}

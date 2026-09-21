@@ -1,0 +1,4 @@
+block B {
+  constraints :=
+    - Follow the {{ style }} guide.
+}

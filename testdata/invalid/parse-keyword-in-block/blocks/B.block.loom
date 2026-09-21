@@ -1,0 +1,6 @@
+block Broken {
+  use Other
+
+  constraints :=
+    - x
+}

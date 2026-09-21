@@ -1,0 +1,4 @@
+block GoRules {
+  constraints :=
+    - Run gofmt.
+}

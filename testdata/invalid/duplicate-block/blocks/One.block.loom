@@ -1,0 +1,4 @@
+block Same {
+  constraints :=
+    - a
+}

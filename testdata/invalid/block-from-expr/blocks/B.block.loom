@@ -1,0 +1,4 @@
+block B {
+  constraints :=
+    from(parent[0])
+}

@@ -1,0 +1,4 @@
+block GoConventions {
+  constraints :=
+    - Run gofmt.
+}

@@ -1,12 +1,12 @@
 *_spec.md
-examples/
+/examples/
 .claude
 readmeforlumine.md
-blocks/
+/blocks/
 loomlocker.md
 immediate.md
 packmaker.md
-loompack/
+/loompack/
 .env
 # Prompting / planning notes (local only)
 CLAUDE.md
@@ -15,12 +15,12 @@ Lumine/plan.md
 LoomTest/loom/context/
 
 # Build output / OS / IDE
-bin/
-loom
+/bin/
+/loom
 .DS_Store
 **/.DS_Store
 libs/loomj/target/
-LoomTest/
+/LoomTest/
 *.vsix
 
 # Superseded docs (kept locally only; see TRACKER.md)
