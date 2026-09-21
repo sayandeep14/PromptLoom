@@ -32,8 +32,8 @@ func Load(dir string) {
 		if idx <= 0 {
 			continue
 		}
-		key := strings.TrimSpace(line[:idx])
-		val := strings.TrimSpace(line[idx+1:])
+		key := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line[:idx]), "export "))
+		val := unquote(strings.TrimSpace(line[idx+1:]))
 		if key == "" {
 			continue
 		}
@@ -42,6 +42,15 @@ func Load(dir string) {
 			os.Setenv(key, val)
 		}
 	}
+}
+
+// unquote removes one pair of matching surrounding quotes, as dotenv files commonly have
+// (KEY="value"); without this an API key would be sent with the quote characters in it.
+func unquote(v string) string {
+	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+		return v[1 : len(v)-1]
+	}
+	return v
 }
 
 // TemplateContent is the default .loomsecret written by `loom init`.

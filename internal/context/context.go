@@ -94,7 +94,7 @@ func resolveDir(path, cwd string) (Source, error) {
 	}
 	var sb strings.Builder
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() || IsSensitiveName(e.Name()) {
 			continue
 		}
 		fpath := filepath.Join(path, e.Name())
@@ -123,12 +123,18 @@ func AppendContextSection(body string, sources []Source) string {
 		// Detect language from label for fenced code blocks.
 		lang := guessLang(s.Label)
 		if lang != "" {
-			sb.WriteString("```" + lang + "\n")
+			// The fence must be longer than any run of backticks in the content, otherwise a
+			// Markdown file (or anything containing ```) would close its own code block early.
+			fence := strings.Repeat("`", maxBacktickRun(s.Content)+1)
+			if len(fence) < 3 {
+				fence = "```"
+			}
+			sb.WriteString(fence + lang + "\n")
 			sb.WriteString(s.Content)
 			if len(s.Content) > 0 && s.Content[len(s.Content)-1] != '\n' {
 				sb.WriteByte('\n')
 			}
-			sb.WriteString("```\n")
+			sb.WriteString(fence + "\n")
 		} else {
 			sb.WriteString(s.Content)
 			if len(s.Content) > 0 && s.Content[len(s.Content)-1] != '\n' {
@@ -137,6 +143,42 @@ func AppendContextSection(body string, sources []Source) string {
 		}
 	}
 	return sb.String()
+}
+
+// maxBacktickRun returns the length of the longest run of consecutive backticks in s.
+func maxBacktickRun(s string) int {
+	best, run := 0, 0
+	for _, r := range s {
+		if r == '`' {
+			run++
+			if run > best {
+				best = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	return best
+}
+
+// IsSensitiveName reports whether a file name looks like it holds credentials. Directory
+// and bundle sources skip these, so `dir:.` can never paste API keys into a prompt.
+// (An explicit file: source is the user's deliberate choice and is not filtered.)
+func IsSensitiveName(name string) bool {
+	n := strings.ToLower(filepath.Base(name))
+	switch {
+	case n == ".loom.secret", n == ".loomsecret", n == ".loom.config", n == ".netrc", n == ".npmrc", n == ".pypirc",
+		n == "credentials", n == "credentials.json", n == "secrets.json", n == "secrets.yaml", n == "secrets.yml",
+		n == "id_rsa", n == "id_dsa", n == "id_ecdsa", n == "id_ed25519", n == ".htpasswd":
+		return true
+	case n == ".env", strings.HasPrefix(n, ".env."), strings.HasSuffix(n, ".env"):
+		return !strings.HasSuffix(n, ".example") && !strings.HasSuffix(n, ".sample") && !strings.HasSuffix(n, ".template")
+	case strings.HasSuffix(n, ".pem"), strings.HasSuffix(n, ".key"), strings.HasSuffix(n, ".p12"),
+		strings.HasSuffix(n, ".pfx"), strings.HasSuffix(n, ".keystore"), strings.HasSuffix(n, ".jks"),
+		strings.HasSuffix(n, ".secret"), strings.HasSuffix(n, ".secrets"):
+		return true
+	}
+	return false
 }
 
 func guessLang(label string) string {

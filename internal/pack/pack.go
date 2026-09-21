@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -39,6 +41,45 @@ const manifestFile = "pack.toml"
 const packExt = ".lpack"
 const packsDir = "packs"
 
+// Limits applied when unpacking an archive (a small .lpack can expand enormously).
+const (
+	maxEntries   = 5000
+	maxFileBytes = 4 << 20  // 4 MiB per file
+	maxTotalSize = 64 << 20 // 64 MiB overall
+)
+
+var (
+	nameRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$`)
+)
+
+// ValidateName checks a pack name. Names become directory names (prompts/<name>/) and part
+// of the archive file name, so they must not contain path separators or start with a dot:
+// `loom pack remove ..` would otherwise resolve to the project root.
+func ValidateName(name string) error {
+	if !nameRe.MatchString(name) {
+		return fmt.Errorf("invalid pack name %q: use letters, digits, '.', '_' or '-' (up to 64 characters, not starting with a dot)", name)
+	}
+	return nil
+}
+
+// safeRel validates an archive-relative path that must stay inside its directory.
+func safeRel(rel string) error {
+	switch {
+	case rel == "":
+		return fmt.Errorf("empty path")
+	case strings.ContainsAny(rel, "\\\x00"):
+		return fmt.Errorf("illegal character in path")
+	case strings.HasPrefix(rel, "/"):
+		return fmt.Errorf("absolute path")
+	}
+	clean := path.Clean(rel)
+	if clean == ".." || strings.HasPrefix(clean, "../") || clean == "." && rel != "." {
+		return fmt.Errorf("path escapes its directory")
+	}
+	return nil
+}
+
 // Init creates a pack.toml scaffold in cwd.
 func Init(cwd string) error {
 	dest := filepath.Join(cwd, manifestFile)
@@ -57,7 +98,7 @@ license     = "MIT"
 
 // Build creates a .lpack archive in cwd from prompts/, blocks/, and pack.toml.
 // Returns the path to the created archive.
-func Build(cwd string) (string, error) {
+func Build(cwd string) (archive string, err error) {
 	m, err := LoadManifest(cwd)
 	if err != nil {
 		return "", err
@@ -68,6 +109,12 @@ func Build(cwd string) (string, error) {
 	if m.Pack.Version == "" {
 		return "", fmt.Errorf("pack.toml: version is required")
 	}
+	if err := ValidateName(m.Pack.Name); err != nil {
+		return "", fmt.Errorf("pack.toml: %w", err)
+	}
+	if !versionRe.MatchString(m.Pack.Version) {
+		return "", fmt.Errorf("pack.toml: invalid version %q", m.Pack.Version)
+	}
 
 	archiveName := fmt.Sprintf("%s-%s%s", m.Pack.Name, m.Pack.Version, packExt)
 	archivePath := filepath.Join(cwd, archiveName)
@@ -76,7 +123,12 @@ func Build(cwd string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("creating archive: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		f.Close()
+		if err != nil {
+			os.Remove(archivePath) // never leave a half-written archive behind
+		}
+	}()
 
 	gz := gzip.NewWriter(f)
 	defer gz.Close()
@@ -84,7 +136,7 @@ func Build(cwd string) (string, error) {
 	defer tw.Close()
 
 	// Include pack.toml at the archive root.
-	if err := addFile(tw, filepath.Join(cwd, manifestFile), manifestFile); err != nil {
+	if err = addFile(tw, filepath.Join(cwd, manifestFile), manifestFile); err != nil {
 		return "", err
 	}
 
@@ -94,9 +146,15 @@ func Build(cwd string) (string, error) {
 		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
 			continue
 		}
-		if err := addDir(tw, dir, subdir); err != nil {
+		if err = addDir(tw, dir, subdir); err != nil {
 			return "", err
 		}
+	}
+	if err = tw.Close(); err != nil {
+		return "", err
+	}
+	if err = gz.Close(); err != nil {
+		return "", err
 	}
 
 	return archivePath, nil
@@ -119,12 +177,16 @@ func Install(archivePath, targetCWD string) error {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 
-	// First pass: extract pack.toml to get the pack name.
+	// First pass: read and VALIDATE every entry before anything is written, so a bad
+	// archive changes nothing on disk.
 	var manifest *Manifest
-	var entries []struct {
-		header  *tar.Header
+	type entry struct {
+		name    string
+		isDir   bool
 		content []byte
 	}
+	var entries []entry
+	var total int64
 
 	for {
 		hdr, err := tr.Next()
@@ -134,21 +196,44 @@ func Install(archivePath, targetCWD string) error {
 		if err != nil {
 			return fmt.Errorf("reading archive: %w", err)
 		}
-		data, err := io.ReadAll(tr)
+		if len(entries) >= maxEntries {
+			return fmt.Errorf("archive has too many entries (limit %d)", maxEntries)
+		}
+		name := strings.TrimSuffix(hdr.Name, "/")
+		switch hdr.Typeflag {
+		case tar.TypeReg, tar.TypeDir:
+		case tar.TypeXGlobalHeader:
+			continue
+		default:
+			return fmt.Errorf("archive entry %q is a link or special file, which packs must not contain", hdr.Name)
+		}
+		if name != manifestFile {
+			if err := safeRel(name); err != nil {
+				return fmt.Errorf("unsafe archive entry %q: %w", hdr.Name, err)
+			}
+		}
+		if hdr.Typeflag == tar.TypeDir {
+			entries = append(entries, entry{name: name, isDir: true})
+			continue
+		}
+		data, err := io.ReadAll(io.LimitReader(tr, maxFileBytes+1))
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", hdr.Name, err)
 		}
-		if hdr.Name == manifestFile {
+		if len(data) > maxFileBytes {
+			return fmt.Errorf("archive entry %q is larger than %d bytes", hdr.Name, maxFileBytes)
+		}
+		if total += int64(len(data)); total > maxTotalSize {
+			return fmt.Errorf("archive expands to more than %d bytes", maxTotalSize)
+		}
+		if name == manifestFile {
 			var m Manifest
 			if _, err := toml.Decode(string(data), &m); err != nil {
 				return fmt.Errorf("parsing pack.toml: %w", err)
 			}
 			manifest = &m
 		}
-		entries = append(entries, struct {
-			header  *tar.Header
-			content []byte
-		}{hdr, data})
+		entries = append(entries, entry{name: name, content: data})
 	}
 
 	if manifest == nil {
@@ -157,45 +242,62 @@ func Install(archivePath, targetCWD string) error {
 	if manifest.Pack.Name == "" {
 		return fmt.Errorf("pack.toml: name is required")
 	}
+	if err := ValidateName(manifest.Pack.Name); err != nil {
+		return fmt.Errorf("pack.toml: %w", err)
+	}
 	packName := manifest.Pack.Name
 
-	// Create destination directories.
-	for _, subdir := range []string{
-		filepath.Join("prompts", packName),
-		filepath.Join("blocks", packName),
-		packsDir,
-	} {
+	promptsRoot := filepath.Join(targetCWD, "prompts", packName)
+	blocksRoot := filepath.Join(targetCWD, "blocks", packName)
+
+	// Resolve every destination up front and confirm it stays inside the pack's own directory.
+	type write struct {
+		dest    string
+		isDir   bool
+		content []byte
+	}
+	var writes []write
+	within := func(root, dest string) bool {
+		rel, err := filepath.Rel(root, dest)
+		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	}
+	for _, e := range entries {
+		var dest, root string
+		switch {
+		case e.name == manifestFile:
+			dest = filepath.Join(targetCWD, packsDir, packName+".toml")
+			writes = append(writes, write{dest: dest, content: e.content})
+			continue
+		case strings.HasPrefix(e.name, "prompts/") || e.name == "prompts":
+			root, dest = promptsRoot, filepath.Join(promptsRoot, filepath.FromSlash(strings.TrimPrefix(strings.TrimPrefix(e.name, "prompts"), "/")))
+		case strings.HasPrefix(e.name, "blocks/") || e.name == "blocks":
+			root, dest = blocksRoot, filepath.Join(blocksRoot, filepath.FromSlash(strings.TrimPrefix(strings.TrimPrefix(e.name, "blocks"), "/")))
+		default:
+			continue
+		}
+		if !within(root, dest) {
+			return fmt.Errorf("unsafe archive entry %q: resolves outside %s", e.name, root)
+		}
+		writes = append(writes, write{dest: dest, isDir: e.isDir, content: e.content})
+	}
+
+	// Second pass: write.
+	for _, subdir := range []string{filepath.Join("prompts", packName), filepath.Join("blocks", packName), packsDir} {
 		if err := os.MkdirAll(filepath.Join(targetCWD, subdir), 0755); err != nil {
 			return err
 		}
 	}
-
-	// Second pass: write files.
-	for _, e := range entries {
-		name := e.header.Name
-		var dest string
-		switch {
-		case name == manifestFile:
-			dest = filepath.Join(targetCWD, packsDir, packName+".toml")
-		case strings.HasPrefix(name, "prompts/"):
-			rel := strings.TrimPrefix(name, "prompts/")
-			dest = filepath.Join(targetCWD, "prompts", packName, rel)
-		case strings.HasPrefix(name, "blocks/"):
-			rel := strings.TrimPrefix(name, "blocks/")
-			dest = filepath.Join(targetCWD, "blocks", packName, rel)
-		default:
-			continue
-		}
-		if e.header.Typeflag == tar.TypeDir {
-			if err := os.MkdirAll(dest, 0755); err != nil {
+	for _, w := range writes {
+		if w.isDir {
+			if err := os.MkdirAll(w.dest, 0755); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(w.dest), 0755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(dest, e.content, 0644); err != nil {
+		if err := os.WriteFile(w.dest, w.content, 0644); err != nil {
 			return err
 		}
 	}
@@ -239,6 +341,9 @@ func List(cwd string) ([]InstalledPack, error) {
 
 // Remove deletes a pack and all its prompts and blocks from the project.
 func Remove(name, cwd string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	removed := false
 	for _, subdir := range []string{
 		filepath.Join("prompts", name),
@@ -308,14 +413,22 @@ func addDir(tw *tar.Writer, srcDir, archivePrefix string) error {
 		if err != nil {
 			return err
 		}
-		archivePath := filepath.Join(archivePrefix, rel)
+		archivePath := filepath.ToSlash(filepath.Join(archivePrefix, rel))
 
+		// A symlink could point at any file on this machine (a key, a .env) and would
+		// otherwise be followed and published inside the archive.
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
 		if info.IsDir() {
 			return tw.WriteHeader(&tar.Header{
 				Typeflag: tar.TypeDir,
 				Name:     archivePath + "/",
 				Mode:     0755,
 			})
+		}
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 		return addFile(tw, path, archivePath)
 	})
