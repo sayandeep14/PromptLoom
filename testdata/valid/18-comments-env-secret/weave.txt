@@ -1,0 +1,3 @@
+base: Annotated --set api_key=unused
+strict: Annotated --set api_key=unused --variant strict
+prod: Annotated --set api_key=unused --env prod

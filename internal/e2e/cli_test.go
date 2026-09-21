@@ -121,3 +121,73 @@ func TestCLI(t *testing.T) {
 		}
 	})
 }
+
+func TestCLIFmt(t *testing.T) {
+	bin := buildLoom(t)
+	src := filepath.Join(testdataDir, "valid", "18-comments-env-secret")
+
+	t.Run("keeps comments, env blocks and secret slots", func(t *testing.T) {
+		dir := stage(t, src)
+		file := filepath.Join(dir, "prompts", "Annotated.prompt.loom")
+		before, _ := os.ReadFile(file)
+
+		if out, code := runLoom(t, bin, dir, "fmt"); code != 0 {
+			t.Fatalf("fmt exit %d\n%s", code, out)
+		}
+		after, _ := os.ReadFile(file)
+		for _, want := range []string{
+			"// ── Annotated reviewer", "// only in strict mode", "// never log secrets",
+			"env prod {", "Use timeouts on every external call.", "slot api_key { required: true, secret: true }",
+			"slot team { required: false }", "// trailing note: revisit after the Q3 review", "// end of file",
+		} {
+			if !strings.Contains(string(after), want) {
+				t.Errorf("formatting lost %q:\n%s", want, after)
+			}
+		}
+		if strings.Count(string(before), "//") != strings.Count(string(after), "//") {
+			t.Errorf("comment count changed: %d -> %d", strings.Count(string(before), "//"), strings.Count(string(after), "//"))
+		}
+		// the project still inspects...
+		if out, code := runLoom(t, bin, dir, "inspect"); code != 0 {
+			t.Errorf("inspect after fmt: exit %d\n%s", code, out)
+		}
+		// ...and the secret slot is STILL secret: the CLI refuses to take its value on the
+		// command line. (Before the formatter kept `secret: true`, this succeeded.)
+		out, code := runLoom(t, bin, dir, "weave", "Annotated", "--set", "api_key=hunter2", "--set", "team=x", "--stdout")
+		if code == 0 || !strings.Contains(out, "marked secret") || strings.Contains(out, "hunter2") {
+			t.Errorf("secret slot lost its protection after fmt (exit %d):\n%s", code, out)
+		}
+	})
+
+	t.Run("env blocks still apply after fmt", func(t *testing.T) {
+		dir := stage(t, filepath.Join(testdataDir, "valid", "08-env"))
+		if out, code := runLoom(t, bin, dir, "fmt"); code != 0 {
+			t.Fatalf("fmt exit %d\n%s", code, out)
+		}
+		out, code := runLoom(t, bin, dir, "weave", "Pipeline", "--env", "prod", "--stdout")
+		if code != 0 || !strings.Contains(out, "All external calls must use timeouts.") {
+			t.Errorf("env block lost or broken after fmt (exit %d):\n%s", code, out)
+		}
+	})
+
+	t.Run("--check exits 1 until the project is formatted", func(t *testing.T) {
+		dir := stage(t, filepath.Join(testdataDir, "valid", "02-inheritance-single"))
+		file := filepath.Join(dir, "prompts", "Base.prompt.loom")
+		messy := "prompt   BaseEngineer   {\n\n\n  persona :=\n    You are a senior engineer.\n}\n"
+		if err := os.WriteFile(file, []byte(messy), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if out, code := runLoom(t, bin, dir, "fmt", "--check"); code != 1 || !strings.Contains(out, "needs formatting") {
+			t.Fatalf("--check on an unformatted project: exit %d\n%s", code, out)
+		}
+		if untouched, _ := os.ReadFile(file); string(untouched) != messy {
+			t.Error("--check must not modify files")
+		}
+		if out, code := runLoom(t, bin, dir, "fmt"); code != 0 {
+			t.Fatalf("fmt: exit %d\n%s", code, out)
+		}
+		if out, code := runLoom(t, bin, dir, "fmt", "--check"); code != 0 {
+			t.Errorf("--check after fmt: exit %d\n%s", code, out)
+		}
+	})
+}

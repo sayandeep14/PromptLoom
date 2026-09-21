@@ -10,18 +10,25 @@ import (
 )
 
 // Nodes formats a slice of nodes (a full file) into canonical source.
+// It knows nothing about comments; use Source to format a file and keep them.
 func Nodes(nodes []*ast.Node) string {
+	c := &commentCtx{}
 	parts := make([]string, len(nodes))
 	for i, n := range nodes {
-		parts[i] = Node(n)
+		parts[i] = c.node(n)
 	}
 	return strings.Join(parts, "\n")
 }
 
 // Node formats a single prompt, block, or overlay node into canonical source.
 func Node(n *ast.Node) string {
+	return (&commentCtx{}).node(n)
+}
+
+func (c *commentCtx) node(n *ast.Node) string {
 	var sb strings.Builder
 
+	c.emit(&sb, n.Pos.Line, 0)
 	switch n.Kind {
 	case ast.KindPrompt:
 		if len(n.Parents) > 0 {
@@ -35,7 +42,7 @@ func Node(n *ast.Node) string {
 		fmt.Fprintf(&sb, "overlay %s {\n", n.Name)
 	}
 
-	groups := renderBodyGroups(n)
+	groups := c.renderBodyGroups(n)
 	for i, group := range groups {
 		if i > 0 {
 			sb.WriteString("\n")
@@ -43,52 +50,79 @@ func Node(n *ast.Node) string {
 		sb.WriteString(group)
 	}
 
+	// Comments that sit after the last element, plus any whose element was not rendered
+	// (so a comment can never be silently dropped).
+	if left := c.leftover(n); len(left) > 0 {
+		if len(groups) > 0 {
+			sb.WriteString("\n")
+		}
+		writeComments(&sb, left, 2, 0)
+	}
+
 	sb.WriteString("}\n")
 	return sb.String()
 }
 
-func renderBodyGroups(n *ast.Node) []string {
+func (c *commentCtx) renderBodyGroups(n *ast.Node) []string {
 	var groups []string
 
 	if len(n.Tags) > 0 {
-		groups = append(groups, "  tags: "+strings.Join(n.Tags, ", ")+"\n")
+		var sb strings.Builder
+		c.emit(&sb, n.TagsLine, 2)
+		sb.WriteString("  tags: " + strings.Join(n.Tags, ", ") + "\n")
+		groups = append(groups, sb.String())
 	}
 
 	if n.Kind == ast.KindPrompt && len(n.Vars) > 0 {
-		var lines []string
+		var sb strings.Builder
 		for _, v := range n.Vars {
+			c.emit(&sb, v.Pos.Line, 2)
 			if v.IsSlot {
-				lines = append(lines, "  "+formatSlot(v))
+				sb.WriteString("  " + formatSlot(v) + "\n")
 			} else {
-				lines = append(lines, "  "+formatVar(v))
+				sb.WriteString("  " + formatVar(v) + "\n")
 			}
 		}
-		groups = append(groups, strings.Join(lines, "\n")+"\n")
+		groups = append(groups, sb.String())
 	}
 
 	if len(n.Uses) > 0 {
-		var lines []string
-		for _, use := range n.Uses {
-			lines = append(lines, "  use "+use)
+		var sb strings.Builder
+		for i, use := range n.Uses {
+			if i < len(n.UsePos) {
+				c.emit(&sb, n.UsePos[i].Line, 2)
+			}
+			sb.WriteString("  use " + use + "\n")
 		}
-		groups = append(groups, strings.Join(lines, "\n")+"\n")
+		groups = append(groups, sb.String())
 	}
 
 	if len(n.Fields) > 0 {
-		groups = append(groups, formatFieldOps(n.Fields, 2))
+		groups = append(groups, c.formatFieldOps(n.Fields, 2))
 	}
 
 	if n.Kind == ast.KindPrompt {
 		for _, variant := range n.Variants {
 			var sb strings.Builder
+			c.emit(&sb, variant.Pos.Line, 2)
 			fmt.Fprintf(&sb, "  variant %s {\n", variant.Name)
-			sb.WriteString(formatFieldOps(variant.Fields, 4))
+			sb.WriteString(c.formatFieldOps(variant.Fields, 4))
+			sb.WriteString("  }\n")
+			groups = append(groups, sb.String())
+		}
+
+		for _, env := range n.EnvBlocks {
+			var sb strings.Builder
+			c.emit(&sb, env.Pos.Line, 2)
+			fmt.Fprintf(&sb, "  env %s {\n", env.Name)
+			sb.WriteString(c.formatFieldOps(env.Fields, 4))
 			sb.WriteString("  }\n")
 			groups = append(groups, sb.String())
 		}
 
 		if n.Contract != nil {
 			var sb strings.Builder
+			c.emit(&sb, n.Contract.Pos.Line, 2)
 			sb.WriteString("  contract {\n")
 			sb.WriteString(formatListField("required_sections", n.Contract.RequiredSections, 4))
 			sb.WriteString(formatListField("forbidden_sections", n.Contract.ForbiddenSections, 4))
@@ -100,6 +134,7 @@ func renderBodyGroups(n *ast.Node) []string {
 
 		if n.Capabilities != nil {
 			var sb strings.Builder
+			c.emit(&sb, n.Capabilities.Pos.Line, 2)
 			sb.WriteString("  capabilities {\n")
 			sb.WriteString(formatListField("allowed", n.Capabilities.Allowed, 4))
 			sb.WriteString(formatListField("forbidden", n.Capabilities.Forbidden, 4))
@@ -122,22 +157,36 @@ func formatVar(v ast.VarDecl) string {
 	return fmt.Sprintf("var %s = %s", v.Name, strconv.Quote(v.Default))
 }
 
+// formatSlot writes every piece of slot metadata back out. Dropping any of it changes
+// meaning: without `secret: true` a secret slot would be rendered as plain text, and
+// without `required: false` an optional slot becomes required.
 func formatSlot(v ast.VarDecl) string {
-	if v.Default != "" {
-		return fmt.Sprintf("slot %s { default: %s }", v.Name, strconv.Quote(v.Default))
+	var meta []string
+	switch {
+	case v.Default != "":
+		meta = append(meta, "default: "+strconv.Quote(v.Default))
+	case v.Required:
+		meta = append(meta, "required: true")
+	default:
+		meta = append(meta, "required: false")
 	}
-	if v.Required {
-		return fmt.Sprintf("slot %s { required: true }", v.Name)
+	if v.Secret {
+		meta = append(meta, "secret: true")
 	}
-	return fmt.Sprintf("slot %s {}", v.Name)
+	return fmt.Sprintf("slot %s { %s }", v.Name, strings.Join(meta, ", "))
 }
 
 func formatFieldOps(fields []ast.FieldOperation, indent int) string {
+	return (&commentCtx{}).formatFieldOps(fields, indent)
+}
+
+func (c *commentCtx) formatFieldOps(fields []ast.FieldOperation, indent int) string {
 	var sb strings.Builder
 	prefix := strings.Repeat(" ", indent)
 	bodyPrefix := strings.Repeat(" ", indent+2)
 
 	for i, f := range fields {
+		c.emit(&sb, f.Pos.Line, indent)
 		sb.WriteString(prefix)
 		sb.WriteString(f.FieldName)
 		sb.WriteString(opSuffix(f.Op))

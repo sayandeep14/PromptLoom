@@ -1224,6 +1224,22 @@ Without a formatter, everyone on the team writes DSL slightly differently. `loom
 - Deduplicates adjacent identical `from()` units
 - Collapses single-element ranges: `from(parent[0..1])` → `from(parent[0])`
 
+**What it preserves**
+
+Formatting never changes what a prompt means or drops anything you wrote:
+
+- **Comments** (`//` lines) stay attached to the element that follows them, even when canonical ordering moves that element. A comment after the last element of a prompt stays at the end of its body, and file-level comments stay where they are. Blank lines you left between comments are kept.
+- `env` blocks, `variant` blocks, `tags`, `use` lines, `contract` and `capabilities` entries.
+- Variable and slot metadata: `secret: true`, `required: false`, `default: "…"`.
+
+Body elements are written in a fixed order: `tags`, variables/slots, `use`, fields, `variant` blocks, `env` blocks, `contract`, `capabilities`.
+
+Known limits: a comment written *inside* a list of items, or inside a `contract`/`capabilities`/`variant`/`env` body after its last entry, moves to just before the next element.
+
+**Safety net**
+
+After formatting, `loom fmt` parses its own output and compares an inventory of everything the file declares (fields, operators, variables and their metadata, variants, env blocks, contract entries, tags) and the number of comments with the original. If anything differs it reports the file, **leaves it untouched**, and exits non-zero.
+
 **When to use it**
 
 Before committing. In a pre-commit hook. In CI with `--check` to fail on unformatted files.

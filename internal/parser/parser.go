@@ -13,12 +13,23 @@ import (
 
 // Parse tokenizes src and returns all top-level nodes declared in the file.
 func Parse(filename, src string) ([]*ast.Node, error) {
-	tokens, err := lexer.Scan(filename, src)
+	nodes, _, err := ParseWithComments(filename, src)
+	return nodes, err
+}
+
+// ParseWithComments is Parse that also returns the file's full-line // comments,
+// which the formatter uses to keep them.
+func ParseWithComments(filename, src string) ([]*ast.Node, []lexer.Comment, error) {
+	tokens, comments, err := lexer.ScanWithComments(filename, src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := &parser{filename: filename, tokens: tokens}
-	return p.parseAll()
+	nodes, err := p.parseAll()
+	if err != nil {
+		return nil, nil, err
+	}
+	return nodes, comments, nil
 }
 
 type parser struct {
@@ -129,7 +140,7 @@ func (p *parser) parseBody(node *ast.Node) error {
 	for {
 		switch p.peek().Type {
 		case lexer.TokRBrace:
-			p.next()
+			node.EndLine = p.next().Line
 			return nil
 
 		case lexer.TokKwUse:
@@ -137,12 +148,13 @@ func (p *parser) parseBody(node *ast.Node) error {
 				t := p.peek()
 				return fmt.Errorf("%s:%d: 'use' is only valid inside prompts", p.filename, t.Line)
 			}
-			p.next()
+			useTok := p.next()
 			nameTok, err := p.expect(lexer.TokIdent)
 			if err != nil {
 				return err
 			}
 			node.Uses = append(node.Uses, nameTok.Text)
+			node.UsePos = append(node.UsePos, ast.Position{File: p.filename, Line: useTok.Line, Col: useTok.Col})
 
 		case lexer.TokKwVar:
 			if node.Kind != ast.KindPrompt {
@@ -211,7 +223,7 @@ func (p *parser) parseBody(node *ast.Node) error {
 			node.EnvBlocks = append(node.EnvBlocks, *eb)
 
 		case lexer.TokKwTags:
-			p.next() // consume TokKwTags
+			node.TagsLine = p.next().Line // consume TokKwTags
 			rawTok, err := p.expect(lexer.TokTextLine)
 			if err != nil {
 				return err

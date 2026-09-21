@@ -107,7 +107,14 @@ const (
 	sInNestedFieldContent
 )
 
+// Comment is a full-line `//` comment, kept so that formatting can preserve it.
+type Comment struct {
+	Line int    // 1-based source line
+	Text string // the line trimmed of surrounding whitespace, including the leading //
+}
+
 type scanner struct {
+	comments          []Comment
 	filename          string
 	lines             []string
 	state             scanState
@@ -119,14 +126,20 @@ type scanner struct {
 
 // Scan tokenizes src and returns the full token stream, including a terminal TokEOF.
 func Scan(filename, src string) ([]Token, error) {
+	tokens, _, err := ScanWithComments(filename, src)
+	return tokens, err
+}
+
+// ScanWithComments is Scan that also returns every full-line // comment, in source order.
+func ScanWithComments(filename, src string) ([]Token, []Comment, error) {
 	s := &scanner{
 		filename: filename,
 		lines:    strings.Split(src, "\n"),
 	}
 	if err := s.scan(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return s.tokens, nil
+	return s.tokens, s.comments, nil
 }
 
 func (s *scanner) errorf(line int, format string, args ...interface{}) error {
@@ -293,6 +306,7 @@ func (s *scanner) scan() error {
 		}
 
 		if strings.HasPrefix(trimmed, "//") {
+			s.comments = append(s.comments, Comment{Line: lineNum, Text: trimmed})
 			continue
 		}
 

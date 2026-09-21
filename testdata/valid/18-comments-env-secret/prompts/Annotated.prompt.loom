@@ -1,0 +1,60 @@
+// ── Annotated reviewer ─────────────────────────────────────────
+// Owned by the platform team. Keep in sync with the style guide.
+
+// The base every reviewer builds on
+prompt Base {
+  // classification for search
+  tags: review, base
+
+  // who we are
+  persona :=
+    You are a careful reviewer.
+
+  // ordered steps
+  instructions :=
+    - Read the diff.
+    - Report issues.
+}
+
+// The combined reviewer
+prompt Annotated inherits Base {
+  // optional slot: falls back to "Go"
+  var language = "Go"
+
+  // required, secret — must never be rendered
+  slot api_key { secret: true }
+
+  // optional and not required
+  slot team { required: false }
+
+  // extends the parent's list
+  instructions :=
+    from(parent[0]) and {
+      - Check {{ language }} error handling.
+    }
+
+  // only in strict mode
+  variant strict {
+    // tighten things
+    constraints :=
+      - Every change needs tests.
+  }
+
+  // production only
+  env prod {
+    // never log secrets
+    constraints :=
+      - No debug logging.
+      - Use timeouts on every external call.
+  }
+
+  contract {
+    // must appear
+    required_sections:
+      - Summary
+  }
+
+  // trailing note: revisit after the Q3 review
+}
+
+// end of file

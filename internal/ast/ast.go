@@ -165,6 +165,9 @@ type Node struct {
 	Uses         []string // ordered block names from "use BlockName" statements
 	Fields       []FieldOperation
 	Pos          Position
+	EndLine      int        // line of the closing '}' (used to place comments when formatting)
+	UsePos       []Position // parallel to Uses
+	TagsLine     int        // line of the `tags:` declaration, 0 if none
 	Vars         []VarDecl
 	Variants     []VariantBlock
 	EnvBlocks    []EnvBlock

@@ -14,7 +14,12 @@ var fmtCmd = &cobra.Command{
 	Short: "Format .loom source files canonically",
 	Long: `Rewrite every .loom source file in the project to canonical formatting.
 
-Use --check to report unformatted files without modifying them (useful in CI).`,
+Comments, env blocks, tags, variables (including secret slots) and every other
+declaration are preserved; a file that could not be formatted without losing
+something is reported and left untouched.
+
+Use --check to report unformatted files without modifying them. It exits with
+status 1 when any file needs formatting, so it can gate CI.`,
 	RunE: runFmt,
 }
 
@@ -28,9 +33,6 @@ func runFmt(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	out, err := tui.RunFmt(fmtCheck, cwd)
-	if err != nil {
-		return err
-	}
 	fmt.Print(out)
-	return nil
+	return err
 }

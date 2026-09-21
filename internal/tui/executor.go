@@ -5,6 +5,7 @@ package tui
 // appends the result to its output buffer.
 
 import (
+	"errors"
 	"bufio"
 	"bytes"
 	"fmt"
@@ -1298,7 +1299,7 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 	}
 
 	var b strings.Builder
-	changed, total := 0, 0
+	changed, total, failed := 0, 0, 0
 
 	for _, target := range dirs {
 		entries, err := os.ReadDir(target.dir)
@@ -1319,13 +1320,15 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 				continue
 			}
 
-			nodes, err := iparser.Parse(path, string(src))
+			// Source keeps comments and refuses (returning an error) to produce output that
+			// would lose or change anything; in that case the file is left untouched.
+			formatted, err := iformat.Source(path, string(src))
 			if err != nil {
+				failed++
 				b.WriteString(fmt.Sprintf("  %s  %s: %v\n",
 					ErrorStyle.Render("✗"), PathStyle.Render(filepath.Base(path)), err))
 				continue
 			}
-			formatted := iformat.Nodes(nodes)
 
 			if string(src) == formatted {
 				b.WriteString(fmt.Sprintf("  %s  %s\n",
@@ -1340,7 +1343,7 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 					PathStyle.Render(filepath.Base(path)),
 					MutedStyle.Render("(needs formatting)")))
 			} else {
-				if err := os.WriteFile(path, []byte(formatted), 0644); err != nil {
+				if err := writeFileAtomic(path, []byte(formatted)); err != nil {
 					b.WriteString(fmt.Sprintf("  %s  %s: %v\n",
 						ErrorStyle.Render("✗"), PathStyle.Render(path), err))
 					continue
@@ -1367,7 +1370,44 @@ func RunFmt(checkOnly bool, cwd string) (string, error) {
 		}
 	}
 
+	if failed > 0 {
+		b.WriteString("  " + ErrorStyle.Render(fmt.Sprintf("%d file(s) could not be formatted and were left untouched.", failed)) + "\n")
+	}
+
+	// In --check mode a needed reformat is a failure, so this can gate CI.
+	if checkOnly && changed > 0 {
+		return b.String(), ErrNeedsFormatting
+	}
+	if failed > 0 {
+		return b.String(), fmt.Errorf("%d file(s) could not be formatted", failed)
+	}
 	return b.String(), nil
+}
+
+// ErrNeedsFormatting is returned by RunFmt in check mode when files are not formatted.
+var ErrNeedsFormatting = errors.New("some files need formatting (run: loom fmt)")
+
+// writeFileAtomic writes to a temp file next to path and renames it over, so a crash
+// or full disk can never leave a half-written source file.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".loomfmt-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if fi, err := os.Stat(path); err == nil {
+		_ = os.Chmod(name, fi.Mode().Perm())
+	}
+	return os.Rename(name, path)
 }
 
 // promptNamesInFolder parses every .loom source file in dir and returns the names of

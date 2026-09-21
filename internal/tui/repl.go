@@ -788,7 +788,7 @@ func dispatch(verb string, args []string, cwd string) (string, bool) {
 		check := hasFlag(args, "--check")
 		out, err := RunFmt(check, cwd)
 		if err != nil {
-			return ErrorStyle.Render("Error: "+err.Error()) + "\n", true
+			return out + ErrorStyle.Render("Error: "+err.Error()) + "\n", true
 		}
 		return out, false
 
