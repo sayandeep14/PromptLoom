@@ -57,6 +57,7 @@ checksum:
 changelog:
   use: github
   sort: asc
+  format: "{{ .Message }} (`{{ slice .SHA 0 7 }}`)"
   groups:
     - title: Features
       regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
@@ -71,6 +72,9 @@ changelog:
       - '^docs?(\(.+\))?:'
       - '^chore(\(.+\))?:'
       - '^test(\(.+\))?:'
+      - '^[a-z]+\(lumine\):'      # the VS Code extension has its own releases
+      - '^[a-z]+\(tracker\):'
+      - '^style:'
 
 release:
   github:

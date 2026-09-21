@@ -46,7 +46,7 @@ func buildRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "loomlocker",
 		Short:   "LoomLocker — session-scoped secret protection for loom projects",
-		Version: version,
+		Version: resolveVersion(version),
 	}
 	root.AddCommand(startCmd, lockCmd, unlockCmd, stopCmd, statusCmd, recoverCmd)
 	return root

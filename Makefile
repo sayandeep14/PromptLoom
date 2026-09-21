@@ -1,4 +1,4 @@
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/sayandeep14/PromptLoom/internal/cli.version=$(VERSION)
 
 .PHONY: build test vet fmt fmt-check check install clean

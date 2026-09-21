@@ -9,7 +9,7 @@ import (
 )
 
 // version is overridden at build time via -ldflags "-X <module>/internal/cli.version=vX.Y.Z".
-var version = "4.2.0"
+var version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:     "loom",
@@ -41,6 +41,8 @@ func Execute() error {
 var themeFlag string
 
 func init() {
+	version = resolveVersion(version)
+	rootCmd.Version = version
 	rootCmd.PersistentFlags().StringVar(&themeFlag, "theme", "", "color theme: light or dark")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if themeFlag != "" && !tui.SetTheme(themeFlag) {

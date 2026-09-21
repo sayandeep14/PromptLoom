@@ -8,7 +8,7 @@ import (
 )
 
 // version is overridden at build time via -ldflags "-X <module>/loomlocker/cli.version=vX.Y.Z".
-var version = "4.2.0"
+var version = "dev"
 
 // ReadPassword prompts with label and reads a masked password from stdin.
 // Falls back to plain read if stdin is not a terminal.

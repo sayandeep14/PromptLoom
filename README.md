@@ -111,7 +111,13 @@ You write small, focused `.loom` files. PromptLoom parses, validates, resolves, 
 loom --version
 ```
 
-**Or build from source:**
+**Or install from source** (tracks the latest commit on `main`, not a tagged release):
+
+```bash
+go install github.com/sayandeep14/PromptLoom/cmd/loom@latest
+```
+
+**Or build a checkout yourself:**
 
 ```bash
 git clone https://github.com/sayandeep14/PromptLoom.git
