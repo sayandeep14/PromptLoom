@@ -19,7 +19,8 @@ var testCmd = &cobra.Command{
 stub) and checks the response against the prompt's declared contract block.
 
 Requires an API key set via the environment variable configured in loom.toml
-(default: $GEMINI_API_KEY for Gemini, $ANTHROPIC_API_KEY for Anthropic).
+(default: $GEMINI_API_KEY for Gemini, $ANTHROPIC_API_KEY for Anthropic, $OPENAI_API_KEY
+for OpenAI; the provider is [testing] provider).
 
 Examples:
   loom test SecurityReviewer

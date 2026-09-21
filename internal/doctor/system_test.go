@@ -125,3 +125,10 @@ func TestSystemOutsideAProjectIsOnlyAWarning(t *testing.T) {
 		t.Error("not being in a project is not an installation failure")
 	}
 }
+
+func TestSystemAPIKeyForOpenAI(t *testing.T) {
+	dir := sysProject(t, "[testing]\nprovider = \"openai\"\n", nil)
+	if c := byName(System(env(dir, map[string]string{"OPENAI_API_KEY": "k"})))["model API key"]; c.Level != LevelOK || !strings.Contains(c.Detail, "OPENAI_API_KEY") || !strings.Contains(c.Detail, "gpt") {
+		t.Errorf("%+v", c)
+	}
+}

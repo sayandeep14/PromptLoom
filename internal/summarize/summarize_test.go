@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/llm"
 )
 
 const secretKey = "SUPER-SECRET-KEY-123"
@@ -35,9 +36,9 @@ func newFakeAPI(t *testing.T, status int, reply string) *fakeAPI {
 		w.WriteHeader(f.status)
 		io.WriteString(w, f.reply)
 	}))
-	oldG, oldA := geminiBaseURL, anthropicURL
-	geminiBaseURL, anthropicURL = f.srv.URL+"/v1beta", f.srv.URL+"/v1/messages"
-	t.Cleanup(func() { f.srv.Close(); geminiBaseURL, anthropicURL = oldG, oldA })
+	oldG, oldA := llm.GeminiBaseURL, llm.AnthropicURL
+	llm.GeminiBaseURL, llm.AnthropicURL = f.srv.URL+"/v1beta", f.srv.URL+"/v1/messages"
+	t.Cleanup(func() { f.srv.Close(); llm.GeminiBaseURL, llm.AnthropicURL = oldG, oldA })
 	return f
 }
 
@@ -64,9 +65,7 @@ func TestGeminiKeyTravelsInAHeaderNotTheURL(t *testing.T) {
 	if r.Header.Get("x-goog-api-key") != secretKey || !strings.HasSuffix(r.URL.Path, "/models/gemini-2.5-flash:generateContent") {
 		t.Errorf("%s %v", r.URL.Path, r.Header)
 	}
-	var body geminiRequest
-	json.Unmarshal([]byte(f.bodies[0]), &body)
-	if body.SystemInstruction.Parts[0].Text != "sys" || body.Contents[0].Parts[0].Text != "user" {
+	if !strings.Contains(f.bodies[0], `"text":"sys"`) || !strings.Contains(f.bodies[0], `"text":"user"`) {
 		t.Errorf("%s", f.bodies[0])
 	}
 }
@@ -78,7 +77,13 @@ func TestAnthropicRequestAndDefaultModel(t *testing.T) {
 	if _, err := callLLM("sys", "user", cfgFor("anthropic", "", ""), time.Second*5); err != nil {
 		t.Fatal(err)
 	}
-	var body anthropicRequest
+	var body struct {
+		Model    string `json:"model"`
+		System   string `json:"system"`
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
 	json.Unmarshal([]byte(f.bodies[0]), &body)
 	if !strings.HasPrefix(body.Model, "claude") || body.System != "sys" || body.Messages[0].Content != "user" {
 		t.Errorf("%+v", body)
@@ -95,7 +100,7 @@ func TestProviderAndKeyErrors(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 	t.Setenv("MY_KEY", "k")
-	if _, err := callLLM("s", "u", cfgFor("openai", "", "MY_KEY"), time.Second); err == nil || !strings.Contains(err.Error(), "unknown provider") {
+	if _, err := callLLM("s", "u", cfgFor("mistral", "", "MY_KEY"), time.Second); err == nil || !strings.Contains(err.Error(), "unknown provider") {
 		t.Errorf("an unknown provider must not silently use Gemini: %v", err)
 	}
 	if _, err := callLLM("s", "u", cfgFor("gemini", "x/../../evil", "MY_KEY"), time.Second); err == nil || !strings.Contains(err.Error(), "invalid model") {
@@ -105,9 +110,9 @@ func TestProviderAndKeyErrors(t *testing.T) {
 
 func TestErrorsNeverContainTheKey(t *testing.T) {
 	// nothing is listening: the transport error would echo the URL
-	oldG := geminiBaseURL
-	geminiBaseURL = "http://127.0.0.1:1/v1beta"
-	defer func() { geminiBaseURL = oldG }()
+	oldG := llm.GeminiBaseURL
+	llm.GeminiBaseURL = "http://127.0.0.1:1/v1beta"
+	defer func() { llm.GeminiBaseURL = oldG }()
 	t.Setenv("GEMINI_API_KEY", secretKey)
 	_, err := callLLM("s", "u", cfgFor("gemini", "gemini-2.5-flash", ""), time.Second*2)
 	if err == nil || strings.Contains(err.Error(), secretKey) {
@@ -251,8 +256,5 @@ func TestClipAndSlug(t *testing.T) {
 		if got := pathSlug(paths); got != want {
 			t.Errorf("pathSlug(%q) = %q, want %q", in, got, want)
 		}
-	}
-	if scrub("a KEY b", "KEY") != "a *** b" || scrub("abc", "") != "abc" {
-		t.Error("scrub")
 	}
 }

@@ -378,11 +378,13 @@ smell_constraint_limit   = 25
 token_limit_warn         = 0          # 0 = off
 
 [testing]
-provider      = "gemini"              # or "anthropic"
-api_key_env   = "GEMINI_API_KEY"
-default_model = "gemini-2.5-flash"
+provider      = "gemini"              # "gemini", "anthropic" or "openai"
+api_key_env   = "GEMINI_API_KEY"      # optional: defaults to the provider's own variable
+default_model = "gemini-2.5-flash"    # optional: defaults to the provider's own model
 timeout_sec   = 30
 ```
+
+`provider = "anthropic"` alone is enough: the key is then read from `ANTHROPIC_API_KEY` and the model defaults to a Claude model (`OPENAI_API_KEY` / `gpt-4o-mini` for OpenAI). Every feature that calls a model (`loom test`, `loom summarize`, `loom start`) goes through one client that sends the key in a header, never in a URL, and keeps it out of error messages.
 
 Also supported: `[profile.<name>]` (named variable sets, used with `--profile`) and `[[targets]]` (prompt → format → destination, used by `loom deploy`).
 

@@ -622,7 +622,7 @@ Pass a name to check one prompt, omit it to check all.
   ⚠  loomlocker     not found on PATH
 ```
 
-Missing optional pieces are warnings that name the commands that need them, and do not change the exit code. Only a project that fails to load (or a malformed `loom.toml`) is a failure (exit 1). The key checked follows `[testing] provider` in `loom.toml` (`GEMINI_API_KEY` for Gemini, `ANTHROPIC_API_KEY` for Anthropic, or your `api_key_env`).
+Missing optional pieces are warnings that name the commands that need them, and do not change the exit code. Only a project that fails to load (or a malformed `loom.toml`) is a failure (exit 1). The key checked follows `[testing] provider` in `loom.toml` (`GEMINI_API_KEY` for Gemini, `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, or your `api_key_env`).
 
 **Example output**
 

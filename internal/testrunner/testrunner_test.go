@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/llm"
 	"github.com/sayandeep14/PromptLoom/internal/parser"
 	"github.com/sayandeep14/PromptLoom/internal/registry"
 )
@@ -38,9 +39,9 @@ func newAPI(t *testing.T, handle func(w http.ResponseWriter, r *http.Request)) *
 		handle(w, r)
 	}))
 	t.Cleanup(f.srv.Close)
-	oldG, oldA := geminiBaseURL, anthropicURL
-	geminiBaseURL, anthropicURL = f.srv.URL+"/v1beta/models", f.srv.URL+"/v1/messages"
-	t.Cleanup(func() { geminiBaseURL, anthropicURL = oldG, oldA })
+	oldG, oldA := llm.GeminiBaseURL, llm.AnthropicURL
+	llm.GeminiBaseURL, llm.AnthropicURL = f.srv.URL+"/v1beta", f.srv.URL+"/v1/messages"
+	t.Cleanup(func() { llm.GeminiBaseURL, llm.AnthropicURL = oldG, oldA })
 	return f
 }
 
@@ -139,17 +140,6 @@ func TestMissingKeyIsAClearErrorAndNothingIsSent(t *testing.T) {
 	}
 }
 
-func TestDefaultKeyVariablePerProvider(t *testing.T) {
-	c := config.Defaults()
-	for provider, want := range map[string]string{"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "": "GEMINI_API_KEY"} {
-		c.Testing.Provider, c.Testing.APIKeyEnv = provider, ""
-		os.Unsetenv(want)
-		if _, err := resolveAPIKey(c); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("provider %q: %v", provider, err)
-		}
-	}
-}
-
 // The Gemini key used to be in the URL query, and Go's HTTP errors print the URL.
 func TestAPIKeyIsNeverInTheURLOrInErrors(t *testing.T) {
 	setKey(t, key)
@@ -165,8 +155,8 @@ func TestAPIKeyIsNeverInTheURLOrInErrors(t *testing.T) {
 	}
 
 	// a network failure: the connection is refused. The message must not contain the key.
-	geminiBaseURL = "http://127.0.0.1:1/v1beta/models"
-	anthropicURL = "http://127.0.0.1:1/v1/messages"
+	llm.GeminiBaseURL = "http://127.0.0.1:1/v1beta"
+	llm.AnthropicURL = "http://127.0.0.1:1/v1/messages"
 	for _, provider := range []string{"gemini", "anthropic"} {
 		res := Run("Summary", reg(t, withContract), cfg(provider), t.TempDir(), Options{})
 		if res.Err == nil {
@@ -245,8 +235,8 @@ func TestAnthropicRequestAndResponse(t *testing.T) {
 func TestUnknownProviderIsAnErrorNotGemini(t *testing.T) {
 	setKey(t, key)
 	api := newAPI(t, geminiOK("x"))
-	res := Run("Summary", reg(t, withContract), cfg("openai"), t.TempDir(), Options{})
-	if res.Err == nil || !strings.Contains(res.Err.Error(), "openai") || !strings.Contains(res.Err.Error(), "gemini, anthropic") {
+	res := Run("Summary", reg(t, withContract), cfg("mistral"), t.TempDir(), Options{})
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "mistral") || !strings.Contains(res.Err.Error(), "gemini, anthropic, openai") {
 		t.Errorf("got %v", res.Err)
 	}
 	if api.last != nil {
@@ -279,7 +269,7 @@ func TestModelSelectionOrder(t *testing.T) {
 	c := cfg("gemini")
 	c.Testing.DefaultModel = ""
 	Run("Summary", reg(t, withContract), c, t.TempDir(), Options{})
-	if !strings.Contains(api.last.URL.Path, "gemini-2.0-flash:generateContent") {
+	if !strings.Contains(api.last.URL.Path, "gemini-2.5-flash:generateContent") {
 		t.Errorf("built-in default: %s", api.last.URL.Path)
 	}
 	c.Testing.DefaultModel = "from-config"

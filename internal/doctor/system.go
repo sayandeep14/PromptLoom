@@ -78,11 +78,7 @@ func System(e Env) []SysCheck {
 		provider, model, envVar = cfg.Testing.Provider, cfg.Testing.DefaultModel, cfg.Testing.APIKeyEnv
 	}
 	if envVar == "" {
-		if provider == "anthropic" {
-			envVar = "ANTHROPIC_API_KEY"
-		} else {
-			envVar = "GEMINI_API_KEY"
-		}
+		envVar, _, _ = config.ProviderDefaults(provider)
 	}
 	if e.Getenv(envVar) != "" {
 		detail := "$" + envVar + " is set"

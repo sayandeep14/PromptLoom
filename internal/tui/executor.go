@@ -2781,12 +2781,7 @@ func RunCI(cwd string) (string, bool, error) {
 	if reg != nil {
 		apiKeyEnv := cfg.Testing.APIKeyEnv
 		if apiKeyEnv == "" {
-			switch cfg.Testing.Provider {
-			case "anthropic":
-				apiKeyEnv = "ANTHROPIC_API_KEY"
-			default:
-				apiKeyEnv = "GEMINI_API_KEY"
-			}
+			apiKeyEnv, _, _ = config.ProviderDefaults(cfg.Testing.Provider)
 		}
 		if os.Getenv(apiKeyEnv) == "" {
 			results = append(results, CIResult{Name: "test", Skip: true, Detail: fmt.Sprintf("(skipped — $%s not set)", apiKeyEnv)})

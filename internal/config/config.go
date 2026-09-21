@@ -47,7 +47,7 @@ type Validation struct {
 }
 
 type Testing struct {
-	Provider     string `toml:"provider"` // "gemini" or "anthropic"
+	Provider     string `toml:"provider"` // "gemini", "anthropic" or "openai"
 	APIKeyEnv    string `toml:"api_key_env"`
 	DefaultModel string `toml:"default_model"`
 	TimeoutSec   int    `toml:"timeout_sec"`
@@ -117,15 +117,15 @@ func Load(dir string) (*Config, error) {
 		return nil, fmt.Errorf("could not parse loom.toml: %w", err)
 	}
 	// The defaults describe the default provider (Gemini). A project that picks another provider
-	// and does not name its own key variable or model gets that provider's defaults, not
-	// Gemini's: otherwise `provider = "anthropic"` would look for $GEMINI_API_KEY and send a
-	// Gemini model name to Anthropic.
-	if strings.EqualFold(cfg.Testing.Provider, "anthropic") {
+	// and does not name its own key variable or model gets THAT provider's defaults: otherwise
+	// `provider = "anthropic"` would look for $GEMINI_API_KEY and send a Gemini model name to
+	// Anthropic.
+	if envVar, model, ok := ProviderDefaults(cfg.Testing.Provider); ok && !strings.EqualFold(cfg.Testing.Provider, "gemini") {
 		if !md.IsDefined("testing", "api_key_env") {
-			cfg.Testing.APIKeyEnv = "ANTHROPIC_API_KEY"
+			cfg.Testing.APIKeyEnv = envVar
 		}
 		if !md.IsDefined("testing", "default_model") {
-			cfg.Testing.DefaultModel = "claude-sonnet-4-6"
+			cfg.Testing.DefaultModel = model
 		}
 	}
 	if cfg.Render.IncludeSourceMapV2 {
@@ -135,6 +135,21 @@ func Load(dir string) (*Config, error) {
 		cfg.Render.DefaultFormat = "markdown"
 	}
 	return cfg, nil
+}
+
+// ProviderDefaults returns the environment variable that holds the API key and the default model
+// of a model provider ("gemini", "anthropic" or "openai", case-insensitive). ok is false for an
+// unknown provider.
+func ProviderDefaults(provider string) (envVar, model string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "", "gemini":
+		return "GEMINI_API_KEY", "gemini-2.5-flash", true
+	case "anthropic":
+		return "ANTHROPIC_API_KEY", "claude-sonnet-4-6", true
+	case "openai":
+		return "OPENAI_API_KEY", "gpt-4o-mini", true
+	}
+	return "", "", false
 }
 
 // FindProjectRoot resolves the most likely PromptLoom project directory for start.

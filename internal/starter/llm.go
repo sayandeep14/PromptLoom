@@ -1,17 +1,14 @@
 package starter
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/llm"
 	"github.com/sayandeep14/PromptLoom/internal/workspace"
 )
 
@@ -194,50 +191,23 @@ Moderate detail — enough to be useful immediately, not so long as to be noisy.
 	return sb.String()
 }
 
-// GenerateLLM calls the configured LLM to produce a starter Plan.
+// GenerateLLM calls the configured LLM to produce a starter Plan. The provider, key and model
+// come from [testing] in loom.toml, through the shared client (internal/llm).
 func GenerateLLM(info *workspace.Info, cfg *config.Config, tier Tier) (*Plan, error) {
-	apiKey, err := resolveKey(cfg)
+	client, err := llm.FromConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	timeout := 120 * time.Second
+	client.Timeout = 120 * time.Second
 	if tier == TierBest {
-		timeout = 180 * time.Second
+		client.Timeout = 180 * time.Second
 	}
 
-	provider := cfg.Testing.Provider
-	if provider == "" {
-		provider = "gemini"
-	}
-	model := cfg.Testing.DefaultModel
-	if model == "" {
-		model = "gemini-2.5-flash"
-	}
-
-	raw, err := callModel(provider, model, apiKey, systemPrompt(), userPrompt(info, tier), timeout)
+	raw, err := client.Complete(context.Background(), llm.Request{System: systemPrompt(), User: userPrompt(info, tier)})
 	if err != nil {
 		return nil, fmt.Errorf("LLM call failed: %w", err)
 	}
-
 	return parseJSONPlan(raw)
-}
-
-func resolveKey(cfg *config.Config) (string, error) {
-	envVar := cfg.Testing.APIKeyEnv
-	if envVar == "" {
-		switch strings.ToLower(cfg.Testing.Provider) {
-		case "anthropic":
-			envVar = "ANTHROPIC_API_KEY"
-		default:
-			envVar = "GEMINI_API_KEY"
-		}
-	}
-	key := os.Getenv(envVar)
-	if key == "" {
-		return "", fmt.Errorf("API key not set: $%s is empty\nAdd it to .loom.secret or export it in your shell", envVar)
-	}
-	return key, nil
 }
 
 func parseJSONPlan(raw string) (*Plan, error) {
@@ -300,158 +270,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
-}
-
-// --- shared HTTP client helpers (mirrored from testrunner) ---
-
-func callModel(provider, model, apiKey, sysPrompt, userIn string, timeout time.Duration) (string, error) {
-	switch strings.ToLower(provider) {
-	case "anthropic":
-		return callAnthropic(model, apiKey, sysPrompt, userIn, timeout)
-	default:
-		return callGemini(model, apiKey, sysPrompt, userIn, timeout)
-	}
-}
-
-// --- Gemini ---
-
-type geminiRequest struct {
-	Contents          []geminiContent         `json:"contents"`
-	SystemInstruction *geminiContent          `json:"systemInstruction,omitempty"`
-	GenerationConfig  *geminiGenerationConfig `json:"generationConfig,omitempty"`
-}
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
-	Role  string       `json:"role,omitempty"`
-}
-type geminiPart struct {
-	Text string `json:"text"`
-}
-type geminiGenerationConfig struct {
-	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
-}
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-		FinishReason string `json:"finishReason"`
-	} `json:"candidates"`
-	Error *struct {
-		Message string `json:"message"`
-		Code    int    `json:"code"`
-	} `json:"error"`
-}
-
-func callGemini(model, apiKey, sysPrompt, userIn string, timeout time.Duration) (string, error) {
-	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		model, apiKey,
-	)
-	req := geminiRequest{
-		SystemInstruction: &geminiContent{Parts: []geminiPart{{Text: sysPrompt}}},
-		Contents: []geminiContent{
-			{Role: "user", Parts: []geminiPart{{Text: userIn}}},
-		},
-	}
-	body, err := json.Marshal(req)
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	var gr geminiResponse
-	if err := json.Unmarshal(respBody, &gr); err != nil {
-		return "", fmt.Errorf("failed to parse Gemini response: %w", err)
-	}
-	if gr.Error != nil {
-		return "", fmt.Errorf("Gemini API error %d: %s", gr.Error.Code, gr.Error.Message)
-	}
-	if len(gr.Candidates) == 0 || len(gr.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("Gemini returned no content")
-	}
-	return gr.Candidates[0].Content.Parts[0].Text, nil
-}
-
-// --- Anthropic ---
-
-type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	System    string             `json:"system"`
-	Messages  []anthropicMessage `json:"messages"`
-}
-type anthropicMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-type anthropicResponse struct {
-	Content []struct {
-		Text string `json:"text"`
-	} `json:"content"`
-	Error *struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-	} `json:"error"`
-}
-
-func callAnthropic(model, apiKey, sysPrompt, userIn string, timeout time.Duration) (string, error) {
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	req := anthropicRequest{
-		Model:     model,
-		MaxTokens: 8192,
-		System:    sysPrompt,
-		Messages:  []anthropicMessage{{Role: "user", Content: userIn}},
-	}
-	body, err := json.Marshal(req)
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	var ar anthropicResponse
-	if err := json.Unmarshal(respBody, &ar); err != nil {
-		return "", fmt.Errorf("failed to parse Anthropic response: %w", err)
-	}
-	if ar.Error != nil {
-		return "", fmt.Errorf("Anthropic API error (%s): %s", ar.Error.Type, ar.Error.Message)
-	}
-	if len(ar.Content) == 0 {
-		return "", fmt.Errorf("Anthropic returned no content")
-	}
-	return ar.Content[0].Text, nil
 }

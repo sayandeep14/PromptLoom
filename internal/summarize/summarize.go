@@ -5,14 +5,10 @@ package summarize
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +16,7 @@ import (
 
 	"github.com/sayandeep14/PromptLoom/internal/config"
 	loomctx "github.com/sayandeep14/PromptLoom/internal/context"
+	"github.com/sayandeep14/PromptLoom/internal/llm"
 )
 
 // Result is the output of a summarize run.
@@ -363,43 +360,15 @@ Keep it concise but specific.`
 
 // ---- LLM call ----
 
+// callLLM sends one prompt to the model configured in [testing] of loom.toml, through the shared
+// client (internal/llm), which owns provider selection, the API key and its safe handling.
 func callLLM(sysPrompt, userMsg string, cfg *config.Config, timeout time.Duration) (string, error) {
-	provider := cfg.Testing.Provider
-	if provider == "" {
-		provider = "gemini"
+	client, err := llm.FromConfig(cfg)
+	if err != nil {
+		return "", err
 	}
-	model := cfg.Testing.DefaultModel
-	if model == "" {
-		if strings.ToLower(provider) == "anthropic" {
-			model = "claude-sonnet-4-6"
-		} else {
-			model = "gemini-2.5-flash"
-		}
-	}
-	if !modelNameRe.MatchString(model) {
-		return "", fmt.Errorf("invalid model name %q in loom.toml", model)
-	}
-	envVar := cfg.Testing.APIKeyEnv
-	if envVar == "" {
-		if strings.ToLower(provider) == "anthropic" {
-			envVar = "ANTHROPIC_API_KEY"
-		} else {
-			envVar = "GEMINI_API_KEY"
-		}
-	}
-	apiKey := os.Getenv(envVar)
-	if apiKey == "" {
-		return "", fmt.Errorf("API key not set: $%s is empty\nAdd it to .loom.secret or export it in your shell", envVar)
-	}
-
-	switch strings.ToLower(provider) {
-	case "anthropic":
-		return callAnthropic(model, apiKey, sysPrompt, userMsg, timeout)
-	case "gemini":
-		return callGemini(model, apiKey, sysPrompt, userMsg, timeout)
-	default:
-		return "", fmt.Errorf("unknown provider %q (supported: gemini, anthropic)", provider)
-	}
+	client.Timeout = timeout
+	return client.Complete(context.Background(), llm.Request{System: sysPrompt, User: userMsg})
 }
 
 // ---- helpers ----
@@ -409,54 +378,6 @@ func writeFile(path, content string) error {
 		return err
 	}
 	return os.WriteFile(path, []byte(content), 0644)
-}
-
-var modelNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`)
-
-// Endpoints; variables so tests can point them at a fake server.
-var (
-	geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
-	anthropicURL  = "https://api.anthropic.com/v1/messages"
-)
-
-const maxResponseBytes = 8 << 20
-
-// doRequest sends req and returns the body and status. Transport errors can echo the request
-// URL, so the API key is scrubbed from anything returned.
-func doRequest(req *http.Request, apiKey string) ([]byte, int, error) {
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		msg := err.Error()
-		if u, ok := err.(interface{ Unwrap() error }); ok && u.Unwrap() != nil {
-			msg = u.Unwrap().Error()
-		}
-		return nil, 0, fmt.Errorf("request to %s failed: %s", req.URL.Host, scrub(msg, apiKey))
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("reading the response from %s: %s", req.URL.Host, scrub(err.Error(), apiKey))
-	}
-	return body, resp.StatusCode, nil
-}
-
-func scrub(s, key string) string {
-	if key == "" {
-		return s
-	}
-	return strings.ReplaceAll(s, key, "***")
-}
-
-// badBody describes an unparseable response, mentioning the HTTP status.
-func badBody(provider string, status int, body []byte) error {
-	t := strings.TrimSpace(string(body))
-	if len(t) > 200 {
-		t = clip(t, 200)
-	}
-	if t == "" {
-		t = "(empty body)"
-	}
-	return fmt.Errorf("%s returned HTTP %d with an unreadable body: %s", provider, status, t)
 }
 
 func pathSlug(paths []string) string {
@@ -476,136 +397,4 @@ func pathSlug(paths []string) string {
 		return "summary"
 	}
 	return base
-}
-
-// ---- Gemini client ----
-
-type geminiRequest struct {
-	Contents          []geminiContent         `json:"contents"`
-	SystemInstruction *geminiContent          `json:"systemInstruction,omitempty"`
-	GenerationConfig  *geminiGenerationConfig `json:"generationConfig,omitempty"`
-}
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
-	Role  string       `json:"role,omitempty"`
-}
-type geminiPart struct {
-	Text string `json:"text"`
-}
-type geminiGenerationConfig struct {
-	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
-}
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-		FinishReason string `json:"finishReason"`
-	} `json:"candidates"`
-	Error *struct {
-		Message string `json:"message"`
-		Code    int    `json:"code"`
-	} `json:"error"`
-}
-
-func callGemini(model, apiKey, sysPrompt, userIn string, timeout time.Duration) (string, error) {
-	url := fmt.Sprintf("%s/models/%s:generateContent", geminiBaseURL, model)
-	req := geminiRequest{
-		SystemInstruction: &geminiContent{Parts: []geminiPart{{Text: sysPrompt}}},
-		Contents: []geminiContent{
-			{Role: "user", Parts: []geminiPart{{Text: userIn}}},
-		},
-	}
-	body, err := json.Marshal(req)
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	// The key travels in a header, never in the URL, so it cannot show up in errors or logs.
-	httpReq.Header.Set("x-goog-api-key", apiKey)
-	respBody, status, err := doRequest(httpReq, apiKey)
-	if err != nil {
-		return "", err
-	}
-	var gr geminiResponse
-	if err := json.Unmarshal(respBody, &gr); err != nil {
-		return "", badBody("Gemini", status, respBody)
-	}
-	if gr.Error != nil {
-		return "", fmt.Errorf("Gemini API error %d: %s", gr.Error.Code, gr.Error.Message)
-	}
-	if len(gr.Candidates) == 0 || len(gr.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("Gemini returned no content")
-	}
-	return gr.Candidates[0].Content.Parts[0].Text, nil
-}
-
-// ---- Anthropic client ----
-
-type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	System    string             `json:"system"`
-	Messages  []anthropicMessage `json:"messages"`
-}
-type anthropicMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-type anthropicResponse struct {
-	Content []struct {
-		Text string `json:"text"`
-	} `json:"content"`
-	Error *struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-	} `json:"error"`
-}
-
-func callAnthropic(model, apiKey, sysPrompt, userIn string, timeout time.Duration) (string, error) {
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	req := anthropicRequest{
-		Model:     model,
-		MaxTokens: 4096,
-		System:    sysPrompt,
-		Messages:  []anthropicMessage{{Role: "user", Content: userIn}},
-	}
-	body, err := json.Marshal(req)
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	respBody, status, err := doRequest(httpReq, apiKey)
-	if err != nil {
-		return "", err
-	}
-	var ar anthropicResponse
-	if err := json.Unmarshal(respBody, &ar); err != nil {
-		return "", badBody("Anthropic", status, respBody)
-	}
-	if ar.Error != nil {
-		return "", fmt.Errorf("Anthropic API error (%s): %s", ar.Error.Type, ar.Error.Message)
-	}
-	if len(ar.Content) == 0 {
-		return "", fmt.Errorf("Anthropic returned no content")
-	}
-	return ar.Content[0].Text, nil
 }
