@@ -194,7 +194,7 @@ var declRe = regexp.MustCompile(`(?m)^(?:prompt|block|overlay) [A-Za-z0-9_.-]+(?
 // under a "legacy" or "error" marker line right above the fence.
 func TestDocExamplesParse(t *testing.T) {
 	checked := 0
-	for _, name := range []string{"LOOM_LANGUAGE.md", "LOOM_COMMAND.md", "../README.md", "PACKMAKER_DESIGN.md"} {
+	for _, name := range []string{"LOOM_LANGUAGE.md", "LOOM_COMMAND.md", "../README.md", "neovim-lsp.md"} {
 		doc := readDoc(t, name)
 		for _, m := range fenceRe.FindAllStringSubmatchIndex(doc, -1) {
 			lang, src := doc[m[2]:m[3]], doc[m[4]:m[5]]
