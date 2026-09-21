@@ -3,7 +3,7 @@
   "displayName": "Lumine — PromptLoom DSL",
   "description": "Syntax highlighting, IntelliSense, diagnostics and v1→v2 quick fixes for .loom prompt files",
   "version": "0.2.0",
-  "publisher": "sayandeepgiri",
+  "publisher": "shreekalpo",
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {
