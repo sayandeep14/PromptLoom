@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
+// The end-to-end test talks to the built language server, so make sure it is current.
+const built = spawnSync(process.execPath, ['build.js'], { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+if (built.status !== 0) process.exit(built.status ?? 1);
+
 const dir = __dirname;
 const out = path.join(__dirname, '..', '.test-out');
 fs.rmSync(out, { recursive: true, force: true });

@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (E1 core done; E2 Lumine v2-only done)
+**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (E1 core done; E2: only the store accounts remain)
 
 ---
 
@@ -98,7 +98,7 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-202 | Add `from()` / `parent[...]` awareness (the CLI now also evaluates from() in variant/env; the extension does not yet check bounds/types): syntax highlighting, completions, type errors (scalar vs list) matching `loom inspect` | TODO | P1 | M | PL-201 |
 | PL-203 | Test suite for the TypeScript side. **Started in PL-201** (`npm test`: 37 tests — legacy-syntax rules, quick fixes, lossless formatter over every Go fixture, parity with `testdata/`, CI job). Remaining: completion, hover, definition, references, document symbols, and parity for the non-syntax rules (unknown parent/block, cycles, duplicates, from() bounds) | IN PROGRESS | P1 | L | PL-201, PL-106 |
 | PL-204 | Lumine README and CHANGELOG updated, version bumped to 0.2.0 | DONE | P1 | S | PL-201 |
-| PL-205 | Publish to the VS Code Marketplace / Open VSX (publisher account, icon, `vsce package` in CI) | TODO | P2 | M | PL-203, PL-204 |
+| PL-205 | **Publishing Lumine: everything except the accounts is done.** Icon (generated, `Lumine/scripts/make-icon.js`), correct monorepo `repository`/`bugs`/`homepage`/`license`, gallery banner; the VSIX went from 29 files (it was shipping tests) to 17 files / 158 KB, enforced by `npm run verify:package`; CI builds and uploads the VSIX; `release-lumine.yml` publishes on tag `lumine-vX.Y.Z` to the Marketplace and Open VSX when `VSCE_PAT` / `OVSX_PAT` secrets exist (otherwise attaches the VSIX to the GitHub release); an end-to-end test drives the built server over real LSP. **Remaining, needs the owner:** create the Marketplace publisher `sayandeepgiri` (or change `publisher`), create the two tokens as repo secrets, push the first tag | IN PROGRESS | P2 | M | PL-203, PL-204 |
 
 ---
 

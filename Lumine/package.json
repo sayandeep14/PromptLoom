@@ -1,9 +1,15 @@
 {
   "name": "lumine",
-  "displayName": "Lumine \u2014 PromptLoom DSL",
-  "description": "Syntax highlighting, IntelliSense, diagnostics and v1\u2192v2 quick fixes for .loom prompt files",
+  "displayName": "Lumine — PromptLoom DSL",
+  "description": "Syntax highlighting, IntelliSense, diagnostics and v1→v2 quick fixes for .loom prompt files",
   "version": "0.2.0",
   "publisher": "sayandeepgiri",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1b4b",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -20,7 +26,15 @@
     "ai",
     "dsl"
   ],
-  "repository": "https://github.com/sayandeepgiri/lumine",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sayandeepgiri/promptloom.git",
+    "directory": "Lumine"
+  },
+  "bugs": {
+    "url": "https://github.com/sayandeepgiri/promptloom/issues"
+  },
+  "homepage": "https://github.com/sayandeepgiri/promptloom/tree/main/Lumine#readme",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:loom",
@@ -143,7 +157,8 @@
     "vscode:prepublish": "node build.js --minify",
     "package": "vsce package",
     "test": "node test/run.js",
-    "typecheck": "tsc --noEmit -p tsconfig.test.json"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "verify:package": "node scripts/check-vsix.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

@@ -95,5 +95,14 @@ jobs:
       - run: npm install
       - run: node build.js
       - run: npm run typecheck
-      - name: Unit tests (includes a cross-check against the Go CLI)
+      - name: Unit tests (includes a cross-check against the Go CLI and a real LSP session)
         run: npm test
+      - name: Package check (no test/source files in the VSIX, metadata complete)
+        run: npm run verify:package
+      - name: Build the VSIX
+        run: npx vsce package --no-dependencies -o lumine.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumine-vsix
+          path: Lumine/lumine.vsix
+          retention-days: 14

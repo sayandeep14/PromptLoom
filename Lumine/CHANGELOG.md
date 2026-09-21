@@ -12,7 +12,9 @@ Lumine now speaks **v2 only**: `:=` is the one field operator, matching `loom in
 - **Quick fixes** (Ctrl/Cmd+.) and a *Fix all v1 syntax* code action: bare `:` → `:=`, `extends` → `inherits`, `+=` in a child prompt → `:= from(parent[0]) and { … }`, `+=` in blocks/overlays/parentless prompts → `:=`
 - `env` blocks are parsed (their fields were previously mis-attributed to the prompt) and appear in the Outline
 - `env` snippet; `env` bodies get field completions
-- Test suite (`npm test`) including a parity check against the Go fixtures in `testdata/`, and `npm run typecheck`
+- Test suite (`npm test`) including a parity check against the Go fixtures in `testdata/`, an end-to-end session against the built language server over real LSP, and `npm run typecheck`
+- Marketplace icon and listing metadata (repository, bugs, homepage, license, gallery banner); `npm run verify:package` fails if test files or sources would ship in the VSIX
+- Tag-triggered release workflow (`lumine-vX.Y.Z`) that tests, packages and publishes
 
 ### Changed
 - `+=` and `-=` are now **errors** whose message prints the exact v2 rewrite (previously "deprecated" warnings); `extends` is an error; a bare `:` is a warning with the replacement

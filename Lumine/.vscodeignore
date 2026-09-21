@@ -8,3 +8,8 @@ node_modules/**
 .gitignore
 plan.md
 **/*.map
+test/**
+.test-out/**
+tsconfig.test.json
+scripts/**
+**/*.vsix
