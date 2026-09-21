@@ -370,3 +370,53 @@ func TestValidateName(t *testing.T) {
 		}
 	}
 }
+
+// A project that keeps its sources under loom/src (what `loom init` creates) must get packs
+// installed THERE, or `loom inspect` never sees them. Build reads the same directories, and the
+// archive layout does not depend on the layout of the project it came from.
+func TestPacksFollowTheProjectsConfiguredPaths(t *testing.T) {
+	const toml = "[project]\nname = \"p\"\nversion = \"0\"\n[paths]\nprompts = \"loom/src/prompts\"\nblocks = \"loom/src/blocks\"\noverlays = \"loom/src/overlays\"\nout = \"loom/dist\"\n"
+
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "loom.toml"), []byte(toml), 0o644)
+	os.WriteFile(filepath.Join(src, "pack.toml"), []byte(manifest), 0o644)
+	os.MkdirAll(filepath.Join(src, "loom", "src", "prompts"), 0o755)
+	os.MkdirAll(filepath.Join(src, "loom", "src", "blocks"), 0o755)
+	os.WriteFile(filepath.Join(src, "loom", "src", "prompts", "A.prompt.loom"), []byte("prompt A {\n}\n"), 0o644)
+	os.WriteFile(filepath.Join(src, "loom", "src", "blocks", "R.block.loom"), []byte("block R {\n}\n"), 0o644)
+
+	archive, err := Build(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// into a project with the same non-default layout
+	dst := t.TempDir()
+	os.WriteFile(filepath.Join(dst, "loom.toml"), []byte(toml), 0o644)
+	if err := Install(archive, dst); err != nil {
+		t.Fatal(err)
+	}
+	got := files(t, dst)
+	want := []string{"loom.toml", "loom/src/blocks/demo/R.block.loom", "loom/src/prompts/demo/A.prompt.loom", "packs/demo.toml"}
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("installed files:\n got  %v\n want %v", got, want)
+	}
+
+	// the same archive into a project with the default layout
+	plain := t.TempDir()
+	if err := Install(archive, plain); err != nil {
+		t.Fatal(err)
+	}
+	if got := files(t, plain); strings.Join(got, ",") != "blocks/demo/R.block.loom,packs/demo.toml,prompts/demo/A.prompt.loom" {
+		t.Errorf("default layout: %v", got)
+	}
+
+	// Remove finds them where they were installed
+	if err := Remove("demo", dst); err != nil {
+		t.Fatal(err)
+	}
+	if left := files(t, dst); strings.Join(left, ",") != "loom.toml" {
+		t.Errorf("Remove left files behind: %v", left)
+	}
+}

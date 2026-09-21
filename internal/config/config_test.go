@@ -182,3 +182,16 @@ func TestProviderDefaultsFollowTheProvider(t *testing.T) {
 		t.Errorf("provider names are case-insensitive: %+v", c.Testing)
 	}
 }
+
+func TestDirs(t *testing.T) {
+	dir := t.TempDir()
+	d := Dirs(dir)
+	if d.Prompts != filepath.Join(dir, "prompts") || d.Blocks != filepath.Join(dir, "blocks") || d.Overlays != filepath.Join(dir, "overlays") {
+		t.Errorf("defaults: %+v", d)
+	}
+	os.WriteFile(filepath.Join(dir, "loom.toml"), []byte("[paths]\nprompts = \"a/p\"\nblocks = \"a/b\"\noverlays = \"a/o\"\n"), 0o644)
+	d = Dirs(dir)
+	if d.Prompts != filepath.Join(dir, "a", "p") || d.Blocks != filepath.Join(dir, "a", "b") || d.Overlays != filepath.Join(dir, "a", "o") {
+		t.Errorf("configured: %+v", d)
+	}
+}

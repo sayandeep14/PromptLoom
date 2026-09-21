@@ -240,16 +240,37 @@ default_model = "gemini-2.5-flash"
 timeout_sec   = 30
 `
 
-// PromptsDir returns the absolute directory where the project at dir keeps its .prompt.loom
-// files: [paths] prompts from loom.toml, or "prompts" when there is no (readable) config.
-// Commands that create prompt files use it so the files land where `loom inspect` looks.
-func PromptsDir(dir string) string {
-	rel := "prompts"
-	if cfg, err := Load(dir); err == nil && cfg.Paths.Prompts != "" {
-		rel = cfg.Paths.Prompts
-	}
-	if filepath.IsAbs(rel) {
-		return rel
-	}
-	return filepath.Join(dir, rel)
+// SourceDirs are the absolute directories where the project at dir keeps its prompt, block and
+// overlay files: [paths] from loom.toml, or "prompts", "blocks" and "overlays" when there is no
+// (readable) config. Commands that create or move source files use them so the files land where
+// `loom inspect` looks.
+type SourceDirs struct {
+	Prompts, Blocks, Overlays string
 }
+
+// Dirs returns the SourceDirs of the project at dir.
+func Dirs(dir string) SourceDirs {
+	prompts, blocks, overlays := "prompts", "blocks", "overlays"
+	if cfg, err := Load(dir); err == nil {
+		if cfg.Paths.Prompts != "" {
+			prompts = cfg.Paths.Prompts
+		}
+		if cfg.Paths.Blocks != "" {
+			blocks = cfg.Paths.Blocks
+		}
+		if cfg.Paths.Overlays != "" {
+			overlays = cfg.Paths.Overlays
+		}
+	}
+	abs := func(rel string) string {
+		if filepath.IsAbs(rel) {
+			return rel
+		}
+		return filepath.Join(dir, rel)
+	}
+	return SourceDirs{Prompts: abs(prompts), Blocks: abs(blocks), Overlays: abs(overlays)}
+}
+
+// PromptsDir returns the absolute directory where the project at dir keeps its .prompt.loom
+// files (see Dirs).
+func PromptsDir(dir string) string { return Dirs(dir).Prompts }

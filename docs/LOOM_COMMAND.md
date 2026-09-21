@@ -162,7 +162,7 @@ loom start --best --stack java-spring
 
 Scaffolds a new `.loom` source file with the correct boilerplate for its type. The subcommands are:
 
-- `loom thread prompt <Name>` — creates `prompts/<Name>.prompt.loom`
+- `loom thread prompt <Name>` — creates `prompts/<Name>.prompt.loom` (in the prompts directory set by `[paths]` in `loom.toml`; `loom init` uses `loom/src/prompts`)
 - `loom thread block <Name>` — creates `blocks/<Name>.block.loom`
 - `loom thread overlay <Name>` — creates `overlays/<Name>.overlay.loom`
 - `loom thread vars <Name>` — creates a `.vars.loom` file

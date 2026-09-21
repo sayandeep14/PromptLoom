@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/sayandeep14/PromptLoom/internal/config"
 )
 
 // Manifest is the content of a pack.toml file.
@@ -140,9 +142,12 @@ func Build(cwd string) (archive string, err error) {
 		return "", err
 	}
 
-	// Include prompts/ and blocks/ if they exist.
-	for _, subdir := range []string{"prompts", "blocks"} {
-		dir := filepath.Join(cwd, subdir)
+	// Include the prompts and blocks directories if they exist. They sit where the project's
+	// loom.toml says ([paths]); inside the archive they are always prompts/ and blocks/, so a pack
+	// installs the same way into any project layout.
+	dirs := config.Dirs(cwd)
+	for _, src := range []struct{ dir, name string }{{dirs.Prompts, "prompts"}, {dirs.Blocks, "blocks"}} {
+		dir, subdir := src.dir, src.name
 		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
 			continue
 		}
@@ -247,8 +252,11 @@ func Install(archivePath, targetCWD string) error {
 	}
 	packName := manifest.Pack.Name
 
-	promptsRoot := filepath.Join(targetCWD, "prompts", packName)
-	blocksRoot := filepath.Join(targetCWD, "blocks", packName)
+	// A pack is installed into the project's own prompt and block directories ([paths] in
+	// loom.toml), so the installed files are found by `loom inspect` and `loom weave`.
+	dirs := config.Dirs(targetCWD)
+	promptsRoot := filepath.Join(dirs.Prompts, packName)
+	blocksRoot := filepath.Join(dirs.Blocks, packName)
 
 	// Resolve every destination up front and confirm it stays inside the pack's own directory.
 	type write struct {
@@ -282,8 +290,8 @@ func Install(archivePath, targetCWD string) error {
 	}
 
 	// Second pass: write.
-	for _, subdir := range []string{filepath.Join("prompts", packName), filepath.Join("blocks", packName), packsDir} {
-		if err := os.MkdirAll(filepath.Join(targetCWD, subdir), 0755); err != nil {
+	for _, dir := range []string{promptsRoot, blocksRoot, filepath.Join(targetCWD, packsDir)} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
 	}
@@ -345,11 +353,11 @@ func Remove(name, cwd string) error {
 		return err
 	}
 	removed := false
-	for _, subdir := range []string{
-		filepath.Join("prompts", name),
-		filepath.Join("blocks", name),
+	dirs := config.Dirs(cwd)
+	for _, path := range []string{
+		filepath.Join(dirs.Prompts, name),
+		filepath.Join(dirs.Blocks, name),
 	} {
-		path := filepath.Join(cwd, subdir)
 		if _, err := os.Stat(path); err == nil {
 			if err := os.RemoveAll(path); err != nil {
 				return fmt.Errorf("removing %s: %w", path, err)
