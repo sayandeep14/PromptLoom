@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/parser"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
 )
 
 // project writes files (relative path -> content) into a temp dir and registers

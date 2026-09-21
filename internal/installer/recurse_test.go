@@ -3,7 +3,7 @@ package installer
 import (
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/deps"
+	"github.com/sayandeep14/PromptLoom/internal/deps"
 )
 
 // ---- splitConstraint ----

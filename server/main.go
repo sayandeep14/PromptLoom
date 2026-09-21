@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/sayandeepgiri/promptloom/server/internal/config"
-	"github.com/sayandeepgiri/promptloom/server/internal/db"
-	"github.com/sayandeepgiri/promptloom/server/internal/store"
+	"github.com/sayandeep14/PromptLoom/server/internal/config"
+	"github.com/sayandeep14/PromptLoom/server/internal/db"
+	"github.com/sayandeep14/PromptLoom/server/internal/store"
 )
 
 func main() {

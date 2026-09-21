@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 // Nodes formats a slice of nodes (a full file) into canonical source.

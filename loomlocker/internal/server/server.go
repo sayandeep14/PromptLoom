@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/config"
-	icrypto "github.com/sayandeepgiri/promptloom/loomlocker/internal/crypto"
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/locker"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/config"
+	icrypto "github.com/sayandeep14/PromptLoom/loomlocker/internal/crypto"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/locker"
 )
 
 // Server is the loomlocker HTTP server + shared lock state.

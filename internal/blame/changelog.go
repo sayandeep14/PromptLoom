@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
 )
 
 // ChangeEntry is one human-readable changelog line for a prompt.

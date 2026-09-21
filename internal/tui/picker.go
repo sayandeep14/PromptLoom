@@ -15,8 +15,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
 )
 
 // skipDirsForPicker are directories skipped in BuildFilePickerItems.

@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/lexer"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/lexer"
 )
 
 // commentCtx carries the comments of the file being formatted. Every comment is

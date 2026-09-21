@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 func kinds(fs []Failure) string {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 type entry struct {

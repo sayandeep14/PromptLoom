@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 // IssueKind classifies a minimization finding.

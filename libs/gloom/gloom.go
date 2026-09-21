@@ -5,7 +5,7 @@
 //
 // Basic usage:
 //
-//	import "github.com/sayandeepgiri/promptloom/libs/gloom"
+//	import "github.com/sayandeep14/PromptLoom/libs/gloom"
 //
 //	func main() {
 //	    gloom.NewSafe().Unlock().Execute(func() {

@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 )
 
 func resolveProjectDir() (string, error) {

@@ -761,8 +761,8 @@ PromptLoom/
 
 | Module | Path | Go module |
 |---|---|---|
-| CLI | `/` | `github.com/sayandeepgiri/promptloom` |
-| Registry | `server/` | `github.com/sayandeepgiri/promptloom/server` |
+| CLI | `/` | `github.com/sayandeep14/PromptLoom` |
+| Registry | `server/` | `github.com/sayandeep14/PromptLoom/server` |
 | LoomLocker | `loomlocker/` | separate `go.mod` |
 | gloom | `libs/gloom/` | separate `go.mod` |
 

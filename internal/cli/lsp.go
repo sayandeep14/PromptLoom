@@ -3,7 +3,7 @@ package cli
 import (
 	"os"
 
-	"github.com/sayandeepgiri/promptloom/internal/lsp"
+	"github.com/sayandeep14/PromptLoom/internal/lsp"
 	"github.com/spf13/cobra"
 )
 

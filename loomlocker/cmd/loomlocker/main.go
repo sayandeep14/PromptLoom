@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sayandeepgiri/promptloom/loomlocker/cli"
+	"github.com/sayandeep14/PromptLoom/loomlocker/cli"
 )
 
 func main() {

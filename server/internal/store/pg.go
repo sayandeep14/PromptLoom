@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
 // PG is the PostgreSQL-backed store. It uses the shared pool in package db.

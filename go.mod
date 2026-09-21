@@ -1,4 +1,4 @@
-module github.com/sayandeepgiri/promptloom
+module github.com/sayandeep14/PromptLoom
 
 go 1.25.5
 

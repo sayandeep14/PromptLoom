@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/lexer"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/lexer"
 )
 
 // NamespaceResolver resolves namespace-qualified prompt and block names

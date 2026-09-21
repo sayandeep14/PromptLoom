@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
 )
 
 // Blocks and overlays compose: their list fields add to what is already resolved.

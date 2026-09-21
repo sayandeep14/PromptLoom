@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	icrypto "github.com/sayandeepgiri/promptloom/loomlocker/internal/crypto"
+	icrypto "github.com/sayandeep14/PromptLoom/loomlocker/internal/crypto"
 )
 
 func TestJournalRoundTripAndProperties(t *testing.T) {

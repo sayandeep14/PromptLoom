@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
 )
 
 // Graph holds the dependency structure of a prompt library.

@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/config"
-	"github.com/sayandeepgiri/promptloom/server/internal/handlers"
-	mw "github.com/sayandeepgiri/promptloom/server/internal/middleware"
+	"github.com/sayandeep14/PromptLoom/server/internal/config"
+	"github.com/sayandeep14/PromptLoom/server/internal/handlers"
+	mw "github.com/sayandeep14/PromptLoom/server/internal/middleware"
 )
 
 // newRouter wires every route with its protections:

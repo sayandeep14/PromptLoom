@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/contract"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/render"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/contract"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/render"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
 )
 
 // Result is the outcome of a single test run.

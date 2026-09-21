@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
 // Limits on what a single pack may contain.

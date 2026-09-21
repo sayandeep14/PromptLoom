@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/db"
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
-	"github.com/sayandeepgiri/promptloom/server/internal/store"
+	"github.com/sayandeep14/PromptLoom/server/internal/db"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/store"
 )
 
 // Integration tests: they need a real PostgreSQL and are skipped unless

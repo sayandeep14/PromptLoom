@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	icrypto "github.com/sayandeepgiri/promptloom/loomlocker/internal/crypto"
+	icrypto "github.com/sayandeep14/PromptLoom/loomlocker/internal/crypto"
 	"gopkg.in/yaml.v3"
 )
 

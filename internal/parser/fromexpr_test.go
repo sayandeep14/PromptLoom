@@ -3,8 +3,8 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
 )
 
 // ---- multiple inheritance ----

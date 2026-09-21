@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
 // fakeStore is an in-memory Store with the same observable semantics as the

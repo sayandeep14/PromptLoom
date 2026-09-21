@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/importer"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/importer"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
 

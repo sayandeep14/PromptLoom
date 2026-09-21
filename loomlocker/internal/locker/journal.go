@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	icrypto "github.com/sayandeepgiri/promptloom/loomlocker/internal/crypto"
+	icrypto "github.com/sayandeep14/PromptLoom/loomlocker/internal/crypto"
 )
 
 // JournalFilename is the encrypted recovery file used in recoverable mode.

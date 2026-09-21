@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	"github.com/sayandeepgiri/promptloom/internal/testrunner"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/testrunner"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
 

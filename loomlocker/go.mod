@@ -1,4 +1,4 @@
-module github.com/sayandeepgiri/promptloom/loomlocker
+module github.com/sayandeep14/PromptLoom/loomlocker
 
 go 1.22
 

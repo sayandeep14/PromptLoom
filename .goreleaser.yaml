@@ -20,7 +20,7 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags:
-      - -s -w -X github.com/sayandeepgiri/promptloom/internal/cli.version={{ .Version }}
+      - -s -w -X github.com/sayandeep14/PromptLoom/internal/cli.version={{ .Version }}
 
   - id: loomlocker
     dir: loomlocker
@@ -31,7 +31,7 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags:
-      - -s -w -X github.com/sayandeepgiri/promptloom/loomlocker/cli.version={{ .Version }}
+      - -s -w -X github.com/sayandeep14/PromptLoom/loomlocker/cli.version={{ .Version }}
 
 archives:
   - id: default

@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/render"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
-	"github.com/sayandeepgiri/promptloom/internal/validate"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/render"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/validate"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files in testdata/valid/*/golden")

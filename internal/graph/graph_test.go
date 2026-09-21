@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/graph"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/graph"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
 )
 
 func buildReg(t *testing.T, srcs map[string]string) *registry.Registry {

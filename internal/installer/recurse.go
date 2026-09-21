@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/deps"
+	"github.com/sayandeep14/PromptLoom/internal/deps"
 )
 
 // Conflict describes a version conflict between two packs' requirements for the

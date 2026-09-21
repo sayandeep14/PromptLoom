@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
 func router(st Store) http.Handler {

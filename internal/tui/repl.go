@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 )
 
 // cmdResultMsg carries the output of an executed command back to the model.

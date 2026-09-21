@@ -1,5 +1,5 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X github.com/sayandeepgiri/promptloom/internal/cli.version=$(VERSION)
+LDFLAGS := -X github.com/sayandeep14/PromptLoom/internal/cli.version=$(VERSION)
 
 .PHONY: build test vet fmt fmt-check check install clean
 

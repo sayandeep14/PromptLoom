@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/packmetadata"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/packmetadata"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
 

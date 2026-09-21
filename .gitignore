@@ -27,3 +27,7 @@ libs/loomj/target/
 docs/TOOL_REFERENCE.md
 docs/PACKMAKER_DESIGN.md
 /dist/
+
+# Python
+__pycache__/
+*.pyc

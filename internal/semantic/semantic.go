@@ -1,6 +1,6 @@
 package semantic
 
-import "github.com/sayandeepgiri/promptloom/internal/diff"
+import "github.com/sayandeep14/PromptLoom/internal/diff"
 
 // RiskLevel classifies the impact of a semantic change.
 type RiskLevel string

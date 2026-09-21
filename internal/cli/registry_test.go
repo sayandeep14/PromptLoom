@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/installer"
+	"github.com/sayandeep14/PromptLoom/internal/installer"
 )
 
 func write(t *testing.T, path, body string) {

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
 )
 
 // Property is one JSON-Schema property in an inputSchema.

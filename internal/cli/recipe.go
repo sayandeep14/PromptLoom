@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/recipe"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/recipe"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
 func TestSlug(t *testing.T) {

@@ -1,3 +1,3 @@
-module github.com/sayandeepgiri/promptloom/libs/gloom
+module github.com/sayandeep14/PromptLoom/libs/gloom
 
 go 1.22

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/config"
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/locker"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/config"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/locker"
 )
 
 const password = "session-pw"

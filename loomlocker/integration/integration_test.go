@@ -369,7 +369,7 @@ func TestGoClientLibrary(t *testing.T) {
 
 	app := filepath.Join(t.TempDir(), "app")
 	must(t, os.MkdirAll(app, 0o755))
-	gomod := fmt.Sprintf("module example.com/app\n\ngo 1.22\n\nrequire github.com/sayandeepgiri/promptloom/libs/gloom v0.0.0\n\nreplace github.com/sayandeepgiri/promptloom/libs/gloom => %s\n",
+	gomod := fmt.Sprintf("module example.com/app\n\ngo 1.22\n\nrequire github.com/sayandeep14/PromptLoom/libs/gloom v0.0.0\n\nreplace github.com/sayandeep14/PromptLoom/libs/gloom => %s\n",
 		filepath.Join(repoRoot(t), "libs", "gloom"))
 	must(t, os.WriteFile(filepath.Join(app, "go.mod"), []byte(gomod), 0o644))
 	must(t, os.WriteFile(filepath.Join(app, "main.go"), []byte(`package main
@@ -378,7 +378,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sayandeepgiri/promptloom/libs/gloom"
+	"github.com/sayandeep14/PromptLoom/libs/gloom"
 )
 
 func main() {

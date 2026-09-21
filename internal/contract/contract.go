@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 // Failure is a single contract violation.

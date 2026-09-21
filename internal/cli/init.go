@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/deps"
-	"github.com/sayandeepgiri/promptloom/internal/export"
-	"github.com/sayandeepgiri/promptloom/internal/secret"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/deps"
+	"github.com/sayandeep14/PromptLoom/internal/export"
+	"github.com/sayandeep14/PromptLoom/internal/secret"
 	"github.com/spf13/cobra"
 )
 

@@ -8,11 +8,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/render"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
-	"github.com/sayandeepgiri/promptloom/internal/tokens"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/render"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/tokens"
 )
 
 // RunPlayground launches the interactive playground TUI for the named prompt.

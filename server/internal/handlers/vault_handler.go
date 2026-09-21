@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
-	"github.com/sayandeepgiri/promptloom/server/internal/validate"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/validate"
 )
 
 // Store is the persistence layer the handlers depend on.

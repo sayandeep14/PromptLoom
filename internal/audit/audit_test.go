@@ -3,7 +3,7 @@ package audit
 import (
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 func rp(constraints ...string) *ast.ResolvedPrompt {

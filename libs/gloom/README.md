@@ -5,13 +5,13 @@ Go client library for [LoomLocker](../../loomlocker/README.md) — safe secret m
 ## Install
 
 ```bash
-go get github.com/sayandeepgiri/promptloom/libs/gloom
+go get github.com/sayandeep14/PromptLoom/libs/gloom
 ```
 
 ## Quick start
 
 ```go
-import "github.com/sayandeepgiri/promptloom/libs/gloom"
+import "github.com/sayandeep14/PromptLoom/libs/gloom"
 
 func main() {
     gloom.NewSafe().

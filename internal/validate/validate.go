@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	ivars "github.com/sayandeepgiri/promptloom/internal/vars"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	ivars "github.com/sayandeep14/PromptLoom/internal/vars"
 )
 
 // Severity classifies a diagnostic.

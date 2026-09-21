@@ -6,7 +6,7 @@
 
 ## Prerequisites
 
-- `loom` installed and on `$PATH` (`go install github.com/sayandeepgiri/promptloom/cmd/loom@latest` or a local build)
+- `loom` installed and on `$PATH` (`go install github.com/sayandeep14/PromptLoom/cmd/loom@latest` or a local build)
 - [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed
 
 ---

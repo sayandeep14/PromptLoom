@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/format"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/format"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
 )
 
 // `loom fmt` must never change what a project means or lose anything the author

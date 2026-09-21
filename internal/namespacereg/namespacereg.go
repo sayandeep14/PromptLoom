@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
 )
 
 // local copies of loader extension constants — avoids an import cycle with loader.

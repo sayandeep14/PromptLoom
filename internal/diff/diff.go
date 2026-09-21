@@ -1,6 +1,6 @@
 package diff
 
-import "github.com/sayandeepgiri/promptloom/internal/ast"
+import "github.com/sayandeep14/PromptLoom/internal/ast"
 
 // FieldDiff holds the computed difference for one field between two resolved prompts.
 type FieldDiff struct {

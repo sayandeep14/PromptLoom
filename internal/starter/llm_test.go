@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
-	"github.com/sayandeepgiri/promptloom/internal/validate"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/validate"
 )
 
 // The DSL reference is what the model imitates when generating a library, so its

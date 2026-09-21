@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/sayandeepgiri/promptloom/server/internal/db"
-	"github.com/sayandeepgiri/promptloom/server/internal/models"
+	"github.com/sayandeep14/PromptLoom/server/internal/db"
+	"github.com/sayandeep14/PromptLoom/server/internal/models"
 )
 
 var jsonMarshal = json.Marshal

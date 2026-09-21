@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 )
 
 // Tier controls how much LLM token budget to spend.

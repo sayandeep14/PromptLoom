@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 // looksLikeFromExpr reports whether the first content line of a := field

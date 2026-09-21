@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/format"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/format"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
 )
 
 // roundtrip parses src, formats it, parses again, and formats again.

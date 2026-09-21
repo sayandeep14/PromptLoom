@@ -1,4 +1,4 @@
-module github.com/sayandeepgiri/promptloom/server
+module github.com/sayandeep14/PromptLoom/server
 
 go 1.22
 

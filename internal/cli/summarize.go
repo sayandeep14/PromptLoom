@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/secret"
-	"github.com/sayandeepgiri/promptloom/internal/summarize"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/secret"
+	"github.com/sayandeep14/PromptLoom/internal/summarize"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
 

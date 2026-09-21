@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/server/internal/config"
+	"github.com/sayandeep14/PromptLoom/server/internal/config"
 )
 
 func testCfg(secret string) *config.Config {

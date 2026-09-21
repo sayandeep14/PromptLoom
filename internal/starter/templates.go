@@ -1,6 +1,6 @@
 package starter
 
-import "github.com/sayandeepgiri/promptloom/internal/workspace"
+import "github.com/sayandeep14/PromptLoom/internal/workspace"
 
 // TemplatesForStack returns a no-LLM starter Plan for the given stack.
 // If the stack has no specific templates, the universal set is returned.

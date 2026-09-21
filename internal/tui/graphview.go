@@ -9,9 +9,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	igraph "github.com/sayandeepgiri/promptloom/internal/graph"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	igraph "github.com/sayandeep14/PromptLoom/internal/graph"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
 )
 
 // gvItem is one row in the interactive tree panel.

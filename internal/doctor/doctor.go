@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
-	"github.com/sayandeepgiri/promptloom/internal/tokens"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/tokens"
 )
 
 // StructuralResult is a single structural check outcome.

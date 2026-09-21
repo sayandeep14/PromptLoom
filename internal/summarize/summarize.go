@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/config"
 )
 
 // Result is the output of a summarize run.

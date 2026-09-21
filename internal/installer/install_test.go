@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/deps"
+	"github.com/sayandeep14/PromptLoom/internal/deps"
 )
 
 // fakeRegistry serves bundles from memory and counts bundle downloads per slug.

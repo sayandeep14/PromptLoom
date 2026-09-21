@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/lockerclient"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/lockerclient"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

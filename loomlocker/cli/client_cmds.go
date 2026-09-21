@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/config"
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/server"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/config"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/server"
 	"github.com/spf13/cobra"
 )
 

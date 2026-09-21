@@ -3,10 +3,10 @@ package cli
 import (
 	"fmt"
 
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	"github.com/sayandeepgiri/promptloom/internal/minimize"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
-	"github.com/sayandeepgiri/promptloom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/minimize"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/tui"
 	"github.com/spf13/cobra"
 )
 

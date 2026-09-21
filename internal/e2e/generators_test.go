@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/loader"
-	"github.com/sayandeepgiri/promptloom/internal/recipe"
-	"github.com/sayandeepgiri/promptloom/internal/render"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
-	"github.com/sayandeepgiri/promptloom/internal/starter"
-	"github.com/sayandeepgiri/promptloom/internal/validate"
-	"github.com/sayandeepgiri/promptloom/internal/workspace"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/recipe"
+	"github.com/sayandeep14/PromptLoom/internal/render"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/starter"
+	"github.com/sayandeep14/PromptLoom/internal/validate"
+	"github.com/sayandeep14/PromptLoom/internal/workspace"
 )
 
 // Everything PromptLoom GENERATES for users (recipes, starter libraries, scaffolds)

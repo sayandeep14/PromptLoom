@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/server"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/server"
 )
 
 const prompt = "loomlocker> "

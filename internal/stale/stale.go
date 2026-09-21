@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sayandeepgiri/promptloom/internal/ast"
+	"github.com/sayandeep14/PromptLoom/internal/ast"
 )
 
 // Finding describes a version mismatch between a dependency file and prompt text.

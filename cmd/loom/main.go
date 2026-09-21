@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sayandeepgiri/promptloom/internal/cli"
+	"github.com/sayandeep14/PromptLoom/internal/cli"
 )
 
 func main() {

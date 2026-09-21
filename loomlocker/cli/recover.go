@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/config"
-	"github.com/sayandeepgiri/promptloom/loomlocker/internal/locker"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/config"
+	"github.com/sayandeep14/PromptLoom/loomlocker/internal/locker"
 	"github.com/spf13/cobra"
 )
 

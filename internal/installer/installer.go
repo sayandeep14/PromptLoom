@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sayandeepgiri/promptloom/internal/config"
-	"github.com/sayandeepgiri/promptloom/internal/parser"
-	"github.com/sayandeepgiri/promptloom/internal/registry"
-	"github.com/sayandeepgiri/promptloom/internal/render"
-	"github.com/sayandeepgiri/promptloom/internal/resolve"
+	"github.com/sayandeep14/PromptLoom/internal/config"
+	"github.com/sayandeep14/PromptLoom/internal/parser"
+	"github.com/sayandeep14/PromptLoom/internal/registry"
+	"github.com/sayandeep14/PromptLoom/internal/render"
+	"github.com/sayandeep14/PromptLoom/internal/resolve"
 )
 
 // ErrNoRegistry is returned when no registry URL is configured. PromptLoom does
