@@ -61,15 +61,10 @@ var recipeReviewer = Recipe{
 			RelPath: "prompts/{{LangPascal}}{{FwPascal}}Reviewer.prompt.loom",
 			Template: `prompt {{LangPascal}}{{FwPascal}}Reviewer inherits CodeReviewer {
   use {{LangPascal}}Conventions
+  use {{LangPascal}}{{FwPascal}}Practices
 
   persona :=
-    You are a senior {{Language}} engineer specialising in {{FrameworkTitle}} applications.
-
-  instructions :=
-    from(parent[0]) and {
-      - Apply {{FrameworkTitle}}-specific best practices.
-      - Check for framework-specific anti-patterns.
-    }
+    You are a senior {{Language}} engineer{{FrameworkSpecialty}}.
 
   contract {
     must_include:
@@ -86,18 +81,6 @@ var recipeReviewer = Recipe{
 
   persona :=
     You are a security engineer reviewing {{Language}} code for vulnerabilities.
-
-  instructions :=
-    from(parent[0]) and {
-      - Check OWASP Top 10 vulnerabilities.
-      - Identify insecure dependencies and configurations.
-      - Flag hardcoded secrets and credentials.
-    }
-
-  constraints :=
-    from(parent[0]) and {
-      - Always recommend the most secure option, even if it requires more work.
-    }
 
   contract {
     must_include:
@@ -145,9 +128,21 @@ var recipeReviewer = Recipe{
 `,
 		},
 		{
+			RelPath: "blocks/{{LangPascal}}{{FwPascal}}Practices.block.loom",
+			Template: `block {{LangPascal}}{{FwPascal}}Practices {
+  instructions :=
+    - Apply {{Language}}{{FrameworkFor}} best practices.
+    - Check for common {{Language}}{{FrameworkFor}} anti-patterns.
+}
+`,
+		},
+		{
 			RelPath: "blocks/SecurityChecklist.block.loom",
 			Template: `block SecurityChecklist {
   instructions :=
+    - Check OWASP Top 10 vulnerabilities.
+    - Identify insecure dependencies and configurations.
+    - Flag hardcoded secrets and credentials.
     - Check for injection vulnerabilities (SQL, command, LDAP).
     - Verify authentication and authorisation on every endpoint.
     - Ensure sensitive data is never logged or exposed in error messages.
@@ -157,6 +152,7 @@ var recipeReviewer = Recipe{
   constraints :=
     - Never suggest disabling security controls.
     - Always prefer the principle of least privilege.
+    - Always recommend the most secure option, even if it requires more work.
 }
 `,
 		},

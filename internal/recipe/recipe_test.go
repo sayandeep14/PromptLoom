@@ -72,7 +72,12 @@ func TestEveryRecipeProducesAValidLibrary(t *testing.T) {
 				if d.Sev == validate.Error {
 					t.Errorf("%s %+v: %s", r.Name, opts, d.Message)
 				}
+				// a recipe must not ship prompts whose own list silently drops a block's items
+				if strings.Contains(d.Message, "replaces the items") {
+					t.Errorf("%s %+v: %s", r.Name, opts, d.Message)
+				}
 			}
+			checkReadableText(t, r.Name, opts, dir)
 			for _, p := range reg.Prompts() {
 				rp, err := resolve.ResolveWithOptions(p.Name, reg, resolve.Options{Variables: map[string]string{"repo_name": "demo"}})
 				if err != nil {
@@ -249,4 +254,23 @@ func TestMapDir(t *testing.T) {
 			t.Errorf("mapDir(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// Generated prose must read cleanly whatever options were given: an empty framework used to
+// leave "specialising in  applications" and "Apply -specific best practices".
+func checkReadableText(t *testing.T, recipe string, opts Options, dir string) {
+	t.Helper()
+	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".loom") {
+			return nil
+		}
+		data, _ := os.ReadFile(p)
+		for n, line := range strings.Split(string(data), "\n") {
+			text := strings.TrimLeft(line, " ")
+			if strings.Contains(text, "  ") || strings.Contains(text, " -specific") || strings.Contains(text, "{{FrameworkTitle}}") {
+				t.Errorf("%s %+v: %s:%d reads badly: %q", recipe, opts, filepath.Base(p), n+1, line)
+			}
+		}
+		return nil
+	})
 }

@@ -1,0 +1,2 @@
+rule: warn-block-overridden
+warning: writes "constraints", which replaces the items block "Safety" adds to it

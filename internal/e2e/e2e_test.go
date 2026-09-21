@@ -62,7 +62,7 @@ var allRules = []string{
 	"error-append-in-variant", "error-append-in-env", "error-remove-removed", "warn-bare-colon",
 	"parse-extends", "from-variant-out-of-range", "warn-tags-operator", "warn-missing-objective",
 	"warn-missing-format", "warn-empty-context", "warn-deep-inheritance", "warn-redefine-inherited",
-	"warn-kind-mismatch", "warn-required-runtime-var", "warn-block-variable", "warn-overlay-variable",
+	"warn-kind-mismatch", "warn-block-overridden", "warn-required-runtime-var", "warn-block-variable", "warn-overlay-variable",
 	// weave-time
 	"weave-unknown-variant", "weave-unknown-env", "weave-unknown-overlay", "weave-unknown-prompt",
 	"weave-from-index-out-of-range",

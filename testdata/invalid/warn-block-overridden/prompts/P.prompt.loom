@@ -1,0 +1,9 @@
+prompt P {
+  use Safety
+
+  persona :=
+    p
+
+  constraints :=
+    - Cite sources.
+}

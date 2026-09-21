@@ -140,17 +140,25 @@ func buildVars(opts Options) map[string]string {
 	pascal := toPascal(lang)
 	fwPascal := toPascal(fw)
 	fwTitle := titleCase(strings.ReplaceAll(fw, "-", " "))
+	// Phrases that read naturally whether or not a framework was given.
+	fwSpecialty, fwFor := "", ""
+	if fw != "" {
+		fwSpecialty = " specialising in " + fwTitle + " applications"
+		fwFor = " for " + fwTitle
+	}
 
 	return map[string]string{
-		"{{Language}}":       lang,
-		"{{language}}":       strings.ToLower(lang),
-		"{{LangPascal}}":     pascal,
-		"{{Framework}}":      fw,
-		"{{framework}}":      strings.ToLower(fw),
-		"{{FwPascal}}":       fwPascal,
-		"{{FrameworkTitle}}": fwTitle,
-		"{{Style}}":          style,
-		"{{style}}":          strings.ToLower(style),
+		"{{Language}}":           lang,
+		"{{language}}":           strings.ToLower(lang),
+		"{{LangPascal}}":         pascal,
+		"{{Framework}}":          fw,
+		"{{framework}}":          strings.ToLower(fw),
+		"{{FwPascal}}":           fwPascal,
+		"{{FrameworkTitle}}":     fwTitle,
+		"{{FrameworkSpecialty}}": fwSpecialty,
+		"{{FrameworkFor}}":       fwFor,
+		"{{Style}}":              style,
+		"{{style}}":              strings.ToLower(style),
 	}
 }
 

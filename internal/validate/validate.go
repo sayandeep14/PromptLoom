@@ -248,6 +248,26 @@ func checkPrompt(n *ast.Node, reg *registry.Registry, cfg *config.Config) []Diag
 		}
 	}
 
+	// A prompt that writes a list field itself replaces the items its blocks contribute to that
+	// list (the prompt's own fields apply last), which is rarely what `use Block` was meant to do.
+	for _, f := range n.Fields {
+		if !ast.ListFields[f.FieldName] {
+			continue
+		}
+		for _, use := range n.Uses {
+			if blk, ok := reg.LookupBlock(use); ok && blockDefinesField(blk, f.FieldName) {
+				diags = append(diags, Diagnostic{
+					Sev: Warning,
+					Message: fmt.Sprintf(
+						"prompt %q writes %q, which replaces the items block %q adds to it (a prompt's own list replaces what its blocks contribute).\n"+
+							"  Copy the block's items into this prompt, move this prompt's items into the block, or remove %q here to keep the block's.",
+						n.Name, f.FieldName, use, f.FieldName),
+					Pos: f.Pos,
+				})
+			}
+		}
+	}
+
 	// Kind–block mismatch: warn when a block declares a kind that differs from the prompt's kind.
 	promptKind := nodeKindTag(n)
 	if promptKind != "" {
@@ -563,6 +583,15 @@ func appendMessage(kind, name, field string, isScalar bool, parents int) string 
 }
 
 // ---- helpers ----
+
+func blockDefinesField(blk *ast.Node, field string) bool {
+	for _, f := range blk.Fields {
+		if f.FieldName == field {
+			return true
+		}
+	}
+	return false
+}
 
 // detectCycle runs a DFS from `name` over the multi-parent graph and returns
 // a cycle path string like "A -> B -> C -> A" if a cycle is reachable, else "".

@@ -344,3 +344,17 @@ func TestMigrateUsesBlocksFromOtherFiles(t *testing.T) {
 	// unparseable library files are skipped, not fatal
 	lib.AddSource("broken.loom", "prompt {")
 }
+
+func TestBareSlotParsesAndFormatsAsARequiredSlot(t *testing.T) {
+	out, err := Source("m.loom", "prompt A {\n  slot topic\n\n  persona :=\n    About {{topic}}.\n}\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "slot topic { required: true }") {
+		t.Errorf("%s", out)
+	}
+	nodes, _ := parser.Parse("m.loom", out)
+	if v := nodes[0].Vars[0]; !v.IsSlot || !v.Required || v.Name != "topic" {
+		t.Errorf("%+v", v)
+	}
+}

@@ -280,6 +280,13 @@ func parseSlotLine(trimmed string) (name, metadata string, ok bool) {
 	}
 	open := strings.Index(rest, "{")
 	close := strings.LastIndex(rest, "}")
+	if open < 0 && close < 0 {
+		// bare `slot name`: a required slot with no metadata, the same as `slot name {}`
+		if !isIdent(rest) {
+			return "", "", false
+		}
+		return rest, "", true
+	}
 	if open < 0 || close < 0 || close < open {
 		return "", "", false
 	}

@@ -220,7 +220,7 @@ Exception: **`format`** describes the single shape of the answer, so with `:=` t
 
 Order: parents → blocks (in `use` order) → the prompt's own fields → variant → overlays → env. After everything is applied, exact-duplicate list items are removed (first occurrence kept).
 
-Consequence to remember: if a prompt `use`s a block **and** writes its own `constraints :=`, its own list replaces the block's, because a prompt's own fields are applied last. To keep the block's rules, don't redefine that field in the prompt.
+Consequence to remember: if a prompt `use`s a block **and** writes its own `constraints :=`, its own list replaces the block's, because a prompt's own fields are applied last. To keep the block's rules, don't redefine that field in the prompt. `loom inspect` warns about this (`writes "constraints", which replaces the items block "Safety" adds to it`): either drop the field from the prompt, copy the block's items into it, or move the prompt's items into the block (or a second block: several blocks add to each other).
 
 ### Namespaced block usage
 
@@ -262,7 +262,7 @@ prompt RepoReviewer {
 }
 ```
 
-If a slot has no default and is not supplied, `loom weave` prompts for it interactively.
+`slot repo_name` with no braces is shorthand for `slot repo_name { required: true }`. If a slot has no default and is not supplied, `loom weave` prompts for it interactively.
 
 ### Secret slots
 
@@ -784,6 +784,7 @@ Use explicit `slug.Name` notation whenever ambiguity is possible.
 - Missing `objective` / `format` (when `require_objective` / `require_format` are on in `loom.toml`), empty `context`
 - Inheritance depth above `max_inheritance_depth` (default 3)
 - A prompt and a block that declare different `kind` values
+- A prompt writes a list field that one of its `use`d blocks also defines (the prompt's list replaces the block's items)
 - A required `slot` is used (a value must be supplied when weaving)
 - A block or overlay uses a `{{ variable }}` (it must be declared by the prompt that uses it)
 

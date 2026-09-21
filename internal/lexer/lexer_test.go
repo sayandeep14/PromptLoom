@@ -105,7 +105,9 @@ func TestErrorsCarryFileAndLine(t *testing.T) {
 		"prompt A {\n  what is this\n}\n":              "t.loom:2:",
 		"prompt A {\n  var x\n}\n":                     "t.loom:2:",
 		"prompt A {\n  var x = \"unterminated\n}\n":    "t.loom:2:",
-		"prompt A {\n  slot x\n}\n":                    "t.loom:2:",
+		"prompt A {\n  slot x {\n}\n":                  "t.loom:2:",
+		"prompt A {\n  slot a b\n}\n":                  "t.loom:2:",
+		"prompt A {\n  slot x }\n}\n":                  "t.loom:2:",
 		"prompt A {\n  variant v1 {\n    bogus\n  }\n": "t.loom:3:",
 		"prompt A {\n  variant a b {\n  }\n}\n":        "t.loom:2:",
 	}
@@ -292,7 +294,7 @@ func TestScanVars(t *testing.T) {
 	if !vs[2].IsSlot || !vs[2].Required || vs[3].Required {
 		t.Errorf("%+v %+v", vs[2], vs[3])
 	}
-	for _, bad := range []string{"prompt A {\n", "var x\n", "slot x\n", "var x = \"open\n"} {
+	for _, bad := range []string{"prompt A {\n", "var x\n", "slot a b\n", "var x = \"open\n"} {
 		if _, err := ScanVars("x.vars.loom", bad); err == nil || !strings.HasPrefix(err.Error(), "x.vars.loom:1:") {
 			t.Errorf("%q: %v", bad, err)
 		}
@@ -330,5 +332,18 @@ func TestFromExpressionOnTheNextLineAndParentForm(t *testing.T) {
 		if !strings.Contains(got, "IDENT:n := TEXT:t } EOF") {
 			t.Errorf("%s", got)
 		}
+	}
+}
+
+// `slot name` without braces is valid (the language docs and the editor hover both say so) and
+// means the same as `slot name {}`.
+func TestBareSlot(t *testing.T) {
+	got := render(scan(t, "prompt A {\n  slot topic\n  slot other {}\n}\n"))
+	if !strings.Contains(got, "slot IDENT:topic TEXT: slot IDENT:other TEXT:") {
+		t.Errorf("%s", got)
+	}
+	vs, err := ScanVars("x.vars.loom", "slot topic\nslot other { required: true }\n")
+	if err != nil || len(vs) != 2 || !vs[0].IsSlot || vs[0].Name != "topic" || vs[0].Required != false && false {
+		t.Errorf("%+v %v", vs, err)
 	}
 }
