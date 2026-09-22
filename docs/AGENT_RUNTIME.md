@@ -2,8 +2,8 @@
 
 Status: **accepted** (PL-501). Implemented by `loom run` (PL-502). Builds on the shared model client
 (`internal/llm`, PL-405). Extended by refine/decide (PL-503, `loom optimize`/`loom score`/`loom eval
---refine`) and quest mode (PL-504, `loom quest run`/`loom quest list`). Scripts (PL-505) remain
-future work.
+--refine`), quest mode (PL-504, `loom quest run`/`loom quest list`) and loom scripts (PL-505,
+`loom script run`/`loom script list`).
 
 ## Goal
 
@@ -144,6 +144,23 @@ file on disk, never chosen by a model while the quest runs. So none of the four 
 safety model above are relaxed: a quest can act on nothing a `loom run` of the same prompt
 couldn't, and it writes a file only when `--out` is given, gated by `permission.write`, exactly as
 `loom run --out` already is.
+
+## `loom script`: not a new capability
+
+`loom script run` (PL-505) executes a `.lmscr` file: a fixed, human-authored list of steps, each
+naming one loom (sub)command and its arguments (`weave`, `eval`, `optimize --yes`, `quest run`,
+`deploy`, anything else loom can do). Each step is started exactly as if it had been typed by
+hand — the loom binary itself, never a shell, with the step's `run` and (variable-substituted)
+`args` passed straight through as argv, so there is no shell injection surface and no way for a
+step's own output to be interpreted as more commands.
+
+A script does not add a capability; it automates typing a sequence of commands that already exist,
+each of which enforces its own safety on its own terms exactly as it would run alone: a
+`optimize --yes` step still needs `permission.write` and still shows its diff on the way; a `deploy`
+step still writes only its configured targets; a `run` step is still text-only, no tool use. Which
+commands run, in what order, and with what arguments is fixed by the file on disk — a script never
+lets one step's *output* decide what the next step is (the only per-step branching is `when`, which
+looks at whether the *previous step succeeded*, not at anything it said).
 
 ## Future: tools (not in version 1)
 

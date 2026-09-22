@@ -83,6 +83,7 @@ func init() {
 	rootCmd.AddCommand(optimizeCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(questCmd)
+	rootCmd.AddCommand(scriptCmd)
 	rootCmd.AddCommand(blameCmd)
 	rootCmd.AddCommand(changelogCmd)
 	rootCmd.AddCommand(auditCmd)

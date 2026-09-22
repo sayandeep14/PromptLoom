@@ -36,7 +36,7 @@ Global flag available on every command:
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
-| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run`, `quest` |
+| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run`, `quest`, `script` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
@@ -1605,6 +1605,75 @@ loom quest list
 
 ---
 
+### `loom script run`
+
+**What it does**
+
+Runs each `[[step]]` of `scripts/<Name>.lmscr` (or `--dir`) in order: every step names one loom (sub)command and its arguments, and is run exactly as if you had typed `loom <run> <args>...` yourself — no shell, no shell injection surface, and no capability beyond what those commands already have on their own. A `.lmscr` file only saves re-typing a sequence of commands, and lets one be checked in, reviewed and replayed.
+
+A step's `args` may use `{{vars.NAME}}`, substituted from the script's own `vars` and `--set` (`--set` wins). Every `{{vars.NAME}}` used anywhere in the script must have a value before anything runs — a script never starts halfway through with an unresolved token.
+
+By default a step runs only if every step before it succeeded (`when = "on_success"`, the default). `when = "on_failure"` runs a step only after an earlier one failed (for cleanup or a notification); `when = "always"` always runs it. A step with `continue_on_fail = true` does not stop the script and does not count against the run, though it is still reported.
+
+**Why it exists**
+
+Some projects always run the same handful of loom commands together — score, then optimize, then deploy; or an eval comparison as a release gate before deploy. Typing that by hand each time is easy to get wrong or skip a step; a script names the sequence once.
+
+**When to use it**
+
+A repeatable pipeline of loom commands: `loom script run Release --set env=production`.
+
+**Syntax**
+
+```
+loom script run <ScriptName> [--set key=value]... [--dir <path>] [--dry-run]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--set key=value` | Set a script variable; may be repeated. Overrides the script's own `vars` |
+| `--dir <path>` | Directory of scripts (default `scripts`) |
+| `--dry-run` | Show each step's resolved command; call nothing |
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| `0` | Every step that counted (not skipped, not `continue_on_fail`) exited `0` |
+| `1` | A missing `{{vars.NAME}}` value, a script that failed to load, or a step that failed |
+
+**Examples**
+
+```bash
+loom script run Release
+loom script run Release --set env=production
+loom script run Release --dry-run           # show what would run; call nothing
+```
+
+---
+
+### `loom script list`
+
+**What it does**
+
+Lists the scripts found in `scripts/` (or `--dir`), with their step count and description.
+
+**Syntax**
+
+```
+loom script list [--dir <path>]
+```
+
+**Examples**
+
+```bash
+loom script list
+```
+
+---
+
 ## Library Management
 
 ---
@@ -2506,6 +2575,8 @@ loom execute ship --unlock
 | `loom optimize <Name>` | Propose (and, with `--yes`, apply) a fix for a failing prompt |
 | `loom quest run <Name>` | Run every step of a quest (a named, fixed pipeline of prompts) in order |
 | `loom quest list` | List quest files |
+| `loom script run <Name>` | Run every step of a `.lmscr` script (a named pipeline of loom commands) in order |
+| `loom script list` | List `.lmscr` script files |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |
 | `loom graph [Name]` | Dependency graph; with a name, that prompt's neighbourhood |

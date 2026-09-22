@@ -354,3 +354,69 @@ vars = { repo_name = "demo" }
 		t.Errorf("quest run without a key: exit %d\n%s", code, out)
 	}
 }
+
+func TestScriptCommandsThroughTheBinary(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if _, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatal("init")
+	}
+	if _, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer", "--language", "Go"); code != 0 {
+		t.Fatal("recipe")
+	}
+
+	if out, code := runLoom(t, bin, dir, "script", "list"); code != 0 || !strings.Contains(out, "no scripts found") {
+		t.Errorf("script list (empty): exit %d\n%s", code, out)
+	}
+
+	os.MkdirAll(filepath.Join(dir, "scripts"), 0o755)
+	os.WriteFile(filepath.Join(dir, "scripts", "Check.lmscr"), []byte(`
+description = "inspect, then list"
+
+[[step]]
+name = "inspect"
+run = "inspect"
+
+[[step]]
+name = "list"
+run = "list"
+args = ["--prompts"]
+
+[[step]]
+name = "notify"
+run = "list"
+when = "on_failure"
+`), 0o644)
+
+	if out, code := runLoom(t, bin, dir, "script", "list"); code != 0 || !strings.Contains(out, "Check") || !strings.Contains(out, "3 step(s)") {
+		t.Errorf("script list: exit %d\n%s", code, out)
+	}
+	// a real, full run: each step actually execs the loom binary itself
+	out, code := runLoom(t, bin, dir, "script", "run", "Check")
+	if code != 0 || !strings.Contains(out, "✓ inspect") || !strings.Contains(out, "✓ list") || !strings.Contains(out, "○ notify") || !strings.Contains(out, "GoReviewer") {
+		t.Errorf("script run: exit %d\n%s", code, out)
+	}
+	// --dry-run: shows the plan, runs nothing
+	out, code = runLoom(t, bin, dir, "script", "run", "Check", "--dry-run")
+	if code != 0 || !strings.Contains(out, "loom inspect") || !strings.Contains(out, "loom list --prompts") || !strings.Contains(out, "nothing was sent") {
+		t.Errorf("script run --dry-run: exit %d\n%s", code, out)
+	}
+	// unknown script
+	if out, code := runLoom(t, bin, dir, "script", "run", "Nope"); code != 1 {
+		t.Errorf("script run unknown: exit %d\n%s", code, out)
+	}
+
+	// a missing {{vars.NAME}} fails up front, before anything runs
+	os.WriteFile(filepath.Join(dir, "scripts", "Vars.lmscr"), []byte(`
+[[step]]
+name = "a"
+run = "list"
+args = ["--prompts", "{{vars.env}}"]
+`), 0o644)
+	if out, code := runLoom(t, bin, dir, "script", "run", "Vars"); code != 1 || !strings.Contains(out, "env") {
+		t.Errorf("script run missing var: exit %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "script", "run", "Vars", "--set", "env=demo"); code != 0 {
+		t.Errorf("script run with --set: exit %d\n%s", code, out)
+	}
+}
