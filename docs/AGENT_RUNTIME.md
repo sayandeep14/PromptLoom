@@ -20,7 +20,7 @@ A prompt library is only useful if the prompts can be exercised; `run` closes th
 | Streaming output | **Yes** | a long answer is useless if you wait for all of it; Ctrl-C must be able to stop a bad one |
 | Multi-turn (`--chat`) | **Yes** | most prompt debugging is a conversation; history is local and explicit |
 | Contract check of the answer (`--check`) | **Yes** | the contract already exists; `run` can enforce it |
-| Token usage | best effort | providers report it; PL-704 will aggregate |
+| Token usage | best effort | providers report it; aggregated by `internal/usage` (PL-704, `loom usage`/`loom bench`) |
 | **Tool use / function calling** | **No** | see the safety model: the model can only produce text, so there is nothing to authorize |
 | Model-driven file writes, shell commands, web access | **No** | same |
 | Autonomous multi-step loops | **No** | `loom quest` (PL-504) composes a *fixed, human-authored* sequence of `run` steps — never a model-chosen one |
@@ -161,6 +161,19 @@ step still writes only its configured targets; a `run` step is still text-only, 
 commands run, in what order, and with what arguments is fixed by the file on disk — a script never
 lets one step's *output* decide what the next step is (the only per-step branching is `when`, which
 looks at whether the *previous step succeeded*, not at anything it said).
+
+## The usage ledger (`internal/usage`, PL-704)
+
+`loom run`, `quest run`, `eval`, `score`, `optimize` and `bench` each record every model call they
+make to `<project>/.loom/usage.jsonl`: a timestamp, which command and role (the primary call, or
+`judge`/`refiner`), which provider and model, and the token counts the provider reported. Nothing
+about the *content* of a call — not the prompt, not the answer — is ever written to it; a Record
+is metadata about the call, not the call itself. A cost is estimated only for a model listed in the
+project's own `loom.toml` `[[pricing]]`; loom never invents a price. Recording is best effort by
+construction (`usage.Log.Append`'s error is never propagated to the caller) — a full disk or a
+permissions problem writing the ledger must never be the reason a model call, or the command using
+it, fails. The ledger is local and personal, not shared project state: `loom init` adds `.loom/` to
+`.gitignore`, and nothing in loom ever sends it anywhere.
 
 ## Future: tools (not in version 1)
 

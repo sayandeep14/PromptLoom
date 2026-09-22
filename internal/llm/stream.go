@@ -105,6 +105,9 @@ func (c *Client) Stream(ctx context.Context, r Request, onDelta func(string)) (s
 	if st.text.Len() == 0 && !st.sawAny {
 		return "", st.usage, fmt.Errorf("%s returned an empty stream", c.Provider)
 	}
+	if c.OnUsage != nil {
+		c.OnUsage(st.usage)
+	}
 	return st.text.String(), st.usage, nil
 }
 

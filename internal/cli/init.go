@@ -144,7 +144,7 @@ func runInit(_ *cobra.Command, _ []string) error {
 
 	// ── .gitignore entries ──────────────────────────────────────────────────
 	gitignorePath := filepath.Join(cwd, ".gitignore")
-	for _, entry := range []string{"loom/.loom.secret", ".loom.config", "loom/loompack/"} {
+	for _, entry := range []string{"loom/.loom.secret", ".loom.config", "loom/loompack/", ".loom/"} {
 		appendGitignoreEntry(gitignorePath, entry)
 	}
 	fmt.Println("  updated  .gitignore")

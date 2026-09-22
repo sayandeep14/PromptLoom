@@ -97,7 +97,7 @@ func runEval(cmd *cobra.Command, args []string) error {
 	evalOpts := eval.Params{
 		Names: args, Models: models, Judge: evalJudge,
 		Record: evalRecord, Compare: evalCompare, Tolerance: evalTolerance, Strict: evalStrict,
-		Threshold: evalThreshold, Dir: evalDir,
+		Threshold: evalThreshold, Dir: evalDir, Command: "eval",
 	}
 	out, err := eval.RunProject(ctx, cwd, evalOpts)
 	if err != nil {
@@ -120,7 +120,7 @@ func runRefine(ctx context.Context, cwd string, out *eval.Outcome, models []stri
 	if err != nil {
 		return err
 	}
-	refiner, err := buildCompleter(cfg, evalJudge)
+	refiner, err := buildCompleter(cwd, cfg, evalJudge, "eval", "refiner")
 	if err != nil {
 		return fmt.Errorf("--refine needs a working model: %w", err)
 	}
@@ -141,7 +141,7 @@ func runRefine(ctx context.Context, cwd string, out *eval.Outcome, models []stri
 		}
 		seen[name] = true
 		res, err := optimize.Loop(ctx, cwd, name, optimize.LoopOptions{
-			Eval:          eval.Params{Models: models, Judge: evalJudge, Threshold: evalThreshold, Dir: evalDir},
+			Eval:          eval.Params{Models: models, Judge: evalJudge, Threshold: evalThreshold, Dir: evalDir, Command: "eval"},
 			Refiner:       refiner,
 			MaxIterations: 1,
 			Apply:         evalYes,

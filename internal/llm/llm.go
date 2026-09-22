@@ -54,6 +54,13 @@ type Client struct {
 	APIKey   string
 	KeyEnv   string        // the environment variable the key came from
 	Timeout  time.Duration // per request; 0 means 60s
+
+	// OnUsage, when set, is called after every successful Complete or Stream with whatever the
+	// provider reported (best effort: a zero Usage means it reported nothing). Never called from
+	// more than one goroutine at a time for a given call, but a Client itself is not otherwise
+	// synchronized — as before, one Client is for one call or one conversation, not shared across
+	// concurrent callers. See internal/usage, which sets this to record token/cost history.
+	OnUsage func(Usage)
 }
 
 // Message is one earlier turn of a conversation.
@@ -164,15 +171,25 @@ func (c *Client) Complete(ctx context.Context, r Request) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	var (
+		text  string
+		usage Usage
+		err   error
+	)
 	switch c.Provider {
 	case Gemini:
-		return c.gemini(ctx, r)
+		text, usage, err = c.gemini(ctx, r)
 	case Anthropic:
-		return c.anthropic(ctx, r)
+		text, usage, err = c.anthropic(ctx, r)
 	case OpenAI:
-		return c.openai(ctx, r)
+		text, usage, err = c.openai(ctx, r)
+	default:
+		return "", fmt.Errorf("unknown provider %q (supported: gemini, anthropic, openai)", c.Provider)
 	}
-	return "", fmt.Errorf("unknown provider %q (supported: gemini, anthropic, openai)", c.Provider)
+	if err == nil && c.OnUsage != nil {
+		c.OnUsage(usage)
+	}
+	return text, err
 }
 
 // post sends a JSON body and returns the response body and status.
@@ -268,11 +285,11 @@ func (c *Client) geminiBody(r Request) gRequest {
 	return req
 }
 
-func (c *Client) gemini(ctx context.Context, r Request) (string, error) {
+func (c *Client) gemini(ctx context.Context, r Request) (string, Usage, error) {
 	url := fmt.Sprintf("%s/models/%s:generateContent", GeminiBaseURL, c.Model)
 	data, status, err := c.post(ctx, url, c.geminiBody(r), map[string]string{"x-goog-api-key": c.APIKey})
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	var resp struct {
 		Candidates []struct {
@@ -283,19 +300,23 @@ func (c *Client) gemini(ctx context.Context, r Request) (string, error) {
 				} `json:"parts"`
 			} `json:"content"`
 		} `json:"candidates"`
+		Usage struct {
+			Prompt    int `json:"promptTokenCount"`
+			Candidate int `json:"candidatesTokenCount"`
+		} `json:"usageMetadata"`
 		Error *struct {
 			Message string `json:"message"`
 			Code    int    `json:"code"`
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return "", unreadable("Gemini", status, data)
+		return "", Usage{}, unreadable("Gemini", status, data)
 	}
 	if resp.Error != nil {
-		return "", fmt.Errorf("Gemini API error %d: %s", resp.Error.Code, resp.Error.Message)
+		return "", Usage{}, fmt.Errorf("Gemini API error %d: %s", resp.Error.Code, resp.Error.Message)
 	}
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", noContent("Gemini", status)
+		return "", Usage{}, noContent("Gemini", status)
 	}
 	var sb strings.Builder
 	for _, p := range resp.Candidates[0].Content.Parts {
@@ -303,7 +324,7 @@ func (c *Client) gemini(ctx context.Context, r Request) (string, error) {
 			sb.WriteString(p.Text)
 		}
 	}
-	return sb.String(), nil
+	return sb.String(), Usage{InputTokens: resp.Usage.Prompt, OutputTokens: resp.Usage.Candidate}, nil
 }
 
 // ---- Anthropic ----
@@ -332,28 +353,32 @@ func (c *Client) anthropicBody(r Request, stream bool) aRequest {
 	return req
 }
 
-func (c *Client) anthropic(ctx context.Context, r Request) (string, error) {
+func (c *Client) anthropic(ctx context.Context, r Request) (string, Usage, error) {
 	data, status, err := c.post(ctx, AnthropicURL, c.anthropicBody(r, false), map[string]string{
 		"x-api-key": c.APIKey, "anthropic-version": "2023-06-01",
 	})
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	var resp struct {
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		Usage struct {
+			Input  int `json:"input_tokens"`
+			Output int `json:"output_tokens"`
+		} `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 			Type    string `json:"type"`
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return "", unreadable("Anthropic", status, data)
+		return "", Usage{}, unreadable("Anthropic", status, data)
 	}
 	if resp.Error != nil {
-		return "", fmt.Errorf("Anthropic API error (%s): %s", resp.Error.Type, resp.Error.Message)
+		return "", Usage{}, fmt.Errorf("Anthropic API error (%s): %s", resp.Error.Type, resp.Error.Message)
 	}
 	// Only text blocks are the answer; thinking and tool_use blocks are not. (A block with no type,
 	// as some Anthropic-compatible gateways send, counts as text.)
@@ -366,9 +391,9 @@ func (c *Client) anthropic(ctx context.Context, r Request) (string, error) {
 		}
 	}
 	if !found {
-		return "", noContent("Anthropic", status)
+		return "", Usage{}, noContent("Anthropic", status)
 	}
-	return sb.String(), nil
+	return sb.String(), Usage{InputTokens: resp.Usage.Input, OutputTokens: resp.Usage.Output}, nil
 }
 
 // ---- OpenAI ----
@@ -403,10 +428,10 @@ func (c *Client) openaiBody(r Request, stream bool) oRequest {
 	return req
 }
 
-func (c *Client) openai(ctx context.Context, r Request) (string, error) {
+func (c *Client) openai(ctx context.Context, r Request) (string, Usage, error) {
 	data, status, err := c.post(ctx, OpenAIURL, c.openaiBody(r, false), map[string]string{"Authorization": "Bearer " + c.APIKey})
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	var resp struct {
 		Choices []struct {
@@ -414,21 +439,25 @@ func (c *Client) openai(ctx context.Context, r Request) (string, error) {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			Prompt     int `json:"prompt_tokens"`
+			Completion int `json:"completion_tokens"`
+		} `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 			Type    string `json:"type"`
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return "", unreadable("OpenAI", status, data)
+		return "", Usage{}, unreadable("OpenAI", status, data)
 	}
 	if resp.Error != nil {
-		return "", fmt.Errorf("OpenAI API error (%s): %s", resp.Error.Type, resp.Error.Message)
+		return "", Usage{}, fmt.Errorf("OpenAI API error (%s): %s", resp.Error.Type, resp.Error.Message)
 	}
 	if len(resp.Choices) == 0 {
-		return "", noContent("OpenAI", status)
+		return "", Usage{}, noContent("OpenAI", status)
 	}
-	return resp.Choices[0].Message.Content, nil
+	return resp.Choices[0].Message.Content, Usage{InputTokens: resp.Usage.Prompt, OutputTokens: resp.Usage.Completion}, nil
 }
 
 func noContent(provider string, status int) error {

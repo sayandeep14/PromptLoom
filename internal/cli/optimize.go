@@ -10,6 +10,7 @@ import (
 	"github.com/sayandeep14/PromptLoom/internal/llm"
 	"github.com/sayandeep14/PromptLoom/internal/loader"
 	"github.com/sayandeep14/PromptLoom/internal/optimize"
+	"github.com/sayandeep14/PromptLoom/internal/usage"
 	"github.com/spf13/cobra"
 )
 
@@ -73,7 +74,7 @@ func runOptimize(cmd *cobra.Command, args []string) error {
 	if refinerSpec == "" {
 		refinerSpec = optimizeJudge
 	}
-	refiner, err := buildCompleter(cfg, refinerSpec)
+	refiner, err := buildCompleter(cwd, cfg, refinerSpec, "optimize", "refiner")
 	if err != nil {
 		return fmt.Errorf("--refiner: %w", err)
 	}
@@ -87,7 +88,7 @@ func runOptimize(cmd *cobra.Command, args []string) error {
 	}
 
 	res, err := optimize.Loop(context.Background(), cwd, args[0], optimize.LoopOptions{
-		Eval:          evalParamsFromFlags(optimizeModels, optimizeJudge, optimizeDir, 0),
+		Eval:          evalParamsFromFlags(optimizeModels, optimizeJudge, optimizeDir, 0, "optimize"),
 		Refiner:       refiner,
 		MaxIterations: optimizeIterations,
 		Tolerance:     optimizeTolerance,
@@ -106,7 +107,13 @@ func runOptimize(cmd *cobra.Command, args []string) error {
 
 // buildCompleter builds a model client from a "model" / "provider:model" spec (empty = the
 // project's [testing] model), for anything (judge, refiner) that only needs to complete a prompt.
-func buildCompleter(cfg *config.Config, spec string) (eval.Completer, error) {
+// Its calls are recorded to the project's usage ledger under command/role (see internal/usage).
+func buildCompleter(cwd string, cfg *config.Config, spec, command, role string) (eval.Completer, error) {
 	provider, model := llm.ParseSpec(spec)
-	return llm.New(cfg, provider, model)
+	c, err := llm.New(cfg, provider, model)
+	if err != nil {
+		return nil, err
+	}
+	usage.Attach(c, usage.Open(usage.DefaultPath(cwd)), cfg, command, role)
+	return c, nil
 }

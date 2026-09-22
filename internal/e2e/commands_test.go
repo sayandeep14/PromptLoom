@@ -420,3 +420,43 @@ args = ["--prompts", "{{vars.env}}"]
 		t.Errorf("script run with --set: exit %d\n%s", code, out)
 	}
 }
+
+func TestBenchAndUsageCommandsThroughTheBinary(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if _, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatal("init")
+	}
+	if _, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer", "--language", "Go"); code != 0 {
+		t.Fatal("recipe")
+	}
+
+	if out, code := runLoom(t, bin, dir, "usage"); code != 0 || !strings.Contains(out, "no usage recorded yet") {
+		t.Errorf("usage (empty): exit %d\n%s", code, out)
+	}
+
+	// no API key: bench fails clearly rather than hanging, and records nothing
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	if out, code := runLoom(t, bin, dir, "bench", "CodeReviewer", "--input", "x", "--set", "repo_name=demo"); code != 1 || !strings.Contains(out, "API key") {
+		t.Errorf("bench without a key: exit %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "usage"); code != 0 || !strings.Contains(out, "no usage recorded yet") {
+		t.Errorf("a failed bench call must not be recorded: exit %d\n%s", code, out)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); err == nil {
+		gi, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+		if !strings.Contains(string(gi), ".loom/") {
+			t.Errorf(".gitignore must exclude the usage ledger: %s", gi)
+		}
+	}
+
+	if out, code := runLoom(t, bin, dir, "usage", "--json"); code != 0 || !strings.Contains(out, `"Calls": 0`) {
+		t.Errorf("usage --json: exit %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "usage", "--clear"); code != 0 || out != "" {
+		t.Errorf("usage --clear: exit %d\n%s", code, out)
+	}
+}

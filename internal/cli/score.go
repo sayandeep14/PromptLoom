@@ -51,7 +51,7 @@ func runScore(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	s, err := optimize.ComputeScore(context.Background(), cwd, args[0], evalParamsFromFlags(scoreModels, scoreJudge, scoreDir, 0))
+	s, err := optimize.ComputeScore(context.Background(), cwd, args[0], evalParamsFromFlags(scoreModels, scoreJudge, scoreDir, 0, "score"))
 	if err != nil {
 		return err
 	}
@@ -79,13 +79,13 @@ func runScore(cmd *cobra.Command, args []string) error {
 }
 
 // evalParamsFromFlags builds an eval.Params the way loom eval, loom score and loom optimize all
-// parse --models/--judge/--dir/--threshold.
-func evalParamsFromFlags(models, judge, dir string, threshold int) eval.Params {
+// parse --models/--judge/--dir/--threshold. command labels the usage ledger ("score", "optimize").
+func evalParamsFromFlags(models, judge, dir string, threshold int, command string) eval.Params {
 	var m []string
 	for _, x := range strings.Split(models, ",") {
 		if x = strings.TrimSpace(x); x != "" {
 			m = append(m, x)
 		}
 	}
-	return eval.Params{Models: m, Judge: judge, Dir: dir, Threshold: threshold}
+	return eval.Params{Models: m, Judge: judge, Dir: dir, Threshold: threshold, Command: command}
 }

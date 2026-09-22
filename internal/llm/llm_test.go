@@ -162,6 +162,42 @@ func TestAPIErrorsAndUnreadableBodies(t *testing.T) {
 	}
 }
 
+func TestCompleteReportsUsageThroughOnUsage(t *testing.T) {
+	cases := []struct {
+		provider, reply string
+	}{
+		{Gemini, `{"candidates":[{"content":{"parts":[{"text":"hi"}]}}],"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":4}}`},
+		{Anthropic, `{"content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":11,"output_tokens":4}}`},
+		{OpenAI, `{"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":11,"completion_tokens":4}}`},
+	}
+	for _, c := range cases {
+		newFake(t, 200, c.reply)
+		cl := client(c.provider)
+		var got Usage
+		calls := 0
+		cl.OnUsage = func(u Usage) { got, calls = u, calls+1 }
+		if _, err := cl.Complete(context.Background(), Request{User: "q"}); err != nil {
+			t.Fatalf("%s: %v", c.provider, err)
+		}
+		if calls != 1 || got.InputTokens != 11 || got.OutputTokens != 4 {
+			t.Errorf("%s: OnUsage called %d time(s) with %+v", c.provider, calls, got)
+		}
+	}
+}
+
+func TestCompleteDoesNotReportUsageOnAnError(t *testing.T) {
+	newFake(t, 500, `{"error":{"message":"boom"}}`)
+	cl := client(Gemini)
+	calls := 0
+	cl.OnUsage = func(Usage) { calls++ }
+	if _, err := cl.Complete(context.Background(), Request{User: "q"}); err == nil {
+		t.Fatal("expected an error")
+	}
+	if calls != 0 {
+		t.Errorf("OnUsage must not be called on a failed request, got %d call(s)", calls)
+	}
+}
+
 func TestOversizedResponsesAreCut(t *testing.T) {
 	newFake(t, 200, `{"candidates":[{"content":{"parts":[{"text":"`+strings.Repeat("x", MaxResponseBytes+1000)+`"}]}}]}`)
 	_, err := client(Gemini).Complete(context.Background(), Request{User: "q"})

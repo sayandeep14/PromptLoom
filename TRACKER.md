@@ -3,7 +3,7 @@
 The single source of truth for what is done, what is next, and what blocks what.
 Keep it current: update a ticket's status in the same commit that does the work.
 
-**Last updated:** 2026-09-21 · **Current version:** 4.2.0 · **Active epic:** E1 — Trust & Safety (E1 core done; E2 done — Lumine ships as a VSIX from GitHub Releases)
+**Last updated:** 2026-09-23 · **Current version:** 5.0.0 · **Active epic:** E7 — Later (E1–E6 core work all done; E1's PL-117/PL-119 and E3's PL-304 are the only open items, all P2 and none blocking)
 
 ---
 
@@ -23,13 +23,13 @@ Completed tickets stay in the file (with the commit or date) so history is visib
 | Epic | Goal | Progress |
 |---|---|---|
 | **E0** Stabilize | Green tests, clean repo, CI, license | 8 / 8 done |
-| **E1** Trust & Safety | Secure registry, tested core, working install path | 9 / 14 |
-| **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 2 / 5 |
-| **E3** Docs & Release | Accurate docs, release binaries, packaging | 1 / 6 |
-| **E4** Product Completeness | impact, sync, eval | 0 / 5 |
-| **E5** Agentic Mode | run / refine / decide / quest, `.lmscr` | 0 / 5 |
-| **E6** LoomLocker Hardening | Tests, Windows, libraries verified end-to-end | 4 / 5 |
-| **E7** Later (V4 remainder, V5, V6) | RAG, dashboard, governance, team server | 0 / 6 |
+| **E1** Trust & Safety | Secure registry, tested core, working install path | 20 / 22 (PL-117/PL-119 need your VS Code Marketplace/portfolio steps) |
+| **E2** Lumine (VS Code) | v2-only DSL support, tested, published | 5 / 5 done |
+| **E3** Docs & Release | Accurate docs, release binaries, packaging | 6 / 7 (PL-304 Homebrew/Scoop open) |
+| **E4** Product Completeness | impact, sync, eval | 5 / 5 done |
+| **E5** Agentic Mode | run / refine / decide / quest, `.lmscr` | 5 / 5 done |
+| **E6** LoomLocker Hardening | Tests, Windows, libraries verified end-to-end | 5 / 5 (PL-605 uploads need your PyPI/Maven accounts) |
+| **E7** Later (V4 remainder, V5, V6) | RAG, dashboard, governance, team server | 1 / 6 (PL-704 done) |
 
 ### Dependency map
 
@@ -118,7 +118,7 @@ Goal: a stranger can `loom install` and `loom publish` against a registry safely
 | PL-303 | **Release pipeline for the CLI.** `.goreleaser.yaml` + `release.yml`: on a `v*` tag it tests, builds `loom` and `loomlocker` for linux/darwin/windows × amd64/arm64 (12 static binaries, version stamped via ldflags), archives them (tar.gz; zip on Windows) with docs, writes `checksums.txt`, and creates the GitHub Release with generated notes. Verified locally with a snapshot build: all 6 checksums OK, archives extract, binaries run and report the stamped version. Found + fixed: an archive containing both a `loomlocker/` docs directory and a `loomlocker` binary could not be extracted on macOS/Linux; the extension's `lumine-*` tags confused GoReleaser's current-tag detection. Lumine releases no longer claim GitHub's "Latest" badge and keep a fixed link via a rolling `lumine-latest` release. **Released as v5.0.0** (2026-09-21): 6 archives + `checksums.txt`, downloaded and verified (checksums OK, binaries report `5.0.0`). Follow-ups from checking the real release: `go install …@v5.0.0` is impossible without a `/v5` module path (Go rule for major ≥ 2) — kept the path, documented `@latest` (tracks `main`) and the binaries as the install routes; source builds no longer claim a hardcoded "4.2.0" (they report the module/commit version); `make build` ignores `lumine-*` tags; release notes rewritten as an upgrade guide and the changelog template shortened | DONE | P0 | M | PL-004, PL-305 |
 | PL-304 | Homebrew tap and Scoop manifest; `go install` instructions verified | TODO | P2 | M | PL-303 |
 | PL-305 | Windows/portability. `syscall.Stdin` replaced by `os.Stdin.Fd()`; CI now cross-builds `loom`, `loomlocker` and the registry for linux/darwin/windows × amd64/arm64 (all 6 verified). **Remaining:** run the *tests* on a Windows runner (the e2e/integration tests assume a POSIX shell and a binary without `.exe`) — **Windows tests now run in CI** (`go-windows` job for the root module and loomlocker). loomlocker was already portable; the root module had three test-only failures. One was a product point: bundle labels used the OS path separator (`src\a.go`), so the same project rendered differently on Windows; labels now always use `/`. Added `.gitattributes` (LF everywhere) so goldens are not converted to CRLF on Windows checkouts | DONE | P1 | M | PL-004 |
-| PL-306 | Shell completions (`loom completion bash\ — **Done:** `loom completion` (cobra) is documented and tested for all four shells, and now completes **project-aware**: prompt names (blocks too for `graph`/`impact`), `--overlay`, `--variant`/`--env` of the typed prompt, `--format` values. `loom doctor --system` checks the install (version, project loads, git, model API key for the configured provider, registry, loomlocker); optional pieces warn with the commands that need them. Found and fixed on the way: **`provider = "anthropic"` still used `GEMINI_API_KEY` and a Gemini model name** (the defaults were Gemini's regardless of provider) — `loom test`, `summarize` and `start` were affected | DONE |fish\|powershell`) and `loom doctor` self-check of the install | TODO | P2 | S | — |
+| PL-306 | Shell completions (`loom completion bash/zsh/fish/powershell`) and `loom doctor` self-check of the install — **Done:** `loom completion` (cobra) is documented and tested for all four shells, and now completes **project-aware**: prompt names (blocks too for `graph`/`impact`), `--overlay`, `--variant`/`--env` of the typed prompt, `--format` values. `loom doctor --system` checks the install (version, project loads, git, model API key for the configured provider, registry, loomlocker); optional pieces warn with the commands that need them. Found and fixed on the way: **`provider = "anthropic"` still used `GEMINI_API_KEY` and a Gemini model name** (the defaults were Gemini's regardless of provider) — `loom test`, `summarize` and `start` were affected | DONE | P2 | S | — |
 
 ---
 
@@ -171,7 +171,7 @@ Only start after E1 and E4 are done.
 | PL-701 | `loom index` + `--auto-context` (RAG over project files) | TODO | P2 | XL | PL-405 |
 | PL-702 | `loom serve` web dashboard | TODO | P2 | XL | PL-402 |
 | PL-703 | `loom policy check`, `owner` / `status` / `deprecated` DSL fields, `loom owners` | TODO | P2 | L | PL-403 |
-| PL-704 | `loom bench`, `loom usage` (token and cost tracking) | TODO | P2 | L | PL-404 |
+| PL-704 | `loom bench`, `loom usage` (token and cost tracking) — **Done:** closed a real gap found while building this — `llm.Client.Complete` (used by `eval`/`optimize`/`score`/`test`/`summarize`) parsed a provider's response but discarded its `usage`/`usageMetadata`, so only `Stream` (used by `run`/`quest run`) ever reported tokens. Fixed at the source: `gemini`/`anthropic`/`openai` now all return `(text, Usage, error)`, and `Client.OnUsage func(Usage)` fires after any successful `Complete` or `Stream` call — `Complete`'s own signature is unchanged, so nothing that already used it broke. `internal/usage`: an append-only, local, personal ledger (`<project>/.loom/usage.jsonl`, `loom init` now `.gitignore`s `.loom/`) of `{time, command, role, provider, model, input/output tokens, cost}`; a cost is estimated only from the project's own `loom.toml` `[[pricing]]` (provider/model/input_per_million/output_per_million) — **never guessed**, so an unpriced model shows token counts only. `usage.Attach` wires a real `*llm.Client` to the ledger (a no-op, by design, on any fake a test substitutes — exactly why none of the ~250 existing tests needed to change); wired into `loom run`, `quest run`, `eval` (both the model(s) under test and the judge, correctly labelled `role: "judge"`), `score`, and `optimize`'s refiner (`role: "refiner"`). New `internal/bench` (`Run`, times+prices a prompt's fixed input across `--runs` calls per model, no quality judgement — that's eval's job) and `loom bench <Name>` / `loom usage` (`--since`, `--command`, `--model`, `--json`, `--clear`). `docs/AGENT_RUNTIME.md` gained "The usage ledger" explaining it records metadata only (never prompt/answer content) and is local, personal, best-effort. Scope note: `loom test`/`summarize`/`start` are not yet wired to the ledger (they predate the agentic-mode packages and use their own `llm.FromConfig` call sites) — left as a follow-up rather than expanding this ticket further | DONE | P2 | L | PL-404 |
 | PL-705 | Pack signing and trust (`pack sign / verify / trust`) | TODO | P2 | L | PL-102 |
 | PL-706 | Team server, approval workflows, private registry with RBAC/SSO, audit log | TODO | P2 | XL | PL-703, PL-705 |
 

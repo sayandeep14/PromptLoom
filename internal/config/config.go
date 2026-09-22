@@ -57,6 +57,17 @@ type Registry struct {
 	URL string `toml:"url"` // base URL of the pack registry (optional)
 }
 
+// Price is what one model costs, in USD per million tokens — supplied by the project, never
+// guessed by loom: real rates vary by contract and change over time, so `loom usage`/`loom bench`
+// show token counts only for any model without a matching entry here, rather than an invented
+// number. See internal/usage.
+type Price struct {
+	Provider string  `toml:"provider"`
+	Model    string  `toml:"model"`
+	Input    float64 `toml:"input_per_million"`
+	Output   float64 `toml:"output_per_million"`
+}
+
 type Config struct {
 	Project    Project                      `toml:"project"`
 	Paths      Paths                        `toml:"paths"`
@@ -66,6 +77,7 @@ type Config struct {
 	Profiles   map[string]map[string]string `toml:"profile"`
 	Targets    []Target                     `toml:"targets"`
 	Registry   Registry                     `toml:"registry"`
+	Pricing    []Price                      `toml:"pricing"`
 }
 
 func Defaults() *Config {

@@ -115,6 +115,20 @@ func TestEachProviderStreamsItsFormat(t *testing.T) {
 	}
 }
 
+func TestStreamReportsUsageThroughOnUsage(t *testing.T) {
+	newSSE(t, &sseServer{chunks: []string{geminiSSE}})
+	cl := client(Gemini)
+	var got Usage
+	calls := 0
+	cl.OnUsage = func(u Usage) { got, calls = u, calls+1 }
+	if _, _, err := cl.Stream(context.Background(), Request{User: "hi"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || got.InputTokens != 12 || got.OutputTokens != 3 {
+		t.Errorf("OnUsage called %d time(s) with %+v", calls, got)
+	}
+}
+
 // Network chunks can end anywhere, including inside an event and inside a UTF-8 character.
 func TestEventsSplitAtAnyByteAreReassembled(t *testing.T) {
 	for _, tc := range []struct{ provider, sse string }{{Gemini, geminiSSE}, {Anthropic, anthropicSSE}, {OpenAI, openaiSSE}} {

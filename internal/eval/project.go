@@ -10,6 +10,7 @@ import (
 	"github.com/sayandeep14/PromptLoom/internal/config"
 	"github.com/sayandeep14/PromptLoom/internal/llm"
 	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/usage"
 )
 
 // Params is what `loom eval` (and the loom ci gate) asks for.
@@ -27,6 +28,13 @@ type Params struct {
 	// ClientFor builds a client for a provider ("" = the project's) and model ("" = its default).
 	// Tests replace it; the default is llm.New.
 	ClientFor func(cfg *config.Config, provider, model string) (Completer, string, error)
+
+	// Command labels usage records ("eval", "score", "optimize"); empty means "eval". UsageLog
+	// records token/cost history for every model this run calls (the model(s) under test with role
+	// "", the judge with role "judge"); nil means <project>/.loom/usage.jsonl, the same ledger `loom
+	// usage` reads. Recording is best effort and never affects the run itself.
+	Command  string
+	UsageLog *usage.Log
 }
 
 // SuiteOutcome is the result of one suite.
@@ -76,6 +84,14 @@ func RunProject(ctx context.Context, cwd string, p Params) (*Outcome, error) {
 	if clientFor == nil {
 		clientFor = defaultClientFor
 	}
+	command := p.Command
+	if command == "" {
+		command = "eval"
+	}
+	log := p.UsageLog
+	if log == nil {
+		log = usage.Open(usage.DefaultPath(cwd))
+	}
 
 	suites, err := selectSuites(dir, p.Names)
 	if err != nil {
@@ -97,6 +113,7 @@ func RunProject(ctx context.Context, cwd string, p Params) (*Outcome, error) {
 		if err != nil {
 			return nil, fmt.Errorf("model %q: %w", spec, err)
 		}
+		usage.Attach(client, log, cfg, command, "")
 		if spec != "" && prov != "" {
 			label = prov + ":" + label
 		}
@@ -120,6 +137,7 @@ func RunProject(ctx context.Context, cwd string, p Params) (*Outcome, error) {
 		if err != nil {
 			return nil, fmt.Errorf("judge: %w", err)
 		}
+		usage.Attach(judge, log, cfg, command, "judge")
 
 		so := SuiteOutcome{Suite: s}
 		so.Results = RunSuite(ctx, reg, cfg, s, Options{Models: models, Judge: judge, Threshold: p.Threshold})

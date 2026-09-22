@@ -20,6 +20,7 @@ import (
 	"github.com/sayandeep14/PromptLoom/internal/config"
 	"github.com/sayandeep14/PromptLoom/internal/llm"
 	"github.com/sayandeep14/PromptLoom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/usage"
 )
 
 var (
@@ -169,6 +170,7 @@ func executeRun(p runParams) error {
 			if c.Timeout == 0 {
 				c.Timeout = 60 * time.Second
 			}
+			usage.Attach(c, usage.Open(usage.DefaultPath(p.Cwd)), cfg, "run", "")
 			return c, nil
 		}
 	}

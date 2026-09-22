@@ -3,6 +3,7 @@ package quest
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/sayandeep14/PromptLoom/internal/agent"
@@ -10,6 +11,7 @@ import (
 	"github.com/sayandeep14/PromptLoom/internal/contract"
 	"github.com/sayandeep14/PromptLoom/internal/llm"
 	"github.com/sayandeep14/PromptLoom/internal/tui"
+	"github.com/sayandeep14/PromptLoom/internal/usage"
 )
 
 // StepResult is the outcome of one step.
@@ -55,17 +57,6 @@ type Params struct {
 	OnDelta func(stepIndex int, delta string)
 }
 
-func defaultNewModel(cfg *config.Config, provider, model string) (agent.Model, error) {
-	c, err := llm.New(cfg, provider, model)
-	if err != nil {
-		return nil, err
-	}
-	if c.Timeout == 0 {
-		c.Timeout = 60 * time.Second
-	}
-	return c, nil
-}
-
 // Run executes a quest's steps in order. Each step renders its own prompt (exactly as `loom run`
 // would, including the permission check on any --with sources) and sends it one message, built
 // from the step's `input`/`input_file` with {{quest.input}} and {{quest.previous}} substituted.
@@ -73,7 +64,18 @@ func defaultNewModel(cfg *config.Config, provider, model string) (agent.Model, e
 // (skipping the rest) unless the step or Params asks to continue.
 func Run(ctx context.Context, cwd string, q *Quest, p Params, perm *agent.Permission) (*Outcome, error) {
 	if p.NewModel == nil {
-		p.NewModel = defaultNewModel
+		log := usage.Open(usage.DefaultPath(cwd))
+		p.NewModel = func(cfg *config.Config, provider, model string) (agent.Model, error) {
+			c, err := llm.New(cfg, provider, model)
+			if err != nil {
+				return nil, err
+			}
+			if c.Timeout == 0 {
+				c.Timeout = 60 * time.Second
+			}
+			usage.Attach(c, log, cfg, "quest run", "")
+			return c, nil
+		}
 	}
 	out := &Outcome{Quest: q}
 	previous := ""
@@ -84,12 +86,8 @@ func Run(ctx context.Context, cwd string, q *Quest, p Params, perm *agent.Permis
 		}
 
 		vars := map[string]string{}
-		for k, v := range p.Vars {
-			vars[k] = v
-		}
-		for k, v := range step.Vars {
-			vars[k] = v
-		}
+		maps.Copy(vars, p.Vars)
+		maps.Copy(vars, step.Vars)
 
 		prep, err := tui.PrepareRun(step.Prompt, tui.WeaveOptions{
 			Variables: vars, Variant: step.Variant, Overlays: step.Overlay, Env: step.Env, WithSources: step.With,

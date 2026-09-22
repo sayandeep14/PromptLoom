@@ -36,7 +36,7 @@ Global flag available on every command:
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
-| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run`, `quest`, `script` |
+| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run`, `quest`, `script`, `bench`, `usage` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
@@ -1674,6 +1674,116 @@ loom script list
 
 ---
 
+### `loom bench`
+
+**What it does**
+
+Sends the same input to a prompt `--runs` times per model and reports latency and token usage,
+plus an estimated cost for any model priced in `loom.toml`'s `[[pricing]]`. Not a quality judgement
+(see `loom eval` for that) — only how long an answer took and what it cost, so a model choice can
+weigh speed and price alongside eval's scores. Every call is recorded to the usage ledger (see
+`loom usage`) under command `bench`.
+
+**Why it exists**
+
+`loom eval` answers "is this model's answer good enough"; `loom bench` answers "how fast and how
+expensive is this model for this prompt" — a different, complementary question, useful before
+picking a default model or comparing a cheaper one against a more capable one.
+
+**When to use it**
+
+Comparing models before committing to one: `loom bench CodeReviewer --input-file diff.patch
+--models gemini-2.5-flash,anthropic:claude-sonnet-4-6`.
+
+**Syntax**
+
+```
+loom bench <PromptName> [--input TEXT | --input-file PATH] [--set key=value]... [--models m1,m2] [--runs N] [--json]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `-i, --input TEXT` | The message to send |
+| `--input-file PATH` | Read the message from a file |
+| `--set key=value` | Set a render/slot variable, as for `loom weave`/`loom run`; may be repeated |
+| `--models m1,m2` | Models to time: `model` or `provider:model` (default: `[testing]` in `loom.toml`) |
+| `--runs N` | Calls per model (default 1) |
+| `--json` | Print JSON instead of a table |
+
+**Examples**
+
+```bash
+loom bench CodeReviewer --input-file diff.patch
+loom bench CodeReviewer --input "review this" --models gemini-2.5-flash,anthropic:claude-sonnet-4-6
+loom bench CodeReviewer --input "review this" --runs 5
+```
+
+---
+
+### `loom usage`
+
+**What it does**
+
+Reports token and cost history from the project's usage ledger (`<project>/.loom/usage.jsonl`).
+Every call `loom run`, `quest run`, `eval`, `score`, `optimize` and `bench` make to a model is
+recorded there: when, which command (and role — the primary call, or `judge`/`refiner`), which
+model, and how many tokens. A cost is estimated only for a model priced in `loom.toml`'s
+`[[pricing]]` — loom never guesses a price, so an unpriced model shows token counts only, with a
+note naming it. Recording is best effort: a problem writing the ledger never fails the command that
+triggered it. The ledger is local and personal (not meant to be committed — `loom init` adds
+`.loom/` to `.gitignore`), so it is never shared project state.
+
+To price a model, add to `loom.toml`:
+
+```toml
+[[pricing]]
+provider = "gemini"
+model    = "gemini-2.5-flash"
+input_per_million  = 0.30   # USD per 1,000,000 input tokens
+output_per_million = 2.50   # USD per 1,000,000 output tokens
+```
+
+**Why it exists**
+
+An agentic workflow (running, questing, applying an optimize proposal) can make many model calls
+without any of them feeling individually expensive; `loom usage` is the record that answers "how
+much of this have we actually used, and on what" after the fact.
+
+**When to use it**
+
+Checking spend after a session, or before deciding whether a bench or optimize run's own iteration
+count is set too high: `loom usage --since 2026-09-01 --command optimize`.
+
+**Syntax**
+
+```
+loom usage [--since YYYY-MM-DD] [--command NAME] [--model m] [--json] [--clear]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--since YYYY-MM-DD` | Only calls on or after this date |
+| `--command NAME` | Only this command (e.g. `run`, `eval`, `optimize`, `bench`) |
+| `--model m` | Only this model: `model` or `provider:model` |
+| `--json` | Print the summary as JSON instead of text |
+| `--clear` | Delete the ledger and start over; prints nothing else |
+
+**Examples**
+
+```bash
+loom usage
+loom usage --since 2026-09-01
+loom usage --command eval --model gemini-2.5-flash
+loom usage --json
+loom usage --clear
+```
+
+---
+
 ## Library Management
 
 ---
@@ -2577,6 +2687,8 @@ loom execute ship --unlock
 | `loom quest list` | List quest files |
 | `loom script run <Name>` | Run every step of a `.lmscr` script (a named pipeline of loom commands) in order |
 | `loom script list` | List `.lmscr` script files |
+| `loom bench <Name>` | Time and price a prompt's answer across one or more models |
+| `loom usage` | Report token and cost history from the project's usage ledger |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |
 | `loom graph [Name]` | Dependency graph; with a name, that prompt's neighbourhood |
