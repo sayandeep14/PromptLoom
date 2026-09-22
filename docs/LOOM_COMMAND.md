@@ -36,7 +36,7 @@ Global flag available on every command:
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
-| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run` |
+| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run`, `quest` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
@@ -1531,6 +1531,80 @@ loom optimize CodeReviewer --yes --iterations 5 --tolerance 5
 
 ---
 
+### `loom quest run`
+
+**What it does**
+
+Runs every `[[step]]` of `quests/<Name>.quest.toml` (or `--dir`) in order, exactly as `loom run` runs one prompt: each step's prompt is resolved and rendered, sent to a model, and the reply streamed to the terminal. A step's `input` may use `{{quest.input}}` (this run's `--input`) and, after the first step, `{{quest.previous}}` (the previous step's answer) — that template substitution is the only way one step's output reaches the next. A quest adds no capability `loom run` does not already have: no tool use, no branching, no autonomy, just a named, replayable sequence of prompts.
+
+**Why it exists**
+
+Some tasks are naturally a short pipeline — summarize, then plan; review, then double-check the recommendation — and re-typing `loom run` twice with `--input` piped by hand is easy to get wrong. A quest file names the sequence once so it can be run the same way every time.
+
+**When to use it**
+
+A fixed, multi-step task worth repeating: `loom quest run Onboarding --input "new hire, backend team"`.
+
+**Syntax**
+
+```
+loom quest run <QuestName> [--input TEXT | --input-file PATH] [--model m] [--out PATH]
+               [--json] [--dry-run] [--continue-on-error] [--no-stream] [--dir <path>]
+```
+
+A step stops the quest on error or contract violation unless the step sets `continue_on_fail = true`, or `--continue-on-error` is passed.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `-i, --input TEXT` | The quest's input (`{{quest.input}}` in step 1) |
+| `--input-file PATH` | Read the input from a file (needs `permission.read`) |
+| `--model m` | Model for every step: `model` or `provider:model` (default: `[testing]` in `loom.toml`) |
+| `--out PATH` | Write a Markdown transcript of every step (needs `permission.write`) |
+| `--json` | Print one JSON object (`quest`, `ok`, `stopped`, `steps[]`) instead of the transcript text |
+| `--dry-run` | Show the first step's prompt and input; call nothing |
+| `--continue-on-error` | Run every step even if one errors or fails its contract |
+| `--no-stream` | Wait for each step's whole answer instead of streaming it |
+| `--dir <path>` | Directory of quest files (default `quests`) |
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| `0` | Every step completed without error or contract violation |
+| `1` | A step errored, violated its contract, or the quest was stopped early |
+
+**Examples**
+
+```bash
+loom quest run Onboarding --input "new hire, backend team"
+loom quest run Triage --input-file ticket.txt --out transcript.md
+loom quest run Onboarding --dry-run --input "..."   # show the first step's prompt; call nothing
+```
+
+---
+
+### `loom quest list`
+
+**What it does**
+
+Lists the quests found in `quests/` (or `--dir`), with their step count and description.
+
+**Syntax**
+
+```
+loom quest list [--dir <path>]
+```
+
+**Examples**
+
+```bash
+loom quest list
+```
+
+---
+
 ## Library Management
 
 ---
@@ -2430,6 +2504,8 @@ loom execute ship --unlock
 | `loom eval [Name...]` | Score answers with a judge model; record/compare baselines to catch regressions |
 | `loom score <Name>` | A prompt's eval score as one number, for scripts and gates |
 | `loom optimize <Name>` | Propose (and, with `--yes`, apply) a fix for a failing prompt |
+| `loom quest run <Name>` | Run every step of a quest (a named, fixed pipeline of prompts) in order |
+| `loom quest list` | List quest files |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |
 | `loom graph [Name]` | Dependency graph; with a name, that prompt's neighbourhood |

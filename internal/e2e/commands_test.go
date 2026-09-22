@@ -303,3 +303,54 @@ func TestScoreAndOptimizeCommandsThroughTheBinary(t *testing.T) {
 		t.Errorf("exit %d\n%s", code, out)
 	}
 }
+
+func TestQuestCommandsThroughTheBinary(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if _, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatal("init")
+	}
+	if _, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer", "--language", "Go"); code != 0 {
+		t.Fatal("recipe")
+	}
+
+	if out, code := runLoom(t, bin, dir, "quest", "list"); code != 0 || !strings.Contains(out, "no quests found") {
+		t.Errorf("quest list (empty): exit %d\n%s", code, out)
+	}
+
+	os.MkdirAll(filepath.Join(dir, "quests"), 0o755)
+	os.WriteFile(filepath.Join(dir, "quests", "Review.quest.toml"), []byte(`
+description = "review, then check the recommendation"
+
+[[step]]
+name = "review"
+prompt = "CodeReviewer"
+input = "{{quest.input}}"
+vars = { repo_name = "demo" }
+
+[[step]]
+name = "check"
+prompt = "SecurityReviewer"
+input = "given: {{quest.previous}}, look again"
+vars = { repo_name = "demo" }
+`), 0o644)
+
+	if out, code := runLoom(t, bin, dir, "quest", "list"); code != 0 || !strings.Contains(out, "Review") || !strings.Contains(out, "2 step(s)") {
+		t.Errorf("quest list: exit %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "quest", "run", "Review", "--dry-run", "--input", "some code"); code != 0 ||
+		!strings.Contains(out, "step 1: review") || !strings.Contains(out, "some code") || !strings.Contains(out, "nothing was sent") {
+		t.Errorf("quest run --dry-run: exit %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "quest", "run", "Nope", "--dry-run", "--input", "x"); code != 1 || !strings.Contains(out, "no such file") && !strings.Contains(out, "Nope") {
+		t.Errorf("quest run unknown: exit %d\n%s", code, out)
+	}
+
+	// no API key: fails clearly rather than hanging
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	if out, code := runLoom(t, bin, dir, "quest", "run", "Review", "--input", "some code"); code != 1 || !strings.Contains(out, "API key") {
+		t.Errorf("quest run without a key: exit %d\n%s", code, out)
+	}
+}

@@ -1,8 +1,9 @@
 # Agent runtime: design
 
 Status: **accepted** (PL-501). Implemented by `loom run` (PL-502). Builds on the shared model client
-(`internal/llm`, PL-405). Later tickets extend it: refine/decide (PL-503), quest mode (PL-504),
-scripts (PL-505).
+(`internal/llm`, PL-405). Extended by refine/decide (PL-503, `loom optimize`/`loom score`/`loom eval
+--refine`) and quest mode (PL-504, `loom quest run`/`loom quest list`). Scripts (PL-505) remain
+future work.
 
 ## Goal
 
@@ -22,7 +23,7 @@ A prompt library is only useful if the prompts can be exercised; `run` closes th
 | Token usage | best effort | providers report it; PL-704 will aggregate |
 | **Tool use / function calling** | **No** | see the safety model: the model can only produce text, so there is nothing to authorize |
 | Model-driven file writes, shell commands, web access | **No** | same |
-| Autonomous multi-step loops | **No** | `quest` (PL-504) will compose *supervised* steps on top of `run` |
+| Autonomous multi-step loops | **No** | `loom quest` (PL-504) composes a *fixed, human-authored* sequence of `run` steps — never a model-chosen one |
 
 Non-goals: being a general chat client, managing conversations across sessions (a transcript can be
 saved, not resumed), or picking a model for you.
@@ -132,6 +133,17 @@ being explicit about why that does not contradict rule 1 above.
 
 This is a narrow, auditable exception — "rewrite this one prompt's wording, show me first" — not a
 step toward the model executing arbitrary actions, which is still out of scope (see below).
+
+## `loom quest`: not an exception
+
+`loom quest run` (PL-504) executes a `.quest.toml` file: a fixed, human-authored list of `run`
+steps, each naming its own prompt. The only thing that moves between steps is text — a step's
+`input` may reference `{{quest.input}}` and `{{quest.previous}}`, substituted before the step is
+sent, nothing more. Which prompt runs, in what order, and with what permissions is fixed by the
+file on disk, never chosen by a model while the quest runs. So none of the four points in the
+safety model above are relaxed: a quest can act on nothing a `loom run` of the same prompt
+couldn't, and it writes a file only when `--out` is given, gated by `permission.write`, exactly as
+`loom run --out` already is.
 
 ## Future: tools (not in version 1)
 
