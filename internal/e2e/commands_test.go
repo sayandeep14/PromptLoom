@@ -270,3 +270,36 @@ func TestRunCommandThroughTheBinary(t *testing.T) {
 		t.Errorf("exit %d\n%s", code, out)
 	}
 }
+
+func TestScoreAndOptimizeCommandsThroughTheBinary(t *testing.T) {
+	bin := buildLoom(t)
+	dir := t.TempDir()
+	if _, code := runLoom(t, bin, dir, "init"); code != 0 {
+		t.Fatal("init")
+	}
+	if _, code := runLoom(t, bin, dir, "recipe", "apply", "reviewer"); code != 0 {
+		t.Fatal("recipe")
+	}
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	// no eval suite for the prompt: a clear error, not a silent zero
+	out, code := runLoom(t, bin, dir, "score", "CodeReviewer")
+	if code != 1 || !strings.Contains(out, "eval suite") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	// with a suite but no API key: score/optimize both fail clearly rather than hang
+	os.MkdirAll(filepath.Join(dir, "evals"), 0o755)
+	os.WriteFile(filepath.Join(dir, "evals", "CodeReviewer.eval.toml"), []byte("prompt = \"CodeReviewer\"\n[[case]]\nname = \"a\"\ninput = \"review this\"\ncriteria = [\"is useful\"]\nvars = { repo_name = \"demo\" }\n"), 0o644)
+	if out, code := runLoom(t, bin, dir, "score", "CodeReviewer"); code != 1 || !strings.Contains(out, "API key") {
+		t.Errorf("score: exit %d\n%s", code, out)
+	}
+	if out, code := runLoom(t, bin, dir, "optimize", "CodeReviewer"); code != 1 || !strings.Contains(out, "API key") {
+		t.Errorf("optimize: exit %d\n%s", code, out)
+	}
+	// unknown prompt (no eval suite for it either)
+	if out, code := runLoom(t, bin, dir, "score", "Nope"); code != 1 || !strings.Contains(out, "no eval suite") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+}

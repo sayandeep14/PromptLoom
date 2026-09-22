@@ -36,7 +36,7 @@ Global flag available on every command:
 | [Git & History](#git--history) | `blame`, `changelog`, `diff`, `review` |
 | [CI & Locking](#ci--locking) | `ci`, `lock`, `check-lock`, `fingerprint`, `diff` |
 | [Deployment & Targets](#deployment--targets) | `deploy` |
-| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `run` |
+| [AI Testing](#ai-testing) | `test`, `check-output`, `eval`, `score`, `optimize`, `run` |
 | [Library Management](#library-management) | `list`, `fmt`, `graph`, `impact`, `todos`, `stale` |
 | [Pack System](#pack-system) | `pack init`, `pack build`, `pack install`, `pack list`, `pack remove`, `install`, `publish` |
 | [Integrations](#integrations) | `mcp manifest`, `import`, `completion`, `lsp` |
@@ -1377,7 +1377,7 @@ The judge is shown the input, the answer and the numbered criteria, and must rep
 
 ```
 loom eval [Name...] [--models m1,m2] [--judge m] [--record] [--compare]
-          [--tolerance N | --strict] [--threshold N] [--dir <path>]
+          [--tolerance N | --strict] [--threshold N] [--dir <path>] [--refine] [--yes]
 ```
 
 `Name` is a suite name or the name of a prompt (every suite that evaluates it). With no name, every suite runs.
@@ -1394,6 +1394,8 @@ loom eval [Name...] [--models m1,m2] [--judge m] [--record] [--compare]
 | `--strict` | With `--compare`: any drop is a regression (tolerance 0) |
 | `--threshold N` | Override the pass mark of every case (1-100) |
 | `--dir <path>` | Directory of suites (default `evals`) |
+| `--refine` | For every prompt that did not pass, ask a model to propose a fix and show the diff — one iteration of `loom optimize` per prompt (below). Nothing is written unless `--yes` is also given |
+| `--yes` | With `--refine`: apply the proposed fix instead of only previewing it |
 
 **Example output**
 
@@ -1426,6 +1428,105 @@ loom eval CodeReviewer --models gemini-2.5-flash,anthropic:claude-sonnet-4-6
 loom eval --record                 # after a change you are happy with
 loom eval --compare                # before merging the next one
 loom eval --compare --strict --judge openai:gpt-4o-mini
+loom eval --refine                 # see a suggested fix for anything failing
+loom eval --refine --yes           # apply it
+```
+
+---
+
+### `loom score`
+
+**What it does**
+
+Runs the eval suite(s) for one prompt and reports the **mean of every case's score** as a single 0-100 number — everything `loom eval` reports for that prompt, reduced to one figure for a script, a dashboard, or a release gate.
+
+**Why it exists**
+
+`loom eval` is for reading; `loom score` is for a shell script or CI step that only needs to ask "is this good enough?" without parsing per-case output.
+
+**When to use it**
+
+`loom score CodeReviewer --fail-under 80` as a release gate; recording the number over time.
+
+**Syntax**
+
+```
+loom score <PromptName> [--models m1,m2] [--judge m] [--dir <path>] [--fail-under N] [--json]
+```
+
+Needs an eval suite for the prompt — there is nothing honest to score without one.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--models m1,m2` | As for `loom eval` |
+| `--judge <model>` | As for `loom eval` |
+| `--dir <path>` | Directory of suites (default `evals`) |
+| `--fail-under N` | Exit 1 if the mean is below N (1-100). Without it, exit 1 unless every case passed |
+| `--json` | Print `{"prompt", "mean", "cases", "passed", "errored"}` instead of text |
+
+**Examples**
+
+```bash
+loom score CodeReviewer
+loom score CodeReviewer --fail-under 80
+```
+
+---
+
+### `loom optimize`
+
+**What it does**
+
+Scores a prompt with its eval suite, and if it is not passing, asks a model to propose better field content that addresses the failing criteria, and shows the diff. Without `--yes` it stops there — a single preview, nothing written. With `--yes` it applies the change, re-scores, and repeats (up to `--iterations`) as long as the score keeps improving; if an applied change makes the score *worse*, it is reverted immediately.
+
+`optimize` only ever changes a prompt's own field content. A proposal that would touch its name, `inherits` list, `use` lines, `var`/`slot` declarations, `variant`/`env` blocks, or `contract`/`capabilities` block is rejected outright, never partially applied. See [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md), "Exception: `loom optimize`", for why this is allowed when the rest of the agent runtime never writes files on a model's say-so.
+
+**Why it exists**
+
+Once an eval suite says a prompt is falling short, someone still has to read the judge's notes and rewrite the prompt. `optimize` does the first draft of that, every time the same way, and never touches anything it might break.
+
+**When to use it**
+
+After `loom eval` reports a failure: `loom optimize <Name>` to see a suggested fix, `--yes` to take it.
+
+**Syntax**
+
+```
+loom optimize <PromptName> [--models m1,m2] [--judge m] [--refiner m] [--dir <path>]
+              [--iterations N] [--tolerance N] [--yes]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--models m1,m2` | Models to score against, as for `loom eval` |
+| `--judge <model>` | The judge, as for `loom eval` |
+| `--refiner <model>` | The model asked to propose changes. Default: same as `--judge` |
+| `--dir <path>` | Directory of eval suites (default `evals`) |
+| `--iterations N` | With `--yes`: how many rounds to attempt (default 3) |
+| `--tolerance N` | Points the score may drop before a change is reverted as a regression (default 3) |
+| `--yes` | Apply accepted proposals (and keep going) instead of only previewing the first one |
+
+**What "not passing" stops on**
+
+Each round ends because the prompt now passes, a proposal was rejected (bad syntax, or it touched more than fields — the reason is printed), an applied change scored worse and was reverted, the score stopped improving, or `--iterations` was reached.
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| `0` | The prompt reached a passing score |
+| `1` | Anything else — including a plain preview (run again with `--yes` to actually try) |
+
+**Examples**
+
+```bash
+loom optimize CodeReviewer                  # preview a proposed change
+loom optimize CodeReviewer --yes            # apply it, and keep going until it passes
+loom optimize CodeReviewer --yes --iterations 5 --tolerance 5
 ```
 
 ---
@@ -2327,6 +2428,8 @@ loom execute ship --unlock
 | `loom check-output <Name> <file>` | Validate a response file against a prompt contract |
 | `loom run <Name>` | Run a prompt against a model and stream the answer (`--chat` for a conversation) |
 | `loom eval [Name...]` | Score answers with a judge model; record/compare baselines to catch regressions |
+| `loom score <Name>` | A prompt's eval score as one number, for scripts and gates |
+| `loom optimize <Name>` | Propose (and, with `--yes`, apply) a fix for a failing prompt |
 | `loom list` | List all prompts and blocks |
 | `loom fmt` | Format all `.loom` source files canonically |
 | `loom graph [Name]` | Dependency graph; with a name, that prompt's neighbourhood |

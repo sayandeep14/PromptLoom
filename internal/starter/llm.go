@@ -12,7 +12,7 @@ import (
 	"github.com/sayandeep14/PromptLoom/internal/workspace"
 )
 
-const dslReference = `
+const DSLReference = `
 PromptLoom DSL quick reference
 ================================
 Files:
@@ -117,7 +117,7 @@ Example:
 func systemPrompt() string {
 	return `You are an expert prompt engineer for the PromptLoom DSL. Your task is to generate high-quality, production-ready prompt libraries for software development teams.
 
-` + dslReference + `
+` + DSLReference + `
 Output instructions:
 - Return ONLY a valid JSON array. No markdown fences. No explanation. No trailing text.
 - Each element must have exactly these fields:

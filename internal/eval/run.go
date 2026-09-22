@@ -26,6 +26,7 @@ type CaseResult struct {
 	Suite     string
 	Case      string
 	Model     string
+	Input     string // the case's input, echoed here for reporting and for optimize's feedback
 	Response  string
 	Criteria  []CriterionResult
 	Score     int
@@ -51,7 +52,7 @@ func RunSuite(ctx context.Context, reg *registry.Registry, cfg *config.Config, s
 	var results []CaseResult
 	for _, m := range opts.Models {
 		for _, c := range s.Cases {
-			res := CaseResult{Suite: s.Name, Case: c.Name, Model: m.Label, Threshold: s.ThresholdFor(c, opts.Threshold)}
+			res := CaseResult{Suite: s.Name, Case: c.Name, Model: m.Label, Input: c.Input, Threshold: s.ThresholdFor(c, opts.Threshold)}
 			start := time.Now()
 			switch {
 			case !ok:

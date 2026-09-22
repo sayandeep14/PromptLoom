@@ -111,6 +111,28 @@ loom run
 OpenAI `stream: true`), a conversation history on `Request`, and best-effort `Usage`. Streaming
 parsers are tested against recorded provider events, not live services.
 
+## Exception: `loom optimize`
+
+`loom optimize` (PL-503) is the one place a model's output changes a project file, so it is worth
+being explicit about why that does not contradict rule 1 above.
+
+- It is **human-invoked**, never something another command triggers on its own.
+- It can touch exactly **one thing**: the *field content* of the one named prompt. The refiner's
+  reply is parsed with the real DSL parser, and a proposal that changes the prompt's name,
+  `inherits` list, `use` lines, `var`/`slot` declarations, `variant`/`env` blocks, or
+  `contract`/`capabilities` block is rejected outright — never partially applied. The write itself
+  goes through `format.ReplaceFields`, which only ever copies structure from the *original* node,
+  so even a caller bug cannot smuggle a structural change through it.
+- The **diff is always shown**. Without `--yes` nothing is written at all — a preview.
+- Every write still goes through **`permission.write`** in `.loom.config`, the same as any other
+  file loom writes.
+- Success is judged by the prompt's own **eval suite**, written by a human before `optimize` ever
+  runs. An applied change that scores worse is reverted immediately, and a run is bounded
+  (`--iterations`, default 3).
+
+This is a narrow, auditable exception — "rewrite this one prompt's wording, show me first" — not a
+step toward the model executing arbitrary actions, which is still out of scope (see below).
+
 ## Future: tools (not in version 1)
 
 A tool-calling runtime will only be built when all of these can be met:

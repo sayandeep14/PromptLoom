@@ -79,6 +79,8 @@ func init() {
 	rootCmd.AddCommand(packCmd)
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(evalCmd)
+	rootCmd.AddCommand(scoreCmd)
+	rootCmd.AddCommand(optimizeCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(blameCmd)
 	rootCmd.AddCommand(changelogCmd)

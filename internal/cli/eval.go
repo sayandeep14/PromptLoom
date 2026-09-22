@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/sayandeep14/PromptLoom/internal/agent"
 	"github.com/sayandeep14/PromptLoom/internal/eval"
+	"github.com/sayandeep14/PromptLoom/internal/loader"
+	"github.com/sayandeep14/PromptLoom/internal/optimize"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +21,8 @@ var (
 	evalStrict    bool
 	evalThreshold int
 	evalDir       string
+	evalRefine    bool
+	evalYes       bool
 )
 
 var evalCmd = &cobra.Command{
@@ -44,6 +49,9 @@ A suite:
 Compare models side by side with --models (each is "model" or "provider:model"). Save the
 scores with --record, and later --compare to fail when a change to a prompt made answers worse.
 
+--refine asks a model to propose a fix for every prompt that did not pass, and shows the diff
+(see 'loom optimize', which this uses for one iteration per prompt). Add --yes to apply it.
+
 The model under test and the judge use the provider, key and model of [testing] in loom.toml.
 The judge sees the answer as data and is told to ignore any instructions inside it.
 
@@ -52,7 +60,9 @@ Examples:
   loom eval CodeReviewer --models gemini-2.5-flash,anthropic:claude-sonnet-4-6
   loom eval --record
   loom eval --compare                 # exit 1 on a regression (drop of more than 5 points)
-  loom eval --compare --strict        # any drop counts`,
+  loom eval --compare --strict        # any drop counts
+  loom eval --refine                  # preview a fix for anything that failed
+  loom eval --refine --yes            # apply it`,
 	RunE: runEval,
 }
 
@@ -65,6 +75,8 @@ func init() {
 	evalCmd.Flags().BoolVar(&evalStrict, "strict", false, "with --compare: any drop is a regression (tolerance 0)")
 	evalCmd.Flags().IntVar(&evalThreshold, "threshold", 0, "override the pass mark of every case (1-100)")
 	evalCmd.Flags().StringVar(&evalDir, "dir", "", "directory of eval suites (default: evals)")
+	evalCmd.Flags().BoolVar(&evalRefine, "refine", false, "propose a fix (see loom optimize) for every prompt that did not pass")
+	evalCmd.Flags().BoolVar(&evalYes, "yes", false, "with --refine: apply the fix instead of only previewing it")
 }
 
 func runEval(cmd *cobra.Command, args []string) error {
@@ -81,17 +93,79 @@ func runEval(cmd *cobra.Command, args []string) error {
 			models = append(models, m)
 		}
 	}
-	out, err := eval.RunProject(context.Background(), cwd, eval.Params{
+	ctx := context.Background()
+	evalOpts := eval.Params{
 		Names: args, Models: models, Judge: evalJudge,
 		Record: evalRecord, Compare: evalCompare, Tolerance: evalTolerance, Strict: evalStrict,
 		Threshold: evalThreshold, Dir: evalDir,
-	})
+	}
+	out, err := eval.RunProject(ctx, cwd, evalOpts)
 	if err != nil {
 		return err
 	}
 	fmt.Print(out.Text())
-	if !out.OK() {
-		return fmt.Errorf("eval failed")
+
+	if !evalRefine {
+		if !out.OK() {
+			return fmt.Errorf("eval failed")
+		}
+		return nil
+	}
+	return runRefine(ctx, cwd, out, models)
+}
+
+// runRefine proposes (and, with --yes, applies) one fix per prompt that did not pass.
+func runRefine(ctx context.Context, cwd string, out *eval.Outcome, models []string) error {
+	_, cfg, err := loader.Load(cwd)
+	if err != nil {
+		return err
+	}
+	refiner, err := buildCompleter(cfg, evalJudge)
+	if err != nil {
+		return fmt.Errorf("--refine needs a working model: %w", err)
+	}
+	var perm *agent.Permission
+	if evalYes {
+		perm, err = agent.LoadPermission(cwd)
+		if err != nil {
+			return err
+		}
+	}
+
+	seen := map[string]bool{}
+	fmt.Println("\n── refine ──")
+	for _, so := range out.Suites {
+		name := so.Suite.Prompt
+		if seen[name] || eval.Summarize(so.Results).OK() {
+			continue
+		}
+		seen[name] = true
+		res, err := optimize.Loop(ctx, cwd, name, optimize.LoopOptions{
+			Eval:          eval.Params{Models: models, Judge: evalJudge, Threshold: evalThreshold, Dir: evalDir},
+			Refiner:       refiner,
+			MaxIterations: 1,
+			Apply:         evalYes,
+			Permission:    perm,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Print(res.Text())
+	}
+
+	if !evalYes {
+		if !out.OK() {
+			return fmt.Errorf("eval failed")
+		}
+		return nil
+	}
+	// re-run eval for an honest exit code: refine may have fixed some or all of it
+	final, err := eval.RunProject(ctx, cwd, eval.Params{Names: nil, Models: models, Judge: evalJudge, Threshold: evalThreshold, Dir: evalDir})
+	if err != nil {
+		return err
+	}
+	if !final.OK() {
+		return fmt.Errorf("eval still fails after refining")
 	}
 	return nil
 }

@@ -19,12 +19,12 @@ import (
 // The DSL reference is what the model imitates when generating a library, so its
 // example must be valid, warning-free v2, and the text must not teach legacy syntax.
 func TestDSLReferenceTeachesOnlyV2(t *testing.T) {
-	start := strings.Index(dslReference, "\nExample:\n")
+	start := strings.Index(DSLReference, "\nExample:\n")
 	if start < 0 {
-		t.Fatal("no Example section in dslReference")
+		t.Fatal("no Example section in DSLReference")
 	}
 	var lines []string
-	for _, l := range strings.Split(dslReference[start+len("\nExample:\n"):], "\n") {
+	for _, l := range strings.Split(DSLReference[start+len("\nExample:\n"):], "\n") {
 		lines = append(lines, strings.TrimPrefix(l, "  "))
 	}
 	example := strings.Join(lines, "\n")
@@ -50,13 +50,13 @@ func TestDSLReferenceTeachesOnlyV2(t *testing.T) {
 	}
 
 	// The prose may mention the old operators only to forbid them.
-	lower := strings.ToLower(dslReference)
+	lower := strings.ToLower(DSLReference)
 	for _, phrase := range []string{"to append", "to remove", "use += to extend", "append to existing"} {
 		if strings.Contains(lower, phrase) {
-			t.Errorf("dslReference still teaches legacy syntax: %q", phrase)
+			t.Errorf("DSLReference still teaches legacy syntax: %q", phrase)
 		}
 	}
-	if !strings.Contains(dslReference, "Never use  +=") {
+	if !strings.Contains(DSLReference, "Never use  +=") {
 		t.Error("the reference should explicitly forbid += / -= / bare colon")
 	}
 }
