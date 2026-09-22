@@ -2,6 +2,7 @@ package optimize
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -13,7 +14,7 @@ func (r *StepResult) Text() string {
 		fmt.Fprintf(&b, "  %s\n", r.Message)
 		return b.String()
 	}
-	fmt.Fprintf(&b, "\n  %s\n\n", r.File)
+	fmt.Fprintf(&b, "\n  %s\n\n", filepath.ToSlash(r.File))
 	for _, line := range strings.Split(strings.TrimRight(r.Diff, "\n"), "\n") {
 		fmt.Fprintf(&b, "  %s\n", line)
 	}
